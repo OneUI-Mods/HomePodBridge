@@ -68,9 +68,15 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                 if (!ok) __android_log_print(ANDROID_LOG_WARN, "HomePodBridge", "AirPlay connection failed: %s", error.c_str());
                 engine->state.store(ok ? 2 : -1);
             };
-            events.closed = [engine] { engine->state.store(-2); };
+            events.closed = [engine] {
+                __android_log_write(ANDROID_LOG_WARN, "HomePodBridge", "AirPlay connection closed by receiver");
+                engine->state.store(-2);
+            };
             events.pinRequired = [engine](const std::string&) { engine->state.store(-3); };
-            fxchain::RaopSender sender(loop, std::move(events));
+            fxchain::RaopSender sender(loop, std::move(events), [](fxchain::RaopLogLevel level, const std::string& message) {
+                __android_log_print(level == fxchain::RaopLogLevel::Warn ? ANDROID_LOG_WARN : ANDROID_LOG_INFO,
+                                    "HomePodBridge", "%s", message.c_str());
+            });
             sender.setStrictReceiverAuth(true);
             fxchain::RaopIdentity source;
             source.name = "HomePod Bridge";
