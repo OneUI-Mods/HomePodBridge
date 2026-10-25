@@ -2,6 +2,9 @@ package dev.ryuya.homepodbridge;
 
 import android.content.Context;
 import android.media.AudioManager;
+import android.media.MediaMetadata;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -9,6 +12,7 @@ import android.os.Parcel;
 import de.robv.android.xposed.XposedHelpers;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.concurrent.Executor;
 
 /** A lease on the unused speaker's media-volume commands, owned by one capture stream. */
@@ -21,12 +25,30 @@ final class SystemVolumeEndpoint implements AutoCloseable {
   private final Handler handler;
   private final IBinder callback;
   private final Class<?> infoBuilder;
+  private final MediaSessionManager mediaSessions;
+  private final MediaController remoteController;
+  private final VolumeKeyChanges volumeKeys;
+  private final int previousFineVolume;
+  private boolean drainScheduled;
+  private volatile boolean panelErrorLogged;
   private volatile boolean closed;
   private boolean registered;
 
   SystemVolumeEndpoint(Context context, IBinder callback) {
     this.callback = callback;
+    if (!SystemVolumeUi.available)
+      throw new IllegalStateException("Remote volume panel not available");
     audio = context.getSystemService(AudioManager.class);
+    mediaSessions = context.getSystemService(MediaSessionManager.class);
+    remoteController =
+        mediaSessions.getActiveSessions(null).stream()
+            .filter(session -> RootProtocol.PACKAGE.equals(session.getPackageName()))
+            .filter(
+                session ->
+                    session.getPlaybackInfo() != null
+                        && session.getPlaybackInfo().getPlaybackType() == 2)
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("Owned remote session unavailable"));
     ClassLoader loader = context.getClassLoader();
     Class<?> managerClass =
         XposedHelpers.findClass("android.media.AudioDeviceVolumeManager", loader);
@@ -42,6 +64,20 @@ final class SystemVolumeEndpoint implements AutoCloseable {
         XposedHelpers.callMethod(
             XposedHelpers.newInstance(infoBuilder, AudioManager.STREAM_MUSIC), "build");
     previousVolume = XposedHelpers.callMethod(manager, "getDeviceVolume", query, device);
+    int fine = -1;
+    int baseline = (Integer) XposedHelpers.callMethod(previousVolume, "getVolumeIndex");
+    int maximum = (Integer) XposedHelpers.callMethod(previousVolume, "getMaxVolumeIndex");
+    baseline = maximum > 0 ? baseline * 100 / maximum : 0;
+    try {
+      fine =
+          (Integer)
+              XposedHelpers.callMethod(audio, "semGetFineVolume", AudioManager.STREAM_MUSIC, 2);
+      baseline =
+          Math.round(fine * 100f / (audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * 10));
+    } catch (Throwable ignored) {
+    }
+    previousFineVolume = fine;
+    volumeKeys = new VolumeKeyChanges(baseline);
     thread.start();
     handler = new Handler(thread.getLooper());
     try {
@@ -75,12 +111,11 @@ final class SystemVolumeEndpoint implements AutoCloseable {
                           stream, direction, bypass | AudioManager.FLAG_SHOW_UI);
                     }
                   } else if (method.getName().equals("onAudioDeviceVolumeChanged") && media) {
-                    send(
-                        RootProtocol.SET_VOLUME,
-                        (Integer) XposedHelpers.callMethod(args[1], "getVolumeIndex"));
-                    // Restore the unused speaker without feeding its quantized index back.
-                    XposedHelpers.callMethod(
-                        manager, "notifyAbsoluteVolumeChanged", previousVolume, device);
+                    volumeKeys.changed(
+                        (Integer) XposedHelpers.callMethod(args[1], "getVolumeIndex"),
+                        android.os.SystemClock.uptimeMillis());
+                    restoreLocalVolume();
+                    scheduleKeys();
                   }
                   return null;
                 } catch (Throwable error) {
@@ -120,10 +155,97 @@ final class SystemVolumeEndpoint implements AutoCloseable {
           true,
           executor,
           listener);
+      SystemVolumeUi.active = this;
     } catch (Throwable error) {
       close();
       throw error;
     }
+  }
+
+  boolean redirectLocalUi(Object controller, int flags) {
+    if (closed || audio.getMode() != AudioManager.MODE_NORMAL) return false;
+    try {
+      Object sessions = XposedHelpers.getObjectField(controller, "mMediaSessions");
+      Object token = remoteController.getSessionToken();
+      Object records = XposedHelpers.getObjectField(sessions, "mRecords");
+      if (records instanceof Map<?, ?> map && !map.containsKey(token)) {
+        try {
+          XposedHelpers.callStaticMethod(
+              sessions.getClass(),
+              "access$onActiveSessionsUpdatedH",
+              sessions,
+              mediaSessions.getActiveSessions(null));
+        } catch (Throwable ignored) {
+          XposedHelpers.callMethod(
+              sessions, "onActiveSessionsUpdatedH", mediaSessions.getActiveSessions(null));
+        }
+        if (!map.containsKey(token)) return false;
+      }
+      MediaMetadata metadata = remoteController.getMetadata();
+      String name =
+          metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
+      if (name == null) name = "HomePod Bridge";
+      XposedHelpers.callMethod(
+          sessions, "updateRemoteH", token, name, remoteController.getPlaybackInfo());
+      Object callbacks = XposedHelpers.getObjectField(controller, "mMediaSessionsCallbacksW");
+      Class<?> idClass =
+          XposedHelpers.findClassIfExists(
+              "com.android.settingslib.volume.MediaSessions$SessionId$Media",
+              controller.getClass().getClassLoader());
+      Object id = idClass == null ? token : XposedHelpers.newInstance(idClass, token);
+      XposedHelpers.callMethod(callbacks, "onRemoteVolumeChanged", id, flags);
+      int fromKey = XposedHelpers.getStaticIntField(AudioManager.class, "FLAG_FROM_KEY");
+      if ((flags & (fromKey | AudioManager.FLAG_SHOW_UI))
+          == (fromKey | AudioManager.FLAG_SHOW_UI)) {
+        long now = android.os.SystemClock.uptimeMillis();
+        handler.post(
+            () -> {
+              if (!closed) {
+                volumeKeys.key(now);
+                scheduleKeys();
+              }
+            });
+      }
+      return true;
+    } catch (Throwable error) {
+      if (!panelErrorLogged) {
+        panelErrorLogged = true;
+        de.robv.android.xposed.XposedBridge.log("HomePod Bridge: remote volume panel failed");
+        de.robv.android.xposed.XposedBridge.log(error);
+      }
+      return false; // Preserve the ROM's panel when its internals differ.
+    }
+  }
+
+  private void restoreLocalVolume() {
+    if (previousFineVolume >= 0) {
+      int now =
+          (Integer)
+              XposedHelpers.callMethod(audio, "semGetFineVolume", AudioManager.STREAM_MUSIC, 2);
+      if (now == previousFineVolume) return;
+      int bypass = XposedHelpers.getStaticIntField(AudioManager.class, "FLAG_ABSOLUTE_VOLUME");
+      XposedHelpers.callMethod(
+          audio, "semSetFineVolume", AudioManager.STREAM_MUSIC, previousFineVolume, bypass, 2);
+    } else {
+      Object now = XposedHelpers.callMethod(manager, "getDeviceVolume", previousVolume, device);
+      if (XposedHelpers.callMethod(now, "getVolumeIndex")
+          .equals(XposedHelpers.callMethod(previousVolume, "getVolumeIndex"))) return;
+      XposedHelpers.callMethod(manager, "notifyAbsoluteVolumeChanged", previousVolume, device);
+    }
+  }
+
+  private void scheduleKeys() {
+    if (closed || drainScheduled) return;
+    drainScheduled = true;
+    handler.postDelayed(
+        () -> {
+          drainScheduled = false;
+          if (closed) return;
+          for (int direction : volumeKeys.drain(android.os.SystemClock.uptimeMillis()))
+            send(RootProtocol.ADJUST_VOLUME, direction);
+          if (volumeKeys.pendingKeys()) scheduleKeys();
+        },
+        30);
   }
 
   private void send(int code, int value) {
@@ -144,11 +266,15 @@ final class SystemVolumeEndpoint implements AutoCloseable {
   public synchronized void close() {
     if (closed) return;
     closed = true;
+    if (SystemVolumeUi.active == this) SystemVolumeUi.active = null;
     if (registered) {
       try {
         if ((Integer) XposedHelpers.callMethod(manager, "getDeviceVolumeBehavior", device) == 3) {
           XposedHelpers.callMethod(manager, "resetDeviceAbsoluteVolumeBehavior", device);
-          XposedHelpers.callMethod(manager, "setDeviceVolume", previousVolume, device);
+          if (previousFineVolume >= 0)
+            XposedHelpers.callMethod(
+                audio, "semSetFineVolume", AudioManager.STREAM_MUSIC, previousFineVolume, 0, 2);
+          else XposedHelpers.callMethod(manager, "setDeviceVolume", previousVolume, device);
         }
       } catch (Throwable ignored) {
       }

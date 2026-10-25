@@ -36,6 +36,7 @@ public final class VectorModule implements IXposedHookLoadPackage, IXposedHookZy
       if (installed) return;
       installed = true;
     }
+    SystemVolumeUi.install(load.classLoader);
     XposedHelpers.findAndHookMethod(
         Application.class,
         "attach",

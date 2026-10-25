@@ -464,4 +464,10 @@ public final class CaptureService extends Service {
   public IBinder onBind(Intent intent) {
     return null;
   }
+
+  @Override
+  protected void dump(java.io.FileDescriptor fd, java.io.PrintWriter writer, String[] args) {
+    writer.println("HomePod Bridge sender diagnostics (no recorded PCM)");
+    writer.println(NativeSender.diagnostic());
+  }
 }
