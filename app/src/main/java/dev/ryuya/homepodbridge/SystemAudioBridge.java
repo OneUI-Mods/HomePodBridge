@@ -109,28 +109,15 @@ final class SystemAudioBridge extends Binder {
       }
       ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
       try {
-        try {
-          stream =
-              new Stream(
-                  client,
-                  targetUid,
-                  appUid(),
-                  pipe[1],
-                  settings,
-                  code == RootProtocol.OPEN_TIMED,
-                  fast);
-        } catch (Exception | LinkageError e) {
-          if (!fast) throw e;
-          stream =
-              new Stream(
-                  client,
-                  targetUid,
-                  appUid(),
-                  pipe[1],
-                  settings,
-                  code == RootProtocol.OPEN_TIMED,
-                  false);
-        }
+        stream =
+            new Stream(
+                client,
+                targetUid,
+                appUid(),
+                pipe[1],
+                settings,
+                code == RootProtocol.OPEN_TIMED,
+                fast);
         reply.writeNoException();
         pipe[0].writeToParcel(reply, android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
       } catch (Throwable e) {
@@ -207,7 +194,7 @@ final class SystemAudioBridge extends Binder {
       AudioFormat format =
           new AudioFormat.Builder()
               .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-              .setSampleRate(fast ? 48000 : 44100)
+              .setSampleRate(44100)
               .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
               .build();
       XposedHelpers.callMethod(mix, "setFormat", format);
@@ -240,7 +227,6 @@ final class SystemAudioBridge extends Binder {
             XposedHelpers.callMethod(attributes, "addTag", "fixedVolume");
             AudioFormat inputFormat =
                 new AudioFormat.Builder(format)
-                    .setSampleRate(44100)
                     .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
                     .build();
             Class<?> flagsClass =
@@ -261,7 +247,7 @@ final class SystemAudioBridge extends Binder {
               created.release();
               created = null;
             }
-            captureRequest = created != null ? 3 : 2;
+            captureRequest = created != null ? 1 : 2;
           } catch (Throwable ignored) {
             if (created != null) created.release();
             created = null;
@@ -269,7 +255,6 @@ final class SystemAudioBridge extends Binder {
           }
         }
         if (created == null) {
-          if (fast) throw new IllegalStateException("Native mix capture unavailable");
           // The builder overload can honor a smaller allocation on newer compatible frameworks.
           try {
             created =
@@ -286,8 +271,6 @@ final class SystemAudioBridge extends Binder {
         }
         if (created == null || created.getState() != AudioRecord.STATE_INITIALIZED)
           throw new IllegalStateException("Audio sink unavailable");
-        if (created.getSampleRate() != 44100)
-          throw new IllegalStateException("Unexpected capture sample rate");
         record = created;
         client.linkToDeath(this, 0);
         record.startRecording();

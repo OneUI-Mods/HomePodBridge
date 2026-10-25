@@ -77,5 +77,4 @@
     <string name="diagnostics_sender">Sender\nQueued PCM (snapshot): %1$s\nInput reserve: %2$s\nALAC encoding, session max: %3$s\nPacket duration: %4$s\nInput shortage, session total: %5$s\nQueue and reserve are buffer amounts, not transit measurements.</string>
     <string name="diagnostics_handoff">Socket handoff\nTime left before target, last / session min: %1$s / %2$s\nLate packets: %3$d / %4$d\nReceiver target: %5$s\nThis is remaining time, not a measured network delay.</string>
     <string name="diagnostics_unmeasured">Not measured\nWi-Fi one-way transit, receiver clock error, HomePod internal processing, and total audible delay.\nCapture timestamps are estimates reported by Android; vendor implementations may differ.</string>
-    <string name="capture_native_mix">48 kHz system mix → 44.1 kHz capture</string>
 </resources>

@@ -529,15 +529,11 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     }
     String request =
         getString(
-            t.capture(9) == 3
-                ? R.string.capture_native_mix
-                : t.capture(9) == 1
-                    ? R.string.capture_fast_requested
-                    : t.capture(9) == 2
-                        ? R.string.capture_fast_fallback
-                        : t.capture(9) == 0
-                            ? R.string.capture_standard
-                            : R.string.diagnostics_unknown);
+            t.capture(9) == 1
+                ? R.string.capture_fast_requested
+                : t.capture(9) == 2
+                    ? R.string.capture_fast_fallback
+                    : t.capture(9) == 0 ? R.string.capture_standard : R.string.diagnostics_unknown);
     captureTiming.setText(
         getString(
             R.string.diagnostics_capture,
