@@ -15,8 +15,12 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '15641748'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Install Android tools
-        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0' 'ndk;30.0.14904198' 'cmake;4.1.2'
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.14904198' 'cmake;4.1.2'
       - name: Tests, lint and release build
         run: ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:writeRuntimeDependencyList --console=plain
       - name: Licenses and APK structure
