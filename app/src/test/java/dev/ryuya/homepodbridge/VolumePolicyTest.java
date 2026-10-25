@@ -6,7 +6,7 @@ import org.junit.Test;
 
 public final class VolumePolicyTest {
   @Test
-  public void deviceTestsCannotExceedFivePercent() {
+  public void explicitMaximumIsHonoured() {
     assertEquals(0, VolumePolicy.clamp(-1, 5));
     assertEquals(0, VolumePolicy.clamp(0, 5));
     assertEquals(5, VolumePolicy.clamp(100, 5));
@@ -14,9 +14,12 @@ public final class VolumePolicyTest {
   }
 
   @Test
-  public void normalBuildsSupportTheFullRange() {
-    assertEquals(100, VolumePolicy.clamp(100, 100));
-    assertEquals(50, VolumePolicy.clamp(50, 100));
-    assertEquals(100, VolumePolicy.clamp(101, 100));
+  public void applicationSupportsTheFullRange() {
+    assertEquals(0, VolumePolicy.apply(-1));
+    assertEquals(0, VolumePolicy.apply(0));
+    assertEquals(5, VolumePolicy.apply(5));
+    assertEquals(50, VolumePolicy.apply(50));
+    assertEquals(100, VolumePolicy.apply(100));
+    assertEquals(100, VolumePolicy.apply(Integer.MAX_VALUE));
   }
 }

@@ -116,8 +116,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
           BridgeState.publish();
         });
     volumeControls.addView(volume);
-    if (BuildConfig.VOLUME_LIMIT <= 5)
-      volumeControls.addView(label(getString(R.string.volume_testing_limit), 14));
     body.addView(card(volumeControls));
     body.addView(
         button(

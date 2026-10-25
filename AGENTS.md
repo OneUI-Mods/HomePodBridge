@@ -5,6 +5,7 @@
 - Capture only the selected package's USAGE_MEDIA output. Never capture microphones or change capture policies globally.
 - Keep callbacks, network operations and audio work off the SystemUI main thread. Preserve existing routes on any hook error. Release policies, pipes and sessions on stop or client death.
 - The user authorized physical-device operations for this task. Use GalaxyReload for SystemUI reloads; do not substitute a raw process kill or a device reboot.
+- The application supports 0–100% volume and starts each connection muted. The 5% maximum applies only to volume values the assistant sets during physical-device operation. Do not impose a 5% application/build limit. Never set a device volume above 5% while debugging.
 - Java uses google-java-format. Keep user-facing strings in English and Japanese resources, and implementation details in docs/development.md.
 
 # Distribution

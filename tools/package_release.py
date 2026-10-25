@@ -17,7 +17,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--initialize-key", action="store_true")
     parser.add_argument("--source-ref", default="HEAD")
-    parser.add_argument("--volume-limit", type=int, choices=[5, 100], default=5)
     args = parser.parse_args()
     signing = ROOT / ".signing"
     signing.mkdir(exist_ok=True)
@@ -44,7 +43,7 @@ def main():
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if commit != head: raise RuntimeError("Package the checked-out HEAD to match the source archive")
     gradle = ROOT / ("gradlew.bat" if os.name == "nt" else "gradlew")
-    run([gradle, ":app:testDebugUnitTest", ":app:lintRelease", ":app:assembleRelease", ":app:writeRuntimeDependencyList", f"-PvolumeLimit={args.volume_limit}", "--console=plain"])
+    run([gradle, ":app:testDebugUnitTest", ":app:lintRelease", ":app:assembleRelease", ":app:writeRuntimeDependencyList", "--console=plain"])
     run([os.sys.executable, "tools/check_licenses.py"])
     unsigned = ROOT / "app/build/outputs/apk/release/app-release-unsigned.apk"
     badging = check(unsigned)
@@ -74,7 +73,7 @@ def main():
     metadata = dist / "release-metadata.json"
     metadata.write_text(json.dumps({"packageName": "dev.ryuya.homepodbridge", "versionCode": version_code,
         "versionName": version, "commit": commit, "apk": apk.name, "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
-        "certificateSha256": certificate, "volumeLimit": args.volume_limit, "initialVolume": 0}, indent=2) + "\n")
+        "certificateSha256": certificate, "volumeLimit": 100, "initialVolume": 0}, indent=2) + "\n")
     files = [apk, source, signature, metadata]
     (dist / f"SHA256SUMS-{version}.txt").write_text("".join(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in files), encoding="ascii")
     aligned.unlink()
