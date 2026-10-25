@@ -47,6 +47,7 @@ final class SystemAudioBridge extends Binder {
         && code != RootProtocol.OPEN_CONFIGURED
         && code != RootProtocol.OPEN_TIMED
         && code != RootProtocol.CAPTURE_TIMING
+        && code != RootProtocol.OPEN_SILENT_PROBE
         && code != RootProtocol.VOLUME_ENDPOINT
         && code != RootProtocol.CLOSE) return super.onTransact(code, data, reply, flags);
     data.enforceInterface(RootProtocol.DESCRIPTOR);
@@ -95,10 +96,14 @@ final class SystemAudioBridge extends Binder {
           || targetPackage.isEmpty()
           || targetPackage.equals(RootProtocol.PACKAGE))
         throw new IllegalArgumentException("Invalid media package");
-      boolean configured = code == RootProtocol.OPEN_CONFIGURED || code == RootProtocol.OPEN_TIMED;
+      boolean silentProbe = code == RootProtocol.OPEN_SILENT_PROBE;
+      boolean configured =
+          code == RootProtocol.OPEN_CONFIGURED || code == RootProtocol.OPEN_TIMED || silentProbe;
       boolean wholeDevice = configured && data.readBoolean();
       int blockMs = configured ? data.readInt() : 10;
-      boolean fast = code == RootProtocol.OPEN_TIMED && data.readBoolean();
+      boolean fast = (code == RootProtocol.OPEN_TIMED || silentProbe) && data.readBoolean();
+      if (silentProbe && !wholeDevice)
+        throw new IllegalArgumentException("Probe requires whole-device capture rules");
       int targetUid =
           wholeDevice ? -1 : context.getPackageManager().getApplicationInfo(targetPackage, 0).uid;
       StreamSettings settings = new StreamSettings(wholeDevice, 150, blockMs, 1500);
@@ -115,8 +120,9 @@ final class SystemAudioBridge extends Binder {
                 appUid(),
                 pipe[1],
                 settings,
-                code == RootProtocol.OPEN_TIMED,
-                fast);
+                code == RootProtocol.OPEN_TIMED || silentProbe,
+                fast,
+                silentProbe);
         reply.writeNoException();
         pipe[0].writeToParcel(reply, android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
         reply.writeString(stream.registration);
@@ -141,6 +147,7 @@ final class SystemAudioBridge extends Binder {
     final IBinder client;
     final Object policy;
     final String registration;
+    final SilentProbeSource probeSource;
     final AudioRecord record;
     final ParcelFileDescriptor writePipe;
     final AtomicBoolean closed = new AtomicBoolean();
@@ -159,7 +166,8 @@ final class SystemAudioBridge extends Binder {
         ParcelFileDescriptor writePipe,
         StreamSettings settings,
         boolean timed,
-        boolean fast)
+        boolean fast,
+        boolean silentProbe)
         throws Exception {
       this.client = client;
       this.writePipe = writePipe;
@@ -230,6 +238,7 @@ final class SystemAudioBridge extends Binder {
         throw new IllegalStateException("Policy initialization failed", e);
       }
       policy = registeredPolicy;
+      probeSource = silentProbe ? new SilentProbeSource() : null;
       String registeredAddress = null;
       try {
         registeredAddress = (String) XposedHelpers.callMethod(audioMix, "getRegistration");
@@ -317,6 +326,7 @@ final class SystemAudioBridge extends Binder {
       Thread thread = new Thread(this::pump, "HomePod-system-audio");
       thread.setDaemon(true);
       thread.start();
+      if (probeSource != null) probeSource.start();
     }
 
     private void pump() {
@@ -394,7 +404,8 @@ final class SystemAudioBridge extends Binder {
                   maxWriteUs,
                   record.getBufferSizeInFrames(),
                   blockSamples / 2,
-                  captureRequest
+                  captureRequest,
+                  probeSource == null ? 0 : probeSource.writtenFrames()
                 };
           }
         }
@@ -418,6 +429,7 @@ final class SystemAudioBridge extends Binder {
 
     void close() {
       if (!closed.compareAndSet(false, true)) return;
+      if (probeSource != null) probeSource.close();
       synchronized (this) {
         if (volumeEndpoint != null) {
           volumeEndpoint.close();

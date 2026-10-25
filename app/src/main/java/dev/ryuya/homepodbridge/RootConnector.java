@@ -77,6 +77,12 @@ final class RootConnector {
 
   static Input open(String packageName, IBinder lifetime, StreamSettings settings)
       throws RemoteException {
+    return open(packageName, lifetime, settings, false);
+  }
+
+  static Input open(
+      String packageName, IBinder lifetime, StreamSettings settings, boolean silentProbe)
+      throws RemoteException {
     IBinder target = bridge;
     if (target == null) throw new RemoteException("System bridge unavailable");
     Parcel input = Parcel.obtain();
@@ -88,7 +94,14 @@ final class RootConnector {
       input.writeBoolean(settings.wholeDevice());
       input.writeInt(settings.effectiveBlockMs());
       input.writeBoolean(settings.lowLatency());
-      boolean timed = target.transact(RootProtocol.OPEN_TIMED, input, output, 0);
+      boolean timed =
+          target.transact(
+              silentProbe ? RootProtocol.OPEN_SILENT_PROBE : RootProtocol.OPEN_TIMED,
+              input,
+              output,
+              0);
+      if (silentProbe && !timed)
+        throw new RemoteException("Reload SystemUI for silent capture diagnostics");
       if (!timed) {
         output.setDataSize(0);
         output.setDataPosition(0);

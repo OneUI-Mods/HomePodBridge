@@ -33,10 +33,12 @@ final class CaptureProbe {
     var timer = Executors.newSingleThreadScheduledExecutor();
     ArrayList<Long> ages = new ArrayList<>();
     long frames = 0;
+    long zeroSourceFrames = 0;
     try {
       android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
       StreamSettings settings = StreamSettings.load(context);
-      RootConnector.Input input = RootConnector.open(BridgeState.MUSIC, lifetime, settings);
+      if (!settings.wholeDevice()) throw new IllegalStateException("Whole-device mode required");
+      RootConnector.Input input = RootConnector.open(BridgeState.MUSIC, lifetime, settings, true);
       descriptor = input.pipe();
       ParcelFileDescriptor owned = descriptor;
       timer.schedule(
@@ -63,6 +65,7 @@ final class CaptureProbe {
           if (now < nextTiming) continue;
           nextTiming = now + TimeUnit.MILLISECONDS.toNanos(250);
           long[] timing = RootConnector.captureTiming(lifetime);
+          if (timing != null && timing.length >= 11) zeroSourceFrames = timing[10];
           if (timing != null
               && timing.length >= 3
               && timing[0] == 1
@@ -79,11 +82,14 @@ final class CaptureProbe {
           }
         }
       }
+      if (zeroSourceFrames == 0) throw new IllegalStateException("Zero source did not run");
       Collections.sort(ages);
       synchronized (CaptureProbe.class) {
         status =
             "Capture-only complete; frames="
                 + frames
+                + " zeroSourceFrames="
+                + zeroSourceFrames
                 + " timestampSamples="
                 + ages.size()
                 + " minAgeUs="
@@ -92,7 +98,7 @@ final class CaptureProbe {
                 + (ages.isEmpty() ? -1 : ages.get(ages.size() / 2))
                 + " maxAgeUs="
                 + (ages.isEmpty() ? -1 : ages.get(ages.size() - 1))
-                + "; no sender, playback, or HAL modification";
+                + "; zero-only test input; no sender, music playback, or HAL modification";
       }
     } catch (Exception error) {
       synchronized (CaptureProbe.class) {
