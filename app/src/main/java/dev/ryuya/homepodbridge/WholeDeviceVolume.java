@@ -19,6 +19,7 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
   private VolumeProvider provider;
   private String receiverName;
   private int lastAudible = 1;
+  private final VolumeEchoGuard iconEcho = new VolumeEchoGuard();
   private final Binder callback =
       new Binder() {
         @Override
@@ -42,7 +43,13 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
                 if (code == RootProtocol.ADJUST_VOLUME) {
                   if (session != null && BridgeState.connected)
                     session.getController().adjustVolume(value, AudioManager.FLAG_SHOW_UI);
-                } else apply(value);
+                } else {
+                  iconEcho.explicitChange(
+                      BridgeState.volume,
+                      VolumePolicy.apply(value),
+                      android.os.SystemClock.uptimeMillis());
+                  apply(value);
+                }
               });
           return true;
         }
@@ -73,7 +80,14 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
             @Override
             public void onSetVolumeTo(int volume) {
               android.util.Log.i("HomePodBridgeVolume", "Panel set=" + volume);
-              main.post(() -> apply(volume));
+              main.post(
+                  () -> {
+                    if (iconEcho.ignore(
+                        VolumePolicy.apply(volume), android.os.SystemClock.uptimeMillis())) {
+                      if (provider != null) provider.setCurrentVolume(BridgeState.volume);
+                      android.util.Log.i("HomePodBridgeVolume", "Ignored stale icon echo");
+                    } else apply(volume);
+                  });
             }
           };
       session = new MediaSession(context, "HomePod Bridge volume");
@@ -126,6 +140,7 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
   }
 
   private void releaseSession() {
+    iconEcho.clear();
     if (session == null) return;
     session.setActive(false);
     session.release();
