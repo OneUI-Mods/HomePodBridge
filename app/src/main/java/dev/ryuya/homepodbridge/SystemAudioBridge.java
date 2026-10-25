@@ -119,6 +119,7 @@ final class SystemAudioBridge extends Binder {
                 fast);
         reply.writeNoException();
         pipe[0].writeToParcel(reply, android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
+        reply.writeString(stream.registration);
       } catch (Throwable e) {
         pipe[0].close();
         pipe[1].close();
@@ -139,6 +140,7 @@ final class SystemAudioBridge extends Binder {
   private final class Stream implements IBinder.DeathRecipient {
     final IBinder client;
     final Object policy;
+    final String registration;
     final AudioRecord record;
     final ParcelFileDescriptor writePipe;
     final AtomicBoolean closed = new AtomicBoolean();
@@ -228,6 +230,13 @@ final class SystemAudioBridge extends Binder {
         throw new IllegalStateException("Policy initialization failed", e);
       }
       policy = registeredPolicy;
+      String registeredAddress = null;
+      try {
+        registeredAddress = (String) XposedHelpers.callMethod(audioMix, "getRegistration");
+      } catch (Throwable ignored) {
+        // Optional inspection must not prevent compatible capture on other framework versions.
+      }
+      registration = registeredAddress;
       AudioRecord created = null;
       try {
         if (fast) {

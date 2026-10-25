@@ -26,6 +26,7 @@ final class BridgeState {
   static int volume;
   static int[] timing;
   static PipelineTiming pipeline;
+  static volatile String captureRegistration;
   static int status = R.string.idle;
 
   static void observe(Observer observer) {

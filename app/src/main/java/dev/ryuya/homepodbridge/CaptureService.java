@@ -205,6 +205,7 @@ public final class CaptureService extends Service {
             RootConnector.open(sourcePackage, connectionLifetime, settings);
         ParcelFileDescriptor pipe = opened.pipe();
         systemPipe = pipe;
+        BridgeState.captureRegistration = opened.registration();
         if (generation.get() != token) {
           closeSystemInput();
           return;
@@ -398,6 +399,7 @@ public final class CaptureService extends Service {
   }
 
   private void closeSystemInput() {
+    BridgeState.captureRegistration = null;
     ParcelFileDescriptor pipe = systemPipe;
     systemPipe = null;
     if (pipe == null) return;

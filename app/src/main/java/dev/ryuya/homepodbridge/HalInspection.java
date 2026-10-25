@@ -20,6 +20,51 @@ final class HalInspection {
   private static int selected = -1;
   private static boolean running;
 
+  static synchronized void requestRoute(android.content.Context context, String registration) {
+    if (running) return;
+    String address = registration == null ? "none" : registration;
+    if (!address.equals("none") && !address.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")) {
+      status = "Unrecognized owned registration";
+      return;
+    }
+    String apk = context.getApplicationInfo().sourceDir;
+    if (!apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk")) {
+      status = "Unrecognized module path";
+      return;
+    }
+    running = true;
+    image = null;
+    selected = 3;
+    status = "Inspecting owned route (read only)";
+    new Thread(
+            () -> {
+              try {
+                byte[] report =
+                    readCommand(
+                        "CLASSPATH='"
+                            + apk
+                            + "' exec app_process /system/bin dev.ryuya.homepodbridge.HalRootProbe"
+                            + " '"
+                            + address
+                            + "'");
+                synchronized (HalInspection.class) {
+                  image = report;
+                  status = new String(report, java.nio.charset.StandardCharsets.UTF_8);
+                }
+              } catch (Exception error) {
+                synchronized (HalInspection.class) {
+                  status = "Route inspection unavailable: " + error.getClass().getSimpleName();
+                }
+              } finally {
+                synchronized (HalInspection.class) {
+                  running = false;
+                }
+              }
+            },
+            "HomePod-route-inspection")
+        .start();
+  }
+
   static synchronized void request(int index) {
     if (running || index < 0 || index >= FILES.length) return;
     running = true;
@@ -52,7 +97,17 @@ final class HalInspection {
   }
 
   private static byte[] read(String file) throws IOException, InterruptedException {
-    java.lang.Process helper = new ProcessBuilder("su", "-c", "exec cat " + file).start();
+    byte[] result = readCommand("exec cat " + file);
+    if (result.length < 64
+        || result[0] != 127
+        || result[1] != 'E'
+        || result[2] != 'L'
+        || result[3] != 'F') throw new IOException("Not ELF");
+    return result;
+  }
+
+  private static byte[] readCommand(String command) throws IOException, InterruptedException {
+    java.lang.Process helper = new ProcessBuilder("su", "-c", command).start();
     try (var output = helper.getInputStream();
         var errors = helper.getErrorStream();
         var bytes = new ByteArrayOutputStream()) {
@@ -73,13 +128,7 @@ final class HalInspection {
       }
       if (!helper.waitFor(1, TimeUnit.SECONDS) || helper.exitValue() != 0)
         throw new IOException("Read unavailable");
-      byte[] result = bytes.toByteArray();
-      if (result.length < 64
-          || result[0] != 127
-          || result[1] != 'E'
-          || result[2] != 'L'
-          || result[3] != 'F') throw new IOException("Not ELF");
-      return result;
+      return bytes.toByteArray();
     } finally {
       helper.destroy();
     }

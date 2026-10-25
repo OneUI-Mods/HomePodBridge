@@ -54,7 +54,7 @@ final class RootConnector {
     return value != null && value.isBinderAlive();
   }
 
-  record Input(ParcelFileDescriptor pipe, boolean timed) {}
+  record Input(ParcelFileDescriptor pipe, boolean timed, String registration) {}
 
   static long[] captureTiming(IBinder lifetime) {
     IBinder target = bridge;
@@ -96,7 +96,8 @@ final class RootConnector {
           throw new RemoteException("Reload SystemUI to load the updated audio bridge");
       }
       output.readException();
-      return new Input(ParcelFileDescriptor.CREATOR.createFromParcel(output), timed);
+      ParcelFileDescriptor pipe = ParcelFileDescriptor.CREATOR.createFromParcel(output);
+      return new Input(pipe, timed, output.dataAvail() > 0 ? output.readString() : null);
     } finally {
       input.recycle();
       output.recycle();
