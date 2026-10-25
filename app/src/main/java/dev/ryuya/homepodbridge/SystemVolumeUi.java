@@ -71,6 +71,18 @@ final class SystemVolumeUi {
                 if (target != null) param.setResult(target);
               }
             });
+      if (reducer != null)
+        XposedBridge.hookAllMethods(
+            reducer,
+            "updateVolumeStates",
+            new XC_MethodHook() {
+              @Override
+              protected void afterHookedMethod(MethodHookParam param) {
+                SystemVolumeEndpoint endpoint = active;
+                if (endpoint != null && !param.hasThrowable())
+                  param.setResult(endpoint.enableOwnedIcon(param.getResult()));
+              }
+            });
     } catch (Throwable error) {
       XposedBridge.log(
           "HomePod Bridge: remote volume panel unavailable ("

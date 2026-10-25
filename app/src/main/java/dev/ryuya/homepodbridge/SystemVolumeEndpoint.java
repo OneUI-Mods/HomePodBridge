@@ -198,6 +198,27 @@ final class SystemVolumeEndpoint implements AutoCloseable {
     }
   }
 
+  Object enableOwnedIcon(Object rows) {
+    if (closed || !(rows instanceof java.util.List<?> list)) return rows;
+    try {
+      ArrayList<Object> updated = new ArrayList<>(list);
+      for (int i = 0; i < updated.size(); i++) {
+        Object row = updated.get(i);
+        int stream = (Integer) XposedHelpers.callMethod(row, "getStreamType");
+        if (!volumeIcons.owns(stream)) continue;
+        Class<?> builder =
+            XposedHelpers.findClass(
+                row.getClass().getName() + "$Builder", row.getClass().getClassLoader());
+        Object copy = XposedHelpers.newInstance(builder, row);
+        XposedHelpers.callMethod(copy, "isIconClickable", true);
+        updated.set(i, XposedHelpers.callMethod(copy, "build"));
+      }
+      return updated;
+    } catch (Throwable ignored) {
+      return rows;
+    }
+  }
+
   String receiverNameFor(Object sessionId) {
     if (!ownsSession(sessionId)) return null;
     try {
