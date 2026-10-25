@@ -39,6 +39,7 @@ public final class VectorModule implements IXposedHookLoadPackage, IXposedHookZy
           @Override
           protected void afterHookedMethod(MethodHookParam param) {
             Context context = (Context) param.args[0];
+            SystemRouteTransfer.context = context;
             try {
               SystemAudioBridge bridge = new SystemAudioBridge(context, modulePath);
               Runnable register =
@@ -93,6 +94,7 @@ public final class VectorModule implements IXposedHookLoadPackage, IXposedHookZy
     Class<?> manager =
         XposedHelpers.findClassIfExists("android.media.MediaRouter2Manager", load.classLoader);
     if (manager == null) return;
+    SystemRouteTransfer.install(manager);
     XC_MethodHook includeBridge =
         new XC_MethodHook() {
           @Override

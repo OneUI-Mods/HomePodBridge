@@ -15,6 +15,29 @@ import java.util.Set;
 public final class HomePodRoutes extends MediaRoute2ProviderService
     implements BridgeState.Observer {
   static final String FEATURE = "dev.ryuya.homepodbridge.AIRPLAY";
+  private static HomePodRoutes active;
+
+  static boolean available() {
+    return active != null && !active.destroyed;
+  }
+
+  static void selectFromSystem(String packageName, String routeId) {
+    if (available()) active.onCreateSession(REQUEST_ID_NONE, packageName, routeId, null);
+  }
+
+  static void stopFromSystem() {
+    if (!available()) return;
+    HomePodRoutes provider = active;
+    ++provider.sequence;
+    provider.creating = false;
+    if (provider.session != null) {
+      String id = provider.session.getId();
+      provider.session = null;
+      provider.notifySessionReleased(id);
+    }
+    if (BridgeState.capture != null) BridgeState.capture.disconnect();
+  }
+
   private final Handler main = new Handler(Looper.getMainLooper());
   private Discovery discovery;
   private RoutingSessionInfo session;
@@ -27,6 +50,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
   @Override
   public void onCreate() {
     super.onCreate();
+    active = this;
     Diagnostics.route(this, "provider created");
     RootConnector.request(this);
     BridgeState.observe(this);
@@ -165,6 +189,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
                   .setVolume(0)
                   .build();
           notifySessionCreated(requestId, session);
+          notifySessionUpdated(session);
           Diagnostics.route(this, "session announced " + session.getId());
           changed();
         });
@@ -239,6 +264,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
   public void onDestroy() {
     Diagnostics.route(this, "provider destroyed");
     destroyed = true;
+    if (active == this) active = null;
     ++sequence;
     main.removeCallbacksAndMessages(null);
     BridgeState.remove(this);
