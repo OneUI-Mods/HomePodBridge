@@ -4,6 +4,9 @@ import android.media.MediaRoute2Info;
 import android.media.RoutingSessionInfo;
 import android.app.Application;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
 import java.util.ArrayList;
@@ -25,14 +28,27 @@ public final class VectorModule implements IXposedHookLoadPackage, IXposedHookZy
         XposedHelpers.findAndHookMethod(Application.class, "attach", Context.class, new XC_MethodHook() {
             @Override protected void afterHookedMethod(MethodHookParam param) {
                 Context context = (Context) param.args[0];
-                new Thread(() -> {
-                    try {
+                try {
+                    SystemAudioBridge bridge = new SystemAudioBridge(context, modulePath);
+                    Runnable register = () -> new Thread(() -> {
+                      try {
                         Bundle registration = new Bundle();
-                        registration.putBinder("bridge", new SystemAudioBridge(context, modulePath));
+                        registration.putBinder("bridge", bridge);
                         context.getContentResolver().call(Uri.parse("content://" + RootProtocol.AUTHORITY), "register", null, registration);
                         XposedBridge.log("HomePod Bridge: system audio bridge registered");
-                    } catch (Throwable e) { XposedBridge.log("HomePod Bridge: system audio bridge unavailable (" + e.getClass().getSimpleName() + ")"); }
-                }, "HomePod-register").start();
+                      } catch (Throwable e) { XposedBridge.log("HomePod Bridge: system audio bridge unavailable (" + e.getClass().getSimpleName() + ")"); }
+                    }, "HomePod-register").start();
+                    context.registerReceiver(new BroadcastReceiver() {
+                        private long last;
+                        @Override public void onReceive(Context receiverContext, Intent intent) {
+                            long now = android.os.SystemClock.elapsedRealtime();
+                            if (now - last < 1000) return;
+                            last = now;
+                            register.run(); // A request can only register our Binder with our own provider.
+                        }
+                    }, new IntentFilter(RootProtocol.REQUEST), Context.RECEIVER_EXPORTED);
+                    register.run();
+                } catch (Throwable e) { XposedBridge.log("HomePod Bridge: bridge initialization failed (" + e.getClass().getSimpleName() + ")"); }
             }
         });
         Class<?> manager = XposedHelpers.findClassIfExists("android.media.MediaRouter2Manager", load.classLoader);

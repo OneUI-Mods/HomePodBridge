@@ -78,6 +78,7 @@ public final class MainActivity extends Activity implements BridgeState.Observer
 
     @Override protected void onStart() {
         super.onStart();
+        RootConnector.request(this);
         BridgeState.observe(this);
         if (checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < 37) refresh();
     }

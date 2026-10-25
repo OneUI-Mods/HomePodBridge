@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <jni.h>
+#include <android/log.h>
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -63,7 +64,8 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         try {
             fxchain::RaopLoop loop;
             fxchain::RaopEvents events;
-            events.launched = [engine](bool ok, const std::string&) {
+            events.launched = [engine](bool ok, const std::string& error) {
+                if (!ok) __android_log_print(ANDROID_LOG_WARN, "HomePodBridge", "AirPlay connection failed: %s", error.c_str());
                 engine->state.store(ok ? 2 : -1);
             };
             events.closed = [engine] { engine->state.store(-2); };

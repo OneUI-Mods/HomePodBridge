@@ -12,6 +12,10 @@ final class RootConnector {
         if (value == null) throw new IllegalArgumentException("Missing system bridge");
         bridge = value;
         value.linkToDeath(() -> { if (bridge == value) bridge = null; }, 0);
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(BridgeState::publish);
+    }
+    static void request(android.content.Context context) {
+        if (!available()) context.sendBroadcast(new android.content.Intent(RootProtocol.REQUEST).setPackage("com.android.systemui"));
     }
     static boolean available() { IBinder value = bridge; return value != null && value.isBinderAlive(); }
     static ParcelFileDescriptor open(String packageName, IBinder lifetime) throws RemoteException {

@@ -2,6 +2,7 @@ package dev.ryuya.homepodbridge;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -22,11 +23,13 @@ import de.robv.android.xposed.XposedHelpers;
 /** Runs only inside SystemUI. Captures USAGE_MEDIA for one package, never a microphone. */
 final class SystemAudioBridge extends Binder {
     private final Context context;
-    private final String modulePath;
+    private final Signature[] moduleSignatures;
     private Stream stream;
     SystemAudioBridge(Context context, String modulePath) {
         this.context = context;
-        this.modulePath = modulePath;
+        var archive = context.getPackageManager().getPackageArchiveInfo(modulePath, PackageManager.GET_SIGNING_CERTIFICATES);
+        if (archive == null || archive.signingInfo == null) throw new IllegalStateException("Module signature unavailable");
+        moduleSignatures = archive.signingInfo.getApkContentsSigners();
         attachInterface(null, RootProtocol.DESCRIPTOR);
     }
     @Override protected synchronized boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
@@ -35,7 +38,9 @@ final class SystemAudioBridge extends Binder {
         data.enforceInterface(RootProtocol.DESCRIPTOR);
         try {
             var app = context.getPackageManager().getApplicationInfo(RootProtocol.PACKAGE, 0);
-            if (Binder.getCallingUid() != app.uid || !app.sourceDir.equals(modulePath)) throw new SecurityException("Caller is not the installed module");
+            var installed = context.getPackageManager().getPackageInfo(RootProtocol.PACKAGE, PackageManager.GET_SIGNING_CERTIFICATES);
+            if (Binder.getCallingUid() != app.uid || installed.signingInfo == null
+                    || !java.util.Arrays.equals(moduleSignatures, installed.signingInfo.getApkContentsSigners())) throw new SecurityException("Caller is not the installed module");
         } catch (PackageManager.NameNotFoundException e) { throw new SecurityException("Module not installed"); }
         IBinder client = data.readStrongBinder();
         if (client == null) throw new IllegalArgumentException("Client lifetime token required");
