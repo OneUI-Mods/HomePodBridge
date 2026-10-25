@@ -1,13 +1,13 @@
 <resources>
     <string name="app_name">HomePod Bridge</string>
-    <string name="module_description">Show HomePod Bridge receivers in the media output picker for Apple Music.</string>
+    <string name="module_description">Add HomePod to the system media output picker.</string>
     <string-array name="module_scope"><item>com.android.systemui</item></string-array>
     <string name="intro">HomePod Bridge</string>
     <string name="volume">Volume · %1$d%%</string>
     <string name="volume_testing_limit">Testing limit: 5%</string>
     <string name="system_ready">System audio routing is ready</string>
     <string name="system_missing">Enable the module for System UI in Vector, then reload SystemUI.</string>
-    <string name="explanation">Connect to the same Wi-Fi as your HomePod, allow audio sharing, then choose a speaker. After enabling the module in Vector, receivers can also appear in the system media output picker.</string>
+    <string name="explanation">Connect to the same Wi-Fi as your HomePod. Choose HomePod in the system media output picker to start sharing audio. Each connection starts at 0% volume.</string>
     <string name="enable">Allow audio sharing</string>
     <string name="stop">Stop sharing</string>
     <string name="refresh">Find speakers</string>
@@ -20,13 +20,13 @@
     <string name="playing">Playing on %1$s</string>
     <string name="connection_failed">Could not connect. Check that AirPlay access allows devices on the same network.</string>
     <string name="capture_failed">Audio sharing ended. Tap Allow audio sharing to start again.</string>
-    <string name="notes">Experimental • Android 16/17\nWith Vector enabled, system audio routing shares the selected app’s media audio. The microphone is never opened. Without the module, Android’s audio-sharing consent is required for Apple Music. HomePod stereo pairs and the Apple Music in-app Cast picker have not been verified.</string>
+    <string name="notes">Experimental • Android 16/17\nEnable the module for System UI in Vector. Allow local network access on first use. HomePod stereo pairs are not supported. The Apple Music in-app Cast-only picker cannot select HomePod.</string>
     <string name="open_music">Open Apple Music</string>
     <string name="music_missing">Install Apple Music to share its audio.</string>
     <string name="licenses">Open-source licenses</string>
     <string name="channel">Audio sharing</string>
-    <string name="channel_description">Controls for sharing Apple Music to your speaker</string>
-    <string name="route_description">Apple Music via AirPlay</string>
+    <string name="channel_description">Controls for sharing audio to your speaker</string>
+    <string name="route_description">Audio via AirPlay</string>
     <string name="route_not_ready">Open HomePod Bridge and allow audio sharing first.</string>
     <string name="scan_failed">Speaker discovery failed. Check Wi-Fi and local network permission.</string>
 </resources>

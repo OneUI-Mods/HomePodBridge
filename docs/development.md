@@ -27,6 +27,7 @@ HomePod transient authentication now derives the event-channel keys from the ful
 - Upstream `raop_loop_tests` exercises real loopback TCP/UDP connections, refusal, disconnect and reconnect.
 - APK checks inspect the non-debuggable manifest, ABI libraries, module entrypoint, notices and absence of bundled Xposed implementation classes.
 - Physical-device playback and One UI's picker must be checked separately; passing a fake-receiver test is not proof of sound from a HomePod.
+- On the tested Android 17 / One UI 9 device, the picker uses `MediaRouter2.ProxyMediaRouter2Impl`. Both the legacy manager and that proxy are supported inside SystemUI. A standard-picker selection now creates an unsolicited session, survives the earlier immediate source-router release and stays connected beyond the former transient-event timeout. Switching to the phone releases the session and removes the scoped network rule. All these device runs use the 5% package and start muted; listening feedback is distinct from protocol readiness.
 
 ## Device operations
 

@@ -19,8 +19,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-/** Adds only our routes, only for Apple Music. Original routes and system_server are untouched. */
+/** Publishes our routes inside SystemUI. Original routes and system_server are untouched. */
 public final class VectorModule implements IXposedHookLoadPackage, IXposedHookZygoteInit {
+  private static boolean installed;
   private String modulePath;
 
   @Override
@@ -31,6 +32,10 @@ public final class VectorModule implements IXposedHookLoadPackage, IXposedHookZy
   @Override
   public void handleLoadPackage(XC_LoadPackage.LoadPackageParam load) {
     if (!"com.android.systemui".equals(load.packageName) || !load.isFirstApplication) return;
+    synchronized (VectorModule.class) {
+      if (installed) return;
+      installed = true;
+    }
     XposedHelpers.findAndHookMethod(
         Application.class,
         "attach",

@@ -13,7 +13,7 @@ Apple Musicは変更・フックしません。HomePodをAndroidのメディア�
 
 ## 状態
 
-Galaxy S26 Ultra / Android 17 / One UI 9で、標準のメディア出力一覧への表示、SystemUIでの音声取り込み、HomePod miniからの実際の再生を確認しています。接続直後はミュートから始まり、通常版では0〜100%で音量を調整できます。現在の実機検証版は上限5%です。HomePodのステレオペア、パスワードが必要な受信機、IPv6のみのネットワークは未対応です。
+Galaxy S26 Ultra / Android 17 / One UI 9で、標準のメディア出力からの接続・接続維持・端末への切り戻し、SystemUIでの音声取り込みを確認しています。HomePod miniからの実際の再生も確認済みです。接続直後はミュートから始まり、通常版では0〜100%で音量を調整できます。現在の実機検証版は上限5%です。HomePodのステレオペア、パスワードが必要な受信機、IPv6のみのネットワークは未対応です。
 
 システムの「メディア出力」と、アプリ内部のGoogle Cast専用一覧は別です。Google Cast機器としての偽装は行いません。
 
@@ -22,7 +22,7 @@ Galaxy S26 Ultra / Android 17 / One UI 9で、標準のメディア出力一覧�
 1. 署名済みrelease APKをインストールします。
 2. VectorでHomePod Bridgeを有効にし、対象にSystem UIを指定します。
 3. GalaxyReloadでSystemUIを再読み込みします。
-4. HomePod Bridgeでローカルネットワークへのアクセスを許可し、音声の共有を開始します。
+4. HomePod Bridgeを開き、ローカルネットワークへのアクセスを許可します。
 5. 音楽を再生し、システムの「メディア出力」からHomePodを選びます。
 6. 接続直後はミュートです。アプリまたはシステムの音量スライダーで調整してください。VPNによりWi-Fiへ直接接続できない場合は、HomePod Bridgeのroot権限が必要です。
 

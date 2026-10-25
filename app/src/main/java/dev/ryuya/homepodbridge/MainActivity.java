@@ -251,11 +251,15 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                   requestSharing();
                   return;
                 }
-                BridgeState.capture.select(
-                    receiver,
-                    success -> {
-                      if (!success) toast(R.string.connection_failed);
-                    });
+                if (HomePodRoutes.available()) {
+                  HomePodRoutes.selectFromSystem(BridgeState.MUSIC, receiver.id());
+                } else {
+                  BridgeState.capture.select(
+                      receiver,
+                      success -> {
+                        if (!success) toast(R.string.connection_failed);
+                      });
+                }
               });
       speaker.setSelected(receiver.equals(BridgeState.selected));
       speakers.addView(speaker);
