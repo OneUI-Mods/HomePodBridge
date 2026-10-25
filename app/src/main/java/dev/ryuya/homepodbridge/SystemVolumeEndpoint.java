@@ -28,6 +28,7 @@ final class SystemVolumeEndpoint implements AutoCloseable {
   private final MediaSessionManager mediaSessions;
   private final MediaController remoteController;
   private final VolumeKeyChanges volumeKeys;
+  private final RemoteVolumeIcons volumeIcons = new RemoteVolumeIcons();
   private final int previousFineVolume;
   private boolean drainScheduled;
   private volatile boolean panelErrorLogged;
@@ -162,13 +163,44 @@ final class SystemVolumeEndpoint implements AutoCloseable {
     }
   }
 
-  String receiverNameFor(Object sessionId) {
-    if (closed) return null;
+  private boolean ownsSession(Object sessionId) {
+    if (closed) return false;
     try {
       Object token = sessionId;
       if (!(token instanceof android.media.session.MediaSession.Token))
         token = XposedHelpers.getObjectField(sessionId, "token");
-      if (!remoteController.getSessionToken().equals(token)) return null;
+      return remoteController.getSessionToken().equals(token);
+    } catch (Throwable ignored) {
+      return false;
+    }
+  }
+
+  void rememberRemoteStream(Object callbacks, Object sessionId) {
+    if (!ownsSession(sessionId)) return;
+    try {
+      Object streams = XposedHelpers.getObjectField(callbacks, "mRemoteStreams");
+      synchronized (streams) {
+        if (streams instanceof Map<?, ?> map && map.get(sessionId) instanceof Integer stream)
+          volumeIcons.stream = stream;
+      }
+    } catch (Throwable ignored) {
+    }
+  }
+
+  Integer iconTarget(Object row) {
+    if (closed) return null;
+    try {
+      return volumeIcons.target(
+          (Integer) XposedHelpers.callMethod(row, "getStreamType"),
+          (Integer) XposedHelpers.callMethod(row, "getLevel"));
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  String receiverNameFor(Object sessionId) {
+    if (!ownsSession(sessionId)) return null;
+    try {
       MediaMetadata metadata = remoteController.getMetadata();
       return metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
     } catch (Throwable ignored) {
