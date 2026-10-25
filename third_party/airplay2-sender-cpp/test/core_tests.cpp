@@ -969,6 +969,7 @@ void testAp2Transient() {
         CHECK(i("audioFormat") == 0x40000 && i("ct") == 2 && i("type") == 0x60 && i("spf") == 352 && i("sr") == 44100,
               "realtime ALAC stream: audioFormat 0x40000, ct 2, type 0x60, spf 352, sr 44100");
         CHECK(i("controlPort") == 40002 && i("latencyMin") == 11025 && i("latencyMax") == 88200, "our control port + latency window");
+        CHECK(i("dataPort") == 40001, "realtime stream advertises the bound sender audio port");
         CHECK(i("streamConnectionID") == int64_t(sid), "streamConnectionID == the rtsp session id");
         auto* shk = st.find("shk");
         CHECK(shk && shk->type == airplay::bplist::Value::Type::Data && shk->data.size() == 32

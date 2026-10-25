@@ -84,7 +84,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                                     "HomePodBridge", "%s", message.c_str());
             });
             sender.setStrictReceiverAuth(true);
-            sender.setStreamBeforeRecord(true);
+            sender.setStreamBeforeRecord(false);
             fxchain::RaopIdentity source;
             source.name = "HomePod Bridge";
             source.deviceId = sourceId;

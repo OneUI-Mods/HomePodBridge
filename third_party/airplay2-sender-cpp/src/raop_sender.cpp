@@ -492,9 +492,9 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     // for the app, these are unsolicited inbound UDP datagrams.)
     localTimingPort_  = io_.udpBind(RaopUdp::Timing);
     localControlPort_ = io_.udpBind(RaopUdp::Control);
-    const uint16_t audioPort = io_.udpBind(RaopUdp::Audio);
+    localAudioPort_ = io_.udpBind(RaopUdp::Audio);
     udpBound_ = true;
-    if (localTimingPort_ == 0 || localControlPort_ == 0 || audioPort == 0) {
+    if (localTimingPort_ == 0 || localControlPort_ == 0 || localAudioPort_ == 0) {
         warn_("Cast: RAOP UDP bind failed");
         releaseSockets_();
         if (events_.launched) events_.launched(false, "Could not bind UDP sockets");
@@ -1865,6 +1865,7 @@ void RaopSender::sendAp2SetupStream_() {
     stream.emplace_back("audioFormat", Value::integer(0x40000));  // ALAC/44100/16/2
     stream.emplace_back("audioMode", Value::str("default"));
     stream.emplace_back("controlPort", Value::integer(localControlPort_));
+    stream.emplace_back("dataPort", Value::integer(localAudioPort_));
     stream.emplace_back("ct", Value::integer(2));        // ALAC
     stream.emplace_back("isMedia", Value::boolean(true));
     stream.emplace_back("latencyMax", Value::integer(88200));

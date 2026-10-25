@@ -303,6 +303,7 @@ private:
     std::string localIp_;                // our address as the receiver sees it
     std::string hostIp_;                 // the receiver's resolved ipv4
     uint16_t    localControlPort_ = 0;   // our bound udp ports (advertised)
+    uint16_t    localAudioPort_ = 0;
     uint16_t    localTimingPort_  = 0;
     std::string rxBuf_;
     // AirPlay 2 encrypted control channel (#90). After HAP pair-verify the
