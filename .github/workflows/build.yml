@@ -1,0 +1,35 @@
+name: Validate
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android tools
+        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0' 'ndk;30.0.14904198' 'cmake;4.1.2'
+      - name: Tests, lint and release build
+        run: ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease --console=plain
+      - name: Licenses and APK structure
+        run: |
+          python3 tools/check_licenses.py
+          python3 tools/check_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build protocol tests
+        run: |
+          cmake -S third_party/airplay2-sender-cpp -B build-native -DAIRPLAY_BUILD_EXAMPLE=OFF -DAIRPLAY_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-native --parallel 4
+      - name: Run protocol and socket tests
+        run: ctest --test-dir build-native --output-on-failure
