@@ -129,6 +129,6 @@ record StreamSettings(
   }
 
   int effectiveLatencyMs() {
-    return lowLatency ? 10 : highQuality ? 1500 : latencyMs;
+    return lowLatency ? 50 : highQuality ? 1500 : latencyMs;
   }
 }

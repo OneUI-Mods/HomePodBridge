@@ -1747,6 +1747,33 @@ void testFrameClockPacing() {
     r.sender->stop();
 }
 
+void testLocalHandoffLead() {
+    g_test = "local socket handoff lead and deadline misses";
+    for (uint32_t target : {40u, 50u}) {
+        Rig r;
+        r.sender->setPresentationLatencyMs(target);
+        r.sender->setAuth(RaopDeviceInfo::Auth::None, false, "box", "", "");
+        r.sender->start(r.peerIp, 5000, "FakeBox");
+        r.connectControl(); r.exchange(); r.io.takeUdp();
+        std::vector<int16_t> audio(704, 1234);
+        REQUIRE(r.ring.tryPush(audio), "audio queued before first packet");
+        r.advance(8);
+        auto packets = r.io.takeUdp();
+        REQUIRE(packets.size() == 1, "one packet at eight ms");
+        auto pcm = r.rx.decodeAudio(packets[0].data);
+        CHECK(pcm && *pcm == audio, "diagnostics preserve exact audio samples");
+        CHECK(r.sender->measuredHandoffPackets() == 1, "handoffs counted");
+        CHECK(r.sender->lastHandoffLeadMicros() == int64_t(target * 1000 - 8000), "first packet accumulation consumes eight ms of the configured lead");
+        CHECK(r.sender->minimumHandoffLeadMicros() == r.sender->lastHandoffLeadMicros(), "initial minimum");
+        CHECK(r.sender->lateHandoffPackets() == 0, "on-time handoff remains before presentation");
+        r.advance(60); r.io.takeUdp();
+        CHECK(r.sender->minimumHandoffLeadMicros() < 0 && r.sender->lateHandoffPackets() > 0, "a real long wake stall is visible as negative lead");
+        r.sender->start(r.peerIp, 5000, "FakeBox");
+        CHECK(r.sender->measuredHandoffPackets() == 0 && r.sender->lateHandoffPackets() == 0, "new connections reset handoff counters");
+        r.sender->stop();
+    }
+}
+
 void testAdaptiveReserve() {
     g_test = "adaptive reserve grows on shortages and shrinks only through silence";
     Rig r;
@@ -1847,6 +1874,7 @@ int main() {
     testAp2LatencyNegotiation();
     testCompressedAp2Audio();
     testFrameClockPacing();
+    testLocalHandoffLead();
     testAdaptiveReserve();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);

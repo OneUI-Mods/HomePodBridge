@@ -7,8 +7,8 @@ android {
         applicationId 'dev.ryuya.homepodbridge'
         minSdk 36
         targetSdk 37
-        versionCode 36
-        versionName '0.1.2-experimental'
+        versionCode 37
+        versionName '0.1.3-experimental'
         buildConfigField 'int', 'VOLUME_LIMIT', '100'
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
         externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_shared' } }

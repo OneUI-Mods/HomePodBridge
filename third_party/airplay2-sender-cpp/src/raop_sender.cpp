@@ -472,6 +472,8 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     inputUnderrunFrames_ = bufferingFrames_ = rebufferCount_ = 0;
     silentInputFrames_ = adaptiveBufferChanges_ = trimmedSilentFrames_ = 0;
     rawAudioBytes_ = encodedAudioBytes_ = maximumEncodeMicros_ = 0;
+    minimumHandoffLeadMicros_ = lastHandoffLeadMicros_ = 0;
+    lateHandoffPackets_ = measuredHandoffPackets_ = 0;
     if (adaptiveInputBuffer_) inputBufferFrames_ = kFramesPerPacket;
     inReadFrames_ = 0;
     backlogSeq_.assign(kBacklogSize, -1);
@@ -1316,6 +1318,11 @@ void RaopSender::onPairingResponse_(int code, const Headers& headers, const std:
     // anyway so the stream is at least established. Handled before the generic
     // non-2xx abort below so a RECORD 500 doesn't kill the session.
     if (pairStage_ == PairStage::Ap2Record) {
+        // Observe only the bounded numeric field, not raw response headers or secrets.
+        const std::string rawLatency = headerValue(headers, "audio-latency");
+        const int recordLatency = toInt(rawLatency);
+        if (recordLatency > 0 && recordLatency <= 441000)
+            info_("Cast: receiver RECORD audioLatencyFrames={}", recordLatency);
         if (streamBeforeRecord_) {
             if (code >= 200 && code < 300) startStreaming_();
             else fail_(raopFormat("AirPlay RECORD rejected ({})", code));
@@ -2108,6 +2115,17 @@ void RaopSender::sendAudioPacket_() {
     std::string pkt = header;
     pkt += wirePayload;
     io_.udpSend(RaopUdp::Audio, RaopEndpoint{hostIp_, serverPort_}, spanOf(pkt));
+
+    // Local socket handoff -> first sample's nominal presentation deadline.
+    // This excludes the network, receiver clock offset and acoustic output delay.
+    const uint64_t presentationFrames = framesSent_ + latency_;
+    const uint64_t presentationNs = (presentationFrames / kRaopRate) * 1000000000ULL
+        + (presentationFrames % kRaopRate) * 1000000000ULL / kRaopRate;
+    const auto due = clockStart_ + std::chrono::ceil<Clock::duration>(std::chrono::nanoseconds(presentationNs));
+    lastHandoffLeadMicros_ = std::chrono::duration_cast<std::chrono::microseconds>(due - now_()).count();
+    if (measuredHandoffPackets_++ == 0) minimumHandoffLeadMicros_ = lastHandoffLeadMicros_;
+    else minimumHandoffLeadMicros_ = std::min(minimumHandoffLeadMicros_, lastHandoffLeadMicros_);
+    if (lastHandoffLeadMicros_ < 0) ++lateHandoffPackets_;
 
     // Retransmit backlog (the receiver asks by seq via type 0x55).
     const int slot = seq_ & (kBacklogSize - 1);

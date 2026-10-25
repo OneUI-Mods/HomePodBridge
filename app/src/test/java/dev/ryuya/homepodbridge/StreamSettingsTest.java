@@ -36,11 +36,23 @@ public final class StreamSettingsTest {
     assertEquals(0, low.withAdaptiveBuffer(false).effectiveBufferMs());
     assertFalse(low.withAdaptiveBuffer(false).effectiveAdaptiveBuffer());
     assertEquals(2, low.effectiveBlockMs());
-    assertEquals(10, low.effectiveLatencyMs());
+    assertEquals(50, low.effectiveLatencyMs());
     assertEquals(176, low.samplesPerRead());
     assertEquals(150, low.bufferMs());
     assertEquals(10, low.blockMs());
     assertEquals(1500, low.latencyMs());
+  }
+
+  @Test
+  public void existingLowLatencyPresetUsesAudibleTargetWhileCustomExperimentsStayExplicit() {
+    var existing = new StreamSettings(true, 0, 2, 40, true, false, true, false);
+    assertEquals(50, existing.effectiveLatencyMs());
+    assertEquals(0, existing.effectiveBufferMs());
+    assertEquals(2, existing.effectiveBlockMs());
+    assertTrue(existing.compressedAudio());
+    var custom = existing.withProfile(0);
+    assertEquals(40, custom.effectiveLatencyMs());
+    assertEquals(50, custom.withProfile(1).effectiveLatencyMs());
   }
 
   @Test

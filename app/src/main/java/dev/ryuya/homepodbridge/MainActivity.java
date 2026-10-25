@@ -29,6 +29,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -40,6 +42,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private int textColor;
   private int cardColor;
   private Slider volume;
+  private Button exactVolume;
   private TextView volumeLabel;
   private TextView systemStatus;
   private TextView modeSelection;
@@ -196,6 +199,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
           BridgeState.publish();
         });
     volumeControls.addView(volume);
+    exactVolume = button(getString(R.string.volume_exact), view -> exactVolume());
+    volumeControls.addView(exactVolume);
     body.addView(card(volumeControls));
     body.addView(
         button(
@@ -443,6 +448,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     volume.setContentDescription(getString(R.string.volume, BridgeState.volume));
     volume.setValue(VolumePolicy.apply(BridgeState.volume));
     volume.setEnabled(BridgeState.connected);
+    exactVolume.setEnabled(BridgeState.connected);
     speakers.removeAllViews();
     for (Receiver receiver : BridgeState.receivers) {
       Button speaker =
@@ -534,6 +540,39 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     } catch (java.io.IOException e) {
       toast(R.string.licenses);
     }
+  }
+
+  private void exactVolume() {
+    if (!BridgeState.connected) return;
+    TextInputLayout field = new TextInputLayout(this);
+    field.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+    field.setHint(getString(R.string.volume_range));
+    field.setPadding(dp(20), dp(8), dp(20), 0);
+    TextInputEditText input = new TextInputEditText(field.getContext());
+    input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+    input.setFilters(new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(3)});
+    input.setText(Integer.toString(BridgeState.volume));
+    input.selectAll();
+    field.addView(input, new LinearLayout.LayoutParams(-1, -2));
+    new MaterialAlertDialogBuilder(this)
+        .setTitle(R.string.volume_exact)
+        .setView(field)
+        .setNegativeButton(android.R.string.cancel, null)
+        .setPositiveButton(
+            R.string.apply_settings,
+            (dialog, which) -> {
+              try {
+                int requested = Integer.parseInt(input.getText().toString());
+                if (requested < 0 || requested > 100) throw new NumberFormatException();
+                if (!BridgeState.connected) return;
+                BridgeState.volume = requested;
+                NativeSender.volume(requested);
+                BridgeState.publish();
+              } catch (NumberFormatException e) {
+                toast(R.string.volume_invalid);
+              }
+            })
+        .show();
   }
 
   private void bufferSettings() {

@@ -131,6 +131,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         + " rawAudioBytes=" + std::to_string(sender.rawAudioBytes())
                         + " encodedAudioBytes=" + std::to_string(sender.encodedAudioBytes())
                         + " maximumEncodeMicros=" + std::to_string(sender.maximumEncodeMicros());
+                    engine->statistics += " minimumHandoffLeadMicros=" + std::to_string(sender.minimumHandoffLeadMicros())
+                        + " lastHandoffLeadMicros=" + std::to_string(sender.lastHandoffLeadMicros())
+                        + " lateHandoffPackets=" + std::to_string(sender.lateHandoffPackets())
+                        + " measuredHandoffPackets=" + std::to_string(sender.measuredHandoffPackets());
                     nextStatistics = now + std::chrono::seconds(1);
                 }
             }

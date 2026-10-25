@@ -135,6 +135,10 @@ public:
     uint64_t rawAudioBytes() const { return rawAudioBytes_; }
     uint64_t encodedAudioBytes() const { return encodedAudioBytes_; }
     uint64_t maximumEncodeMicros() const { return maximumEncodeMicros_; }
+    int64_t minimumHandoffLeadMicros() const { return minimumHandoffLeadMicros_; }
+    int64_t lastHandoffLeadMicros() const { return lastHandoffLeadMicros_; }
+    uint64_t lateHandoffPackets() const { return lateHandoffPackets_; }
+    uint64_t measuredHandoffPackets() const { return measuredHandoffPackets_; }
 
     // v0.66.x Phase 2/3, describe how the receiver must be reached BEFORE
     // start(). `auth` selects auth-setup / legacy-PIN / HAP-transient /
@@ -401,6 +405,8 @@ private:
     uint64_t inputUnderrunFrames_ = 0;
     uint64_t bufferingFrames_ = 0;
     uint64_t rebufferCount_ = 0;
+    int64_t minimumHandoffLeadMicros_ = 0, lastHandoffLeadMicros_ = 0;
+    uint64_t lateHandoffPackets_ = 0, measuredHandoffPackets_ = 0;
     std::vector<int16_t> inBuf_;   // unconsumed input samples (interleaved)
     size_t   inReadFrames_ = 0;    // consumed frames at inBuf_'s front
     double   srcPhase_ = 0.0;      // fractional input-frame position

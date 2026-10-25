@@ -223,14 +223,40 @@ final class SystemAudioBridge extends Binder {
         var channel = ((java.io.FileOutputStream) output).getChannel();
         ByteBuffer bytes =
             ByteBuffer.allocateDirect(blockSamples * 2).order(ByteOrder.LITTLE_ENDIAN);
+        var timestamp = new android.media.AudioTimestamp();
+        long readFrames = 0;
+        long nextTimestamp = System.nanoTime() + 1_000_000_000L;
+        int observations = 0;
         while (!closed.get()) {
           bytes.clear();
           int count = record.read(bytes, bytes.capacity(), AudioRecord.READ_BLOCKING);
           if (count < 0) break;
           if (count == 0) continue;
           if (count % 4 != 0) break;
+          readFrames += count / 4;
           bytes.position(0).limit(count);
           while (bytes.hasRemaining() && !closed.get()) channel.write(bytes);
+          if (observations < 5 && System.nanoTime() >= nextTimestamp) {
+            // Optional diagnostics must never interrupt capture when a sink lacks timestamps.
+            try {
+              int result =
+                  record.getTimestamp(timestamp, android.media.AudioTimestamp.TIMEBASE_MONOTONIC);
+              if (result == 0) {
+                long latestAgeUs =
+                    (System.nanoTime()
+                            - timestamp.nanoTime
+                            + (timestamp.framePosition - readFrames) * 1_000_000_000L / 44100)
+                        / 1000;
+                android.util.Log.i("HomePodBridgeCapture", "latestFrameAgeMicros=" + latestAgeUs);
+              } else
+                android.util.Log.i(
+                    "HomePodBridgeCapture", "Capture timestamp unavailable code=" + result);
+            } catch (RuntimeException ignored) {
+              android.util.Log.i("HomePodBridgeCapture", "Capture timestamp unavailable");
+            }
+            observations++;
+            nextTimestamp = System.nanoTime() + 1_000_000_000L;
+          }
         }
       } catch (IOException | RuntimeException ignored) {
         // Pipe closure or process death ends this session without affecting SystemUI.
