@@ -10,3 +10,8 @@ add_library(homepod_bridge SHARED bridge.cpp)
 target_link_libraries(homepod_bridge PRIVATE raop_sender log)
 target_link_options(homepod_bridge PRIVATE "-Wl,-z,max-page-size=16384")
 target_compile_options(homepod_bridge PRIVATE -Wall -Wextra -Werror)
+
+add_library(homepod_capture SHARED capture_tuner.cpp)
+target_link_libraries(homepod_capture PRIVATE dl)
+target_link_options(homepod_capture PRIVATE "-Wl,-z,max-page-size=16384")
+target_compile_options(homepod_capture PRIVATE -Wall -Wextra -Werror -fno-exceptions -fno-rtti)
