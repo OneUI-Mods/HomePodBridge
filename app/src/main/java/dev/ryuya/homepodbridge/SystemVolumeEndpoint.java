@@ -31,6 +31,7 @@ final class SystemVolumeEndpoint implements AutoCloseable {
   private final RemoteVolumeIcons volumeIcons = new RemoteVolumeIcons();
   private final int previousFineVolume;
   private boolean drainScheduled;
+  private boolean iconRegistered;
   private volatile boolean panelErrorLogged;
   private volatile boolean closed;
   private boolean registered;
@@ -180,21 +181,70 @@ final class SystemVolumeEndpoint implements AutoCloseable {
     try {
       Object streams = XposedHelpers.getObjectField(callbacks, "mRemoteStreams");
       synchronized (streams) {
-        if (streams instanceof Map<?, ?> map && map.get(sessionId) instanceof Integer stream)
+        if (streams instanceof Map<?, ?> map && map.get(sessionId) instanceof Integer stream) {
           volumeIcons.stream = stream;
+          if (!iconRegistered) {
+            iconRegistered = true;
+            android.util.Log.i("HomePodBridgeUi", "Owned volume panel registered");
+          }
+        }
       }
     } catch (Throwable ignored) {
     }
   }
 
-  Integer iconTarget(Object row) {
-    if (closed) return null;
+  Object handleIconAction(Object action, Object state) {
+    if (closed || state == null) return null;
     try {
-      return volumeIcons.target(
-          (Integer) XposedHelpers.callMethod(row, "getStreamType"),
-          (Integer) XposedHelpers.callMethod(row, "getLevel"));
+      Object type = XposedHelpers.callMethod(action, "getActionType");
+      if (!(type instanceof Enum<?> value) || !value.name().equals("ACTION_VOLUME_ICON_CLICKED"))
+        return null;
+      int stream = (Integer) XposedHelpers.callMethod(action, "getStream");
+      if (!volumeIcons.owns(stream)) return null;
+      var rows = (java.util.List<?>) XposedHelpers.callMethod(state, "getVolumeRowList");
+      for (Object row : rows) {
+        if ((Integer) XposedHelpers.callMethod(row, "getStreamType") != stream) continue;
+        Integer target =
+            volumeIcons.target(stream, (Integer) XposedHelpers.callMethod(row, "getLevel"));
+        if (target == null) return null;
+        Object builder =
+            XposedHelpers.newInstance(
+                XposedHelpers.findClass(
+                    state.getClass().getName() + "$Builder", state.getClass().getClassLoader()),
+                state);
+        Object noDispatch =
+            XposedHelpers.getStaticObjectField(
+                XposedHelpers.findClass(
+                    state.getClass().getName() + "$StateType", state.getClass().getClassLoader()),
+                "STATE_NO_DISPATCH");
+        XposedHelpers.callMethod(builder, "setStateType", noDispatch);
+        Object result = XposedHelpers.callMethod(builder, "build");
+        handler.post(() -> send(RootProtocol.SET_VOLUME, target));
+        android.util.Log.i("HomePodBridgeUi", "Owned volume icon target=" + target);
+        return result;
+      }
+    } catch (Throwable error) {
+      android.util.Log.w(
+          "HomePodBridgeUi", "Owned icon action unavailable: " + error.getClass().getSimpleName());
+    }
+    return null;
+  }
+
+  Object enableIconState(Object state) {
+    if (closed || state == null) return state;
+    try {
+      Object rows = XposedHelpers.callMethod(state, "getVolumeRowList");
+      Object enabled = enableOwnedIcon(rows);
+      if (enabled == rows) return state;
+      Object builder =
+          XposedHelpers.newInstance(
+              XposedHelpers.findClass(
+                  state.getClass().getName() + "$Builder", state.getClass().getClassLoader()),
+              state);
+      XposedHelpers.callMethod(builder, "setVolumeRowList", enabled);
+      return XposedHelpers.callMethod(builder, "build");
     } catch (Throwable ignored) {
-      return null;
+      return state;
     }
   }
 

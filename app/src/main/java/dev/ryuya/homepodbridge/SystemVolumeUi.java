@@ -53,36 +53,31 @@ final class SystemVolumeUi {
             }
           });
       available = true;
-      // One UI's default reducer leaves a dynamic row's level unchanged on an icon click.
-      // Sound Assistant shares this reducer. Keep its ordinary controller/MediaSession path.
       Class<?> reducer =
           XposedHelpers.findClassIfExists(
               "com.android.systemui.volume.reducer.VolumePanelReducer", loader);
-      if (reducer != null)
+      if (reducer != null) {
         XposedBridge.hookAllMethods(
             reducer,
-            "getLastAudibleLevelOrMinLevel",
+            "reduce",
             new XC_MethodHook() {
               @Override
               protected void beforeHookedMethod(MethodHookParam param) {
                 SystemVolumeEndpoint endpoint = active;
                 if (endpoint == null || param.args.length != 2) return;
-                Integer target = endpoint.iconTarget(param.args[1]);
-                if (target != null) param.setResult(target);
+                Object handled = endpoint.handleIconAction(param.args[0], param.args[1]);
+                if (handled != null) param.setResult(handled);
               }
-            });
-      if (reducer != null)
-        XposedBridge.hookAllMethods(
-            reducer,
-            "updateVolumeStates",
-            new XC_MethodHook() {
+
               @Override
               protected void afterHookedMethod(MethodHookParam param) {
                 SystemVolumeEndpoint endpoint = active;
                 if (endpoint != null && !param.hasThrowable())
-                  param.setResult(endpoint.enableOwnedIcon(param.getResult()));
+                  param.setResult(endpoint.enableIconState(param.getResult()));
               }
             });
+        android.util.Log.i("HomePodBridgeUi", "Volume reducer integration loaded");
+      }
     } catch (Throwable error) {
       XposedBridge.log(
           "HomePod Bridge: remote volume panel unavailable ("
