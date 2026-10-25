@@ -15,6 +15,22 @@ option(AIRPLAY_SANITIZE      "build with address + undefined sanitizers"  OFF)
 
 include(FetchContent)
 
+# HomePod Bridge: pinned Apple ALAC, lossless compression of the existing
+# 352-frame realtime stream. All supported host/Android ABIs are little endian.
+add_library(apple_alac STATIC
+    third_party/apple-alac/codec/ALACEncoder.cpp
+    third_party/apple-alac/codec/ALACDecoder.cpp
+    third_party/apple-alac/codec/ALACBitUtilities.c
+    third_party/apple-alac/codec/EndianPortable.c
+    third_party/apple-alac/codec/ag_enc.c
+    third_party/apple-alac/codec/ag_dec.c
+    third_party/apple-alac/codec/dp_enc.c
+    third_party/apple-alac/codec/dp_dec.c
+    third_party/apple-alac/codec/matrix_enc.c
+    third_party/apple-alac/codec/matrix_dec.c)
+target_include_directories(apple_alac PUBLIC third_party/apple-alac/codec)
+target_compile_definitions(apple_alac PRIVATE TARGET_RT_LITTLE_ENDIAN=1)
+
 # --- Mbed TLS 3.6 (Apache-2.0): bignum, sha512, hkdf, chachapoly, drbg ---
 # fatal warnings off: a bare `cmake --build` must not fail on a dependency's
 # -Werror when a newer compiler learns a new warning.
@@ -67,10 +83,11 @@ airplay_warnings(airplay_crypto)
 # raop_sender knows no socket; RaopLoop is the portable host that drives it.
 # together they are the whole library: plain C++20 + airplay_crypto.
 add_library(raop_sender STATIC
+    src/lossless_alac.cpp
     src/raop_sender.cpp
     src/raop_loop.cpp)
 target_include_directories(raop_sender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(raop_sender PUBLIC airplay_crypto)
+target_link_libraries(raop_sender PUBLIC airplay_crypto PRIVATE apple_alac)
 target_compile_features(raop_sender PUBLIC cxx_std_20)
 airplay_warnings(raop_sender)
 if(WIN32)
@@ -105,9 +122,13 @@ endif()
 #   refused connect, remote close + reconnect, udp replies to the source).
 if(AIRPLAY_BUILD_TESTS)
     enable_testing()
+    add_executable(alac_tests test/alac_tests.cpp)
+    target_link_libraries(alac_tests PRIVATE raop_sender apple_alac)
+    airplay_warnings(alac_tests)
+    add_test(NAME alac_tests COMMAND alac_tests)
     find_package(Threads REQUIRED)
     add_executable(raop_core_tests test/core_tests.cpp)
-    target_link_libraries(raop_core_tests PRIVATE raop_sender)
+    target_link_libraries(raop_core_tests PRIVATE raop_sender apple_alac)
     airplay_warnings(raop_core_tests)
     add_test(NAME raop_core_tests COMMAND raop_core_tests)
 

@@ -16,6 +16,9 @@
 #include "raop_log.h"
 #include "raop_sender.h"
 #include "ring_buffer.h"
+#include "lossless_alac.h"
+#include "ALACDecoder.h"
+#include "ALACBitUtilities.h"
 
 #include <mbedtls/bignum.h>
 
@@ -424,7 +427,21 @@ struct FakeReceiver {
         const Bytes ctTag(pkt.begin() + 12, pkt.end() - 8);
         auto dec = airplay::chacha20Poly1305Decrypt(audioKey, nonce, ctTag, aad);
         if (!dec) return std::nullopt;
-        return decodeAlacUncompressed(strOf(*dec), 352);
+        auto uncompressed = decodeAlacUncompressed(strOf(*dec), 352);
+        if (uncompressed) return uncompressed;
+        LosslessAlacEncoder format;
+        auto cookie = format.cookie();
+        ALACDecoder decoder;
+        if (decoder.Init(cookie.data(), static_cast<uint32_t>(cookie.size())) != 0) return std::nullopt;
+        const uint32_t size = static_cast<uint32_t>(dec->size());
+        dec->resize(size + 8, 0);
+        BitBuffer bits;
+        BitBufferInit(&bits, dec->data(), size);
+        std::vector<int16_t> pcm(704);
+        uint32_t frames = 0;
+        if (decoder.Decode(&bits, reinterpret_cast<uint8_t*>(pcm.data()), 352, 2, &frames) != 0 || frames != 352)
+            return std::nullopt;
+        return pcm;
     }
 
 private:
@@ -1567,6 +1584,59 @@ void testInputJitterReserve() {
     r.sender->stop();
 }
 
+void testLowLatencyTimeline() {
+    g_test = "low latency presentation timeline";
+    for (const uint32_t latency : {20u, 50u}) {
+        Rig r;
+        r.sender->setInputBufferFrames(0);
+        r.sender->setPresentationLatencyMs(latency);
+        r.sender->setAuth(RaopDeviceInfo::Auth::None, false, "box", "", "");
+        r.sender->start(r.peerIp, 5000, "FakeBox");
+        r.connectControl();
+        r.exchange();
+        REQUIRE(r.launchedOk && *r.launchedOk, "low-latency session streaming");
+        auto initial = r.io.takeUdp();
+        REQUIRE(!initial.empty(), "initial sync");
+        CHECK(be32(initial.front().data, 16) == latency * 44100 / 1000, "requested timeline offset");
+        std::vector<int16_t> audio(704, 1234);
+        REQUIRE(r.ring.tryPush(audio), "one complete packet queued");
+        r.advance(8);
+        auto packets = r.io.takeUdp();
+        REQUIRE(packets.size() == 1, "one packet without reserve delay");
+        auto pcm = r.rx.decodeAudio(packets.front().data);
+        CHECK(pcm && *pcm == audio, "no samples discarded in low latency mode");
+        r.sender->stop();
+    }
+}
+
+void testCompressedAp2Audio() {
+        g_test = "compressed encrypted ALAC and runtime opt-out";
+        Rig r;
+        r.sender->setCompressedAudio(true);
+        r.sender->setPresentationLatencyMs(50);
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        REQUIRE(r.launchedOk && *r.launchedOk, "compressed AP2 handshake");
+        r.io.takeUdp();
+        std::vector<int16_t> audio(704, -1234);
+        REQUIRE(r.ring.tryPush(audio), "audio queued");
+        r.advance(8);
+        auto packets = r.io.takeUdp();
+        REQUIRE(packets.size() == 1, "compressed packet sent");
+        CHECK(packets[0].data.size() < 12 + 1412 + 16 + 8, "payload reduced before encryption");
+        auto pcm = r.rx.decodeAudio(packets[0].data);
+        CHECK(pcm && *pcm == audio, "compressed packet decrypts to identical PCM");
+        CHECK(r.sender->encodedAudioBytes() < r.sender->rawAudioBytes(), "compression statistics");
+        r.sender->setCompressedAudio(false);
+        REQUIRE(r.ring.tryPush(audio), "second audio queued");
+        r.advance(8);
+        packets = r.io.takeUdp();
+        REQUIRE(packets.size() == 1, "uncompressed packet sent after opt-out");
+        CHECK(packets[0].data.size() == 12 + 1412 + 16 + 8, "OFF restores original payload");
+        pcm = r.rx.decodeAudio(packets[0].data);
+        CHECK(pcm && *pcm == audio, "OFF preserves identical PCM");
+        r.sender->stop();
+}
+
 } // namespace
 
 int main() {
@@ -1583,6 +1653,8 @@ int main() {
     testVolumePolicy();
     testResampler();
     testInputJitterReserve();
+    testLowLatencyTimeline();
+    testCompressedAp2Audio();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);
     return g_failures == 0 ? 0 : 1;

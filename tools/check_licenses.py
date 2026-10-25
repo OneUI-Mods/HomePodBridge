@@ -10,6 +10,10 @@ for path in [root / "LICENSE", vendor / "LICENSE", vendor / "NOTICE", vendor / "
 asset = (root / "app/src/main/assets/licenses.txt").read_text(encoding="utf-8")
 for path in [root / "LICENSE", vendor / "NOTICE", vendor / "licenses/THIRD-PARTY-NOTICES.txt"]:
     assert path.read_text(encoding="utf-8") in asset, path
+alac = vendor / "third_party/apple-alac"
+assert (alac / "LICENSE").read_text(encoding="utf-8") in asset
+assert "c38887c5c5e64a4b31108733bd79ca9b2496d987" in (alac / "UPSTREAM.txt").read_text()
+assert "Copyright (c) 2011 Apple Inc." in asset
 assert re.search(r"GIT_TAG\s+[a-f0-9]{40}", (vendor / "CMakeLists.txt").read_text())
 assert re.search(r"[a-f0-9]{40}", (vendor / "UPSTREAM.txt").read_text())
 assert "compileOnly 'de.robv.android.xposed:api:82'" in (root / "app/build.gradle").read_text()

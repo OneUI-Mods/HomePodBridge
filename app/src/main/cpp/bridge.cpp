@@ -56,7 +56,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean compressedAudio) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -66,7 +66,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, compressedAudio] {
         try {
             if (setpriority(PRIO_PROCESS, 0, -16) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
@@ -89,6 +89,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                                     "HomePodBridge", "%s", message.c_str());
             });
             sender.setStrictReceiverAuth(true);
+            sender.setCompressedAudio(compressedAudio == JNI_TRUE);
             sender.setVolumePolicy(0, std::max(0, std::min(100, static_cast<int>(volumeLimit))));
             sender.setStreamBeforeRecord(false);
             fxchain::RaopIdentity source;
@@ -98,14 +99,14 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             sender.attachRing(&engine->ring);
             sender.setInputFormat(44100);
             sender.setInputBufferFrames(static_cast<size_t>(std::clamp(static_cast<int>(bufferMs), 0, 300)) * 44100 / 1000);
-            sender.setPresentationLatencyMs(static_cast<uint32_t>(std::clamp(static_cast<int>(latencyMs), 250, 2000)));
+            sender.setPresentationLatencyMs(static_cast<uint32_t>(std::clamp(static_cast<int>(latencyMs), 20, 2000)));
             sender.setAuth(fxchain::RaopDeviceInfo::Auth::HapTransient, true, id, {}, {});
             sender.start(ip, static_cast<uint16_t>(port), label);
             auto nextStatistics = std::chrono::steady_clock::now();
             while (!engine->stop.load() && engine->state.load() > 0) {
                 const int volume = engine->volume.exchange(-1);
                 if (volume >= 0) sender.setVolume(volume);
-                loop.pump(sender, std::chrono::milliseconds(20));
+                loop.pump(sender, std::chrono::milliseconds(latencyMs <= 100 ? 2 : 20));
                 auto now = std::chrono::steady_clock::now();
                 if (now >= nextStatistics) {
                     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
@@ -113,7 +114,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         + " underrunFrames=" + std::to_string(sender.inputUnderrunFrames())
                         + " bufferingFrames=" + std::to_string(sender.bufferingFrames())
                         + " rebuffers=" + std::to_string(sender.rebufferCount())
-                        + " backpressure=" + std::to_string(engine->backpressure.load());
+                        + " backpressure=" + std::to_string(engine->backpressure.load())
+                        + " rawAudioBytes=" + std::to_string(sender.rawAudioBytes())
+                        + " encodedAudioBytes=" + std::to_string(sender.encodedAudioBytes())
+                        + " maximumEncodeMicros=" + std::to_string(sender.maximumEncodeMicros());
                     nextStatistics = now + std::chrono::seconds(1);
                 }
             }

@@ -26,7 +26,9 @@ import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
+import com.google.android.material.tabs.TabLayout;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -39,6 +41,14 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private Slider volume;
   private TextView volumeLabel;
   private TextView systemStatus;
+  private TextView modeSelection;
+  private MaterialSwitch lowLatencySwitch;
+  private MaterialSwitch highQualitySwitch;
+  private MaterialSwitch compressionSwitch;
+  private TextView profileSelection;
+  private TextView profileDetails;
+  private TabLayout tabs;
+  private boolean updatingSettings;
   private MediaRouter2 router;
   private final MediaRouter2.RouteCallback routes = new MediaRouter2.RouteCallback() {};
 
@@ -53,34 +63,62 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     cardColor =
         MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorSurfaceContainer, Color.WHITE);
-    ScrollView scroll = new ScrollView(this);
-    scroll.setFillViewport(true);
-    scroll.setBackgroundColor(
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(
         MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorSurface, Color.BLACK));
-    LinearLayout body = new LinearLayout(this);
-    body.setOrientation(LinearLayout.VERTICAL);
-    body.setPadding(dp(24), dp(24), dp(24), dp(32));
-    scroll.addView(body);
-    scroll.setOnApplyWindowInsetsListener(
+    root.setOnApplyWindowInsetsListener(
         (view, insets) -> {
           android.graphics.Insets bars =
               insets.getInsets(android.view.WindowInsets.Type.systemBars());
-          body.setPadding(
-              dp(24) + bars.left, dp(24) + bars.top, dp(24) + bars.right, dp(32) + bars.bottom);
+          root.setPadding(bars.left, bars.top, bars.right, bars.bottom);
           return insets;
         });
     TextView title = label(getString(R.string.intro), 30);
     title.setTypeface(null, Typeface.BOLD);
-    body.addView(title);
+    title.setPadding(dp(24), dp(16), dp(24), dp(8));
+    root.addView(title);
+    tabs = new TabLayout(this);
+    tabs.setTabMode(TabLayout.MODE_FIXED);
+    root.addView(tabs);
+    LinearLayout pages = new LinearLayout(this);
+    pages.setOrientation(LinearLayout.VERTICAL);
+    root.addView(pages, new LinearLayout.LayoutParams(-1, 0, 1));
+    LinearLayout connectionBody = page(pages);
+    LinearLayout audioBody = page(pages);
+    LinearLayout tuningBody = page(pages);
+    int[] tabNames = {R.string.tab_connection, R.string.tab_audio, R.string.tab_tuning};
+    for (int name : tabNames) tabs.addTab(tabs.newTab().setText(name));
+    tabs.addOnTabSelectedListener(
+        new TabLayout.OnTabSelectedListener() {
+          @Override
+          public void onTabSelected(TabLayout.Tab tab) {
+            for (int i = 0; i < pages.getChildCount(); i++)
+              pages.getChildAt(i).setVisibility(i == tab.getPosition() ? View.VISIBLE : View.GONE);
+          }
+
+          @Override
+          public void onTabUnselected(TabLayout.Tab tab) {}
+
+          @Override
+          public void onTabReselected(TabLayout.Tab tab) {}
+        });
+    pages.getChildAt(1).setVisibility(View.GONE);
+    pages.getChildAt(2).setVisibility(View.GONE);
+    tabs.selectTab(
+        tabs.getTabAt(state == null ? 0 : Math.max(0, Math.min(2, state.getInt("tab", 0)))));
+    LinearLayout body = connectionBody;
     body.addView(label(getString(R.string.explanation), 16));
     status = label(getString(R.string.idle), 18);
     body.addView(card(status));
     systemStatus = label("", 14);
     body.addView(systemStatus);
+    body = audioBody;
     LinearLayout modeControls = new LinearLayout(this);
     modeControls.setOrientation(LinearLayout.VERTICAL);
-    modeControls.addView(label(getString(R.string.capture_mode), 18));
+    modeSelection = label("", 18);
+    modeControls.addView(modeSelection);
     MaterialButtonToggleGroup modes = new MaterialButtonToggleGroup(this);
     modes.setSingleSelection(true);
     modes.setSelectionRequired(true);
@@ -90,22 +128,30 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       MaterialButton mode = new MaterialButton(this);
       mode.setId(modeId);
       mode.setText(modeId == selectedModeId ? R.string.mode_selected : R.string.mode_whole);
+      mode.setBackgroundTintList(getColorStateList(R.color.mode_background));
+      mode.setTextColor(getColorStateList(R.color.mode_text));
+      mode.setStrokeColor(getColorStateList(R.color.mode_stroke));
+      mode.setIconTint(getColorStateList(R.color.mode_text));
+      mode.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+      mode.setIconPadding(dp(6));
+      mode.setMinHeight(dp(48));
       mode.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
       modes.addView(mode);
     }
     modes.check(StreamSettings.load(this).wholeDevice() ? wholeModeId : selectedModeId);
+    updateModeSelection(modes);
     modes.addOnButtonCheckedListener(
         (group, id, checked) -> {
           if (!checked) return;
           StreamSettings previous = StreamSettings.load(this);
-          new StreamSettings(
-                  id == wholeModeId, previous.bufferMs(), previous.blockMs(), previous.latencyMs())
-              .save(this);
+          previous.withWholeDevice(id == wholeModeId).save(this);
+          updateModeSelection(group);
           if (BridgeState.capture != null) BridgeState.capture.reconfigure();
         });
     modeControls.addView(modes);
     modeControls.addView(label(getString(R.string.mode_description), 14));
     body.addView(card(modeControls));
+    body = connectionBody;
     share =
         button(
             getString(R.string.enable),
@@ -147,7 +193,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         });
     volumeControls.addView(volume);
     body.addView(card(volumeControls));
-    body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
     body.addView(
         button(
             getString(R.string.open_music),
@@ -156,9 +201,99 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
               if (music == null) toast(R.string.music_missing);
               else startActivity(music);
             }));
+    body = audioBody;
+    LinearLayout latencyControls = new LinearLayout(this);
+    latencyControls.setOrientation(LinearLayout.VERTICAL);
+    profileSelection = label("", 18);
+    latencyControls.addView(profileSelection);
+    lowLatencySwitch = new MaterialSwitch(this);
+    lowLatencySwitch.setText(R.string.low_latency_mode);
+    lowLatencySwitch.setChecked(StreamSettings.load(this).lowLatency());
+    lowLatencySwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          selectProfile(enabled ? 1 : 0);
+        });
+    latencyControls.addView(lowLatencySwitch);
+    latencyControls.addView(label(getString(R.string.low_latency_description), 14));
+    highQualitySwitch = new MaterialSwitch(this);
+    highQualitySwitch.setText(R.string.high_quality_mode);
+    highQualitySwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (!updatingSettings) selectProfile(enabled ? 2 : 0);
+        });
+    latencyControls.addView(highQualitySwitch);
+    latencyControls.addView(label(getString(R.string.high_quality_description), 14));
+    profileDetails = label("", 14);
+    latencyControls.addView(profileDetails);
+    body.addView(card(latencyControls));
+    LinearLayout compressionControls = new LinearLayout(this);
+    compressionControls.setOrientation(LinearLayout.VERTICAL);
+    compressionSwitch = new MaterialSwitch(this);
+    compressionSwitch.setText(R.string.compressed_audio);
+    compressionSwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          StreamSettings.load(this).withCompression(enabled).save(this);
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    compressionControls.addView(compressionSwitch);
+    compressionControls.addView(label(getString(R.string.compressed_audio_description), 14));
+    body.addView(card(compressionControls));
+    body = tuningBody;
+    body.addView(label(getString(R.string.tuning_description), 16));
+    body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
     body.addView(label(getString(R.string.notes), 14));
     body.addView(button(getString(R.string.licenses), view -> licenses()));
-    setContentView(scroll);
+    syncSettings();
+    setContentView(root);
+  }
+
+  @Override
+  protected void onSaveInstanceState(Bundle state) {
+    state.putInt("tab", tabs.getSelectedTabPosition());
+    super.onSaveInstanceState(state);
+  }
+
+  private LinearLayout page(LinearLayout parent) {
+    ScrollView scroll = new ScrollView(this);
+    scroll.setFillViewport(true);
+    LinearLayout content = new LinearLayout(this);
+    content.setOrientation(LinearLayout.VERTICAL);
+    content.setPadding(dp(24), dp(8), dp(24), dp(24));
+    scroll.addView(content);
+    parent.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+    return content;
+  }
+
+  private void selectProfile(int profile) {
+    StreamSettings.load(this).withProfile(profile).save(this);
+    syncSettings();
+    if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+  }
+
+  private void syncSettings() {
+    StreamSettings settings = StreamSettings.load(this);
+    updatingSettings = true;
+    lowLatencySwitch.setChecked(settings.lowLatency());
+    highQualitySwitch.setChecked(settings.highQuality());
+    compressionSwitch.setChecked(settings.compressedAudio());
+    profileSelection.setText(
+        getString(
+            R.string.profile_selected,
+            getString(
+                settings.lowLatency()
+                    ? R.string.low_latency_mode
+                    : settings.highQuality()
+                        ? R.string.high_quality_mode
+                        : R.string.profile_custom)));
+    profileDetails.setText(
+        getString(
+            R.string.profile_values,
+            settings.effectiveBufferMs(),
+            settings.effectiveBlockMs(),
+            settings.effectiveLatencyMs()));
+    updatingSettings = false;
   }
 
   @Override
@@ -257,6 +392,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   @Override
   public void changed() {
     if (status == null) return;
+    syncSettings();
     String message;
     if (BridgeState.selected != null && BridgeState.status == R.string.connecting)
       message = getString(R.string.connecting, BridgeState.selected.name());
@@ -370,10 +506,12 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     content.setOrientation(LinearLayout.VERTICAL);
     content.setPadding(dp(20), 0, dp(20), 0);
     Slider buffering =
-        settingSlider(content, R.string.buffer_amount, 0, 300, 10, settings.bufferMs());
-    Slider block = settingSlider(content, R.string.capture_block, 5, 40, 5, settings.blockMs());
+        settingSlider(content, R.string.buffer_amount, 0, 300, 10, settings.effectiveBufferMs());
+    Slider block =
+        settingSlider(content, R.string.capture_block, 5, 40, 5, settings.effectiveBlockMs());
     Slider latency =
-        settingSlider(content, R.string.receiver_latency, 250, 2000, 50, settings.latencyMs());
+        settingSlider(
+            content, R.string.receiver_latency, 20, 2000, 10, settings.effectiveLatencyMs());
     content.addView(label(getString(R.string.buffer_description), 14));
     ScrollView scroll = new ScrollView(this);
     scroll.addView(content);
@@ -391,6 +529,24 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                     Math.round(block.getValue()),
                     Math.round(latency.getValue())))
         .show();
+  }
+
+  private void updateModeSelection(MaterialButtonToggleGroup group) {
+    for (int i = 0; i < group.getChildCount(); i++) {
+      MaterialButton mode = (MaterialButton) group.getChildAt(i);
+      mode.setIconResource(mode.isChecked() ? R.drawable.ic_check : 0);
+      mode.setStrokeWidth(dp(mode.isChecked() ? 2 : 1));
+      mode.setTypeface(null, mode.isChecked() ? Typeface.BOLD : Typeface.NORMAL);
+      mode.setStateDescription(
+          getString(mode.isChecked() ? R.string.mode_active : R.string.mode_inactive));
+    }
+    modeSelection.setText(
+        getString(
+            R.string.capture_mode,
+            getString(
+                StreamSettings.load(this).wholeDevice()
+                    ? R.string.mode_whole
+                    : R.string.mode_selected)));
   }
 
   private Slider settingSlider(
@@ -415,8 +571,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   }
 
   private void saveBufferSettings(int bufferMs, int blockMs, int latencyMs) {
-    new StreamSettings(StreamSettings.load(this).wholeDevice(), bufferMs, blockMs, latencyMs)
-        .save(this);
+    StreamSettings.load(this).withBuffers(bufferMs, blockMs, latencyMs).save(this);
+    syncSettings();
     if (BridgeState.capture != null) BridgeState.capture.reconfigure();
   }
 

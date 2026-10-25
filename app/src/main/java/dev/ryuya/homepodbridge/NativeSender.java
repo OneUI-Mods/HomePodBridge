@@ -15,7 +15,8 @@ final class NativeSender {
       String identity,
       int volumeLimit,
       int bufferMs,
-      int latencyMs);
+      int latencyMs,
+      boolean compressedAudio);
 
   static native boolean write(short[] pcm, int count);
 

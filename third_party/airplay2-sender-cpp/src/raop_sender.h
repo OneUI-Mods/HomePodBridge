@@ -63,6 +63,7 @@ template <typename T> class RingBuffer;
 // header stays free of the airplay_crypto includes (the SrpClient / ChaCha
 // cipher state). Forward-declared here.
 struct RaopAp2State;
+class LosslessAlacEncoder;
 
 // What the sender tells the host application. Every callback fires from
 // inside a sender call (onTcpData / tick / stop ...), i.e. on the thread that
@@ -112,11 +113,15 @@ public:
     // HomePod Bridge: optional input jitter reserve, preserving the RTP clock while priming.
     void setInputBufferFrames(size_t frames) { inputBufferFrames_ = frames; inputPrimed_ = false; }
     void setPresentationLatencyMs(uint32_t milliseconds) {
-        latency_ = std::clamp(milliseconds, 250u, 2000u) * 44100u / 1000u;
+        latency_ = std::clamp(milliseconds, 20u, 2000u) * 44100u / 1000u;
     }
     uint64_t inputUnderrunFrames() const { return inputUnderrunFrames_; }
     uint64_t bufferingFrames() const { return bufferingFrames_; }
     uint64_t rebufferCount() const { return rebufferCount_; }
+    void setCompressedAudio(bool enabled);
+    uint64_t rawAudioBytes() const { return rawAudioBytes_; }
+    uint64_t encodedAudioBytes() const { return encodedAudioBytes_; }
+    uint64_t maximumEncodeMicros() const { return maximumEncodeMicros_; }
 
     // v0.66.x Phase 2/3, describe how the receiver must be reached BEFORE
     // start(). `auth` selects auth-setup / legacy-PIN / HAP-transient /
@@ -311,6 +316,8 @@ private:
     double       initialVolumePct_ = -1;
     double       maximumVolumePct_ = 100;
     bool         waitingInitialVolume_ = false;
+    std::unique_ptr<LosslessAlacEncoder> alacEncoder_;
+    uint64_t rawAudioBytes_ = 0, encodedAudioBytes_ = 0, maximumEncodeMicros_ = 0;
 
     // -- RTSP session -------------------------------------------------
     bool        rtspConnected_ = false;  // the control socket is up

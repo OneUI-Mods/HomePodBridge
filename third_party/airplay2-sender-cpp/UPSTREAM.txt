@@ -1,3 +1,5 @@
 https://github.com/akustikrausch/airplay2-sender-cpp
 fc913509039412790aa2427558d35178aa7842ea
 Modified for HomePod Bridge: optional stream-SETUP-before-RECORD ordering (default unchanged), advertised local UDP data port, explicit initial/maximum volume policy, mandatory initial mute acknowledgement before audio/readiness, transient SRP event-channel key derivation and encrypted keep-alive handling, configurable input jitter reserve and presentation timestamps, and bounded protocol diagnostics/statistics. Corresponding protocol regression tests are included. See marked source files and docs/development.md. The example is omitted. Android integration lives in app/src/main/cpp.
+
+Additional HomePod Bridge changes: optional Apple ALAC lossless encoding, per-packet byte/time counters, 20 ms minimum presentation target and low-latency/compressed-audio regression tests. Apple codec sources are separately pinned under third_party/apple-alac.

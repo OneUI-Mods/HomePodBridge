@@ -44,6 +44,7 @@
 #include "airplay_crypto.h"
 #include "raop_creds.h"
 #include "ring_buffer.h"
+#include "lossless_alac.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1898,7 +1899,7 @@ void RaopSender::sendAp2SetupStream_() {
     stream.emplace_back("ct", Value::integer(2));        // ALAC
     stream.emplace_back("isMedia", Value::boolean(true));
     stream.emplace_back("latencyMax", Value::integer(88200));
-    stream.emplace_back("latencyMin", Value::integer(11025));
+    stream.emplace_back("latencyMin", Value::integer(std::min(latency_, 11025u)));
     stream.emplace_back("shk", Value::bytes(ap2_->audioKey));
     stream.emplace_back("spf", Value::integer(352));     // samples per frame
     stream.emplace_back("sr", Value::integer(44100));
@@ -2016,6 +2017,10 @@ std::string RaopSender::encodeAlacFrame_(const int16_t* frames, int nFrames) {
     return out;
 }
 
+void RaopSender::setCompressedAudio(bool enabled) {
+    alacEncoder_ = enabled ? std::make_unique<LosslessAlacEncoder>() : nullptr;
+}
+
 void RaopSender::sendAudioPacket_() {
     int16_t frames[kFramesPerPacket * kChannels];
     fillFrames_(frames, kFramesPerPacket);
@@ -2035,7 +2040,15 @@ void RaopSender::sendAudioPacket_() {
     //  * AP1 RAOP announces L16 (RFC 3551) -> BIG-endian s16 raw PCM.
     std::string payload;
     if (ap2_ && ap2_->encryptAudio) {
-        payload = encodeAlacFrame_(frames, kFramesPerPacket);
+        const auto begin = Clock::now();
+        if (alacEncoder_) payload = alacEncoder_->encode(frames);
+        // Never expand the existing packet or send an invalid codec result.
+        if (payload.empty() || payload.size() > kPayloadBytes + 8)
+            payload = encodeAlacFrame_(frames, kFramesPerPacket);
+        maximumEncodeMicros_ = std::max(maximumEncodeMicros_, static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - begin).count()));
+        rawAudioBytes_ += kPayloadBytes;
+        encodedAudioBytes_ += payload.size();
     } else {
         payload.reserve(kPayloadBytes);
         for (int i = 0; i < kFramesPerPacket * kChannels; ++i) {

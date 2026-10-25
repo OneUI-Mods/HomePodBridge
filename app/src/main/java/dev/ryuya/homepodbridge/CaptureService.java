@@ -47,6 +47,13 @@ public final class CaptureService extends Service {
   private ConnectionCallback pendingCallback;
   private int callbackGeneration;
   private String selectedPackage = BridgeState.MUSIC;
+  private WholeDeviceVolume wholeDeviceVolume;
+
+  @Override
+  public void onCreate() {
+    super.onCreate();
+    wholeDeviceVolume = new WholeDeviceVolume(this, main);
+  }
 
   void reconfigure() {
     if (BridgeState.selected == null) return;
@@ -226,8 +233,9 @@ public final class CaptureService extends Service {
           receiver.deviceId(),
           identity(),
           BuildConfig.VOLUME_LIMIT,
-          settings.bufferMs(),
-          settings.latencyMs());
+          settings.effectiveBufferMs(),
+          settings.effectiveLatencyMs(),
+          settings.compressedAudio());
       short[] pcm = new short[settings.samplesPerRead()];
       long deadline = System.nanoTime() + 20_000_000_000L;
       while (generation.get() == token) {
@@ -295,11 +303,15 @@ public final class CaptureService extends Service {
                       + " wholeDevice="
                       + settings.wholeDevice()
                       + " bufferMs="
-                      + settings.bufferMs()
+                      + settings.effectiveBufferMs()
                       + " blockMs="
-                      + settings.blockMs()
+                      + settings.effectiveBlockMs()
                       + " latencyMs="
-                      + settings.latencyMs()
+                      + settings.effectiveLatencyMs()
+                      + " profile="
+                      + settings.profile()
+                      + " compressedAudio="
+                      + settings.compressedAudio()
                       + "\n")
                   .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (java.io.IOException ignored) {
@@ -416,6 +428,7 @@ public final class CaptureService extends Service {
 
   @Override
   public void onDestroy() {
+    if (wholeDeviceVolume != null) wholeDeviceVolume.close();
     destroyed = true;
     cancelPending();
     generation.incrementAndGet();

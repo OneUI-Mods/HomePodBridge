@@ -1,0 +1,7 @@
+Apple Lossless Audio Codec (ALAC)
+https://github.com/macosforge/alac
+Commit: c38887c5c5e64a4b31108733bd79ca9b2496d987
+Copyright (c) 2011 Apple Inc. All rights reserved.
+License: Apache-2.0 (LICENSE)
+Unmodified codec sources; HomePod Bridge supplies build settings and wrapper.
+TARGET_RT_LITTLE_ENDIAN=1 is supplied for the supported little-endian ABIs.

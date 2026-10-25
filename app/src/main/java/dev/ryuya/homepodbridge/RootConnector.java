@@ -41,7 +41,7 @@ final class RootConnector {
       input.writeStrongBinder(lifetime);
       input.writeString(packageName);
       input.writeBoolean(settings.wholeDevice());
-      input.writeInt(settings.blockMs());
+      input.writeInt(settings.effectiveBlockMs());
       if (!target.transact(RootProtocol.OPEN_CONFIGURED, input, output, 0))
         throw new RemoteException("Reload SystemUI to load the updated audio bridge");
       output.readException();

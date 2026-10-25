@@ -10,7 +10,7 @@ public final class StreamSettingsTest {
     var low = new StreamSettings(false, -1, -1, -1);
     assertEquals(0, low.bufferMs());
     assertEquals(5, low.blockMs());
-    assertEquals(250, low.latencyMs());
+    assertEquals(20, low.latencyMs());
     var high = new StreamSettings(true, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
     assertEquals(300, high.bufferMs());
     assertEquals(40, high.blockMs());
@@ -26,5 +26,42 @@ public final class StreamSettingsTest {
       assertTrue(samples > 0);
       assertEquals(44100 * ms / 1000, samples / 2);
     }
+  }
+
+  @Test
+  public void lowLatencyPreservesCustomSettingsForSwitchingBack() {
+    var low = new StreamSettings(true, 150, 10, 1500, true);
+    assertEquals(0, low.effectiveBufferMs());
+    assertEquals(5, low.effectiveBlockMs());
+    assertEquals(50, low.effectiveLatencyMs());
+    assertEquals(440, low.samplesPerRead());
+    assertEquals(150, low.bufferMs());
+    assertEquals(10, low.blockMs());
+    assertEquals(1500, low.latencyMs());
+  }
+
+  @Test
+  public void profilesAndCompressionAreIndependentAndReversible() {
+    var custom = new StreamSettings(true, 70, 20, 320).withCompression(true);
+    var quality = custom.withProfile(2);
+    assertTrue(quality.highQuality());
+    assertFalse(quality.lowLatency());
+    assertEquals(150, quality.effectiveBufferMs());
+    assertEquals(10, quality.effectiveBlockMs());
+    assertEquals(1500, quality.effectiveLatencyMs());
+    var low = quality.withProfile(1);
+    assertTrue(low.lowLatency());
+    assertFalse(low.highQuality());
+    assertTrue(low.compressedAudio());
+    assertFalse(low.withCompression(false).compressedAudio());
+    assertTrue(low.withCompression(false).lowLatency());
+    assertEquals(custom, low.withProfile(0));
+    assertTrue(quality.withWholeDevice(false).highQuality());
+    assertTrue(quality.withWholeDevice(false).compressedAudio());
+    var tuned = quality.withBuffers(0, 5, 20);
+    assertFalse(tuned.lowLatency());
+    assertFalse(tuned.highQuality());
+    assertTrue(tuned.compressedAudio());
+    assertEquals(20, tuned.effectiveLatencyMs());
   }
 }
