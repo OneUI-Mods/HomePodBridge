@@ -65,6 +65,16 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   @Override
   public void dump(
       String prefix, java.io.FileDescriptor fd, java.io.PrintWriter writer, String[] args) {
+    if (args != null && args.length == 1 && args[0].equals("--measure-capture")) {
+      CaptureProbe.request(this);
+      CaptureProbe.dump(writer);
+      return;
+    }
+    if (args != null && args.length == 1 && args[0].equals("--capture-probe-status")) {
+      CaptureProbe.dump(writer);
+      HalInspection.dump(writer, false);
+      return;
+    }
     if (args != null && args.length == 1 && args[0].equals("--inspect-dedicated-route")) {
       HalInspection.requestRoute(this, BridgeState.captureRegistration);
       HalInspection.dump(writer, false);
