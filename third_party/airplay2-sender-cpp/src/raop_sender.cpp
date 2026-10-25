@@ -471,6 +471,8 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     inReadFrames_ = 0;
     backlogSeq_.assign(kBacklogSize, -1);
     pendingVolumeDb_ = kNoVolume;   // never carry volume between devices
+    waitingInitialVolume_ = false;
+    if (initialVolumePct_ >= 0) setVolume(initialVolumePct_);
 
     // v0.66.x Phase 2/3, reset auth/AP2 state for the new session.
     ap2_.reset();
@@ -625,8 +627,13 @@ void RaopSender::onUdpDatagram(RaopUdp s, std::span<const uint8_t> bytes, const 
 
 // -- host application calls ------------------------------------------
 
+void RaopSender::setVolumePolicy(double initialPercent, double maximumPercent) {
+    maximumVolumePct_ = std::clamp(maximumPercent, 0.0, 100.0);
+    initialVolumePct_ = std::clamp(initialPercent, 0.0, maximumVolumePct_);
+}
+
 void RaopSender::setVolume(double pct) {
-    pct = std::clamp(pct, 0.0, 100.0);
+    pct = std::clamp(pct, 0.0, maximumVolumePct_);
     // pyatv pct_to_dbfs: 0 % is the AirPlay mute sentinel -144, the
     // rest maps linearly onto the -30..0 dBFS attenuation range. Written
     // as (3*pct - 300)/10 rather than -30 + 0.3*pct so the value is exact
@@ -959,6 +966,15 @@ void RaopSender::onRtspReadyRead_(std::span<const uint8_t> bytes) {
 void RaopSender::handleResponse_(const std::string& method, int code, const Headers& headers) {
     // Streaming-time auxiliaries first, failures are non-fatal there.
     if (method == "SET_PARAMETER") {
+        if (waitingInitialVolume_) {
+            waitingInitialVolume_ = false;
+            if (code != 200) { fail_("Receiver rejected the initial volume; audio was not started"); return; }
+            disarm_(timeout_);
+            state_ = State::Streaming;
+            arm_(pacer_);
+            if (events_.launched) events_.launched(true, std::string());
+            return;
+        }
         if (code != 200)
             warn_("Cast: RAOP SET_PARAMETER rejected ({})", code);
         return;
@@ -1145,13 +1161,18 @@ void RaopSender::startStreaming_() {
     if (airplay2_ && pendingVolumeDb_ <= kNoVolume + 1.0)
         pendingVolumeDb_ = 0.0;
     if (pendingVolumeDb_ > kNoVolume + 1.0) {
+        if (initialVolumePct_ >= 0) {
+            waitingInitialVolume_ = true;
+            state_ = State::Handshake;
+            arm_(timeout_);
+        }
         const std::string body = "volume: " + fixed6(pendingVolumeDb_);
         Extra vh;
         if (!rtspSession_.empty())
             vh.push_back({"Session", rtspSession_});
         sendRequest_("SET_PARAMETER", rtspUri_(), "text/parameters", body, vh);
     }
-    arm_(pacer_);   // audio RTP loop starts LAST (after RECORD/FLUSH/volume)
+    if (!waitingInitialVolume_) arm_(pacer_);   // configured initial volume must be ACKed first
     if (airplay2_) {
         // AP2: feedback is an HTTP POST /feedback every 2 s (pyatv
         // FEEDBACK_INTERVAL).
@@ -1170,7 +1191,7 @@ void RaopSender::startStreaming_() {
     info_("Cast: RAOP streaming to '{}', RTP {} frames/packet @ {} Hz{}",
           name_, kFramesPerPacket, kRaopRate,
           (ap2_ && ap2_->encryptAudio) ? " (encrypted)" : "");
-    if (events_.launched) events_.launched(true, std::string());
+    if (!waitingInitialVolume_ && events_.launched) events_.launched(true, std::string());
 }
 
 // -- v0.66.x Phase 2/3, auth + pairing + AirPlay 2 --------------------

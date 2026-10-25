@@ -1,14 +1,11 @@
 package dev.ryuya.homepodbridge;
 
 import android.Manifest;
-import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.res.Configuration;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.media.MediaRouter2;
 import android.media.RouteDiscoveryPreference;
 import android.media.projection.MediaProjectionConfig;
@@ -21,33 +18,45 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.widget.TextViewCompat;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.color.DynamicColors;
+import com.google.android.material.color.MaterialColors;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.slider.Slider;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-public final class MainActivity extends Activity implements BridgeState.Observer {
+public final class MainActivity extends AppCompatActivity implements BridgeState.Observer {
   private TextView status;
   private LinearLayout speakers;
   private Button share;
   private int textColor;
   private int cardColor;
+  private Slider volume;
+  private TextView volumeLabel;
+  private TextView systemStatus;
   private MediaRouter2 router;
   private final MediaRouter2.RouteCallback routes = new MediaRouter2.RouteCallback() {};
 
   @Override
   public void onCreate(Bundle state) {
-    boolean dark =
-        (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-            == Configuration.UI_MODE_NIGHT_YES;
-    setTheme(
-        dark
-            ? android.R.style.Theme_Material_NoActionBar
-            : android.R.style.Theme_Material_Light_NoActionBar);
+    setTheme(R.style.Theme_HomePodBridge);
+    DynamicColors.applyToActivityIfAvailable(this);
     super.onCreate(state);
-    textColor = dark ? 0xfff2f3f5 : 0xff17191d;
-    cardColor = dark ? 0xff202227 : Color.WHITE;
+    textColor =
+        MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorOnSurface, Color.BLACK);
+    cardColor =
+        MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorSurfaceContainer, Color.WHITE);
     ScrollView scroll = new ScrollView(this);
     scroll.setFillViewport(true);
-    scroll.setBackgroundColor(dark ? 0xff101114 : 0xfff3f4f7);
+    scroll.setBackgroundColor(
+        MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorSurface, Color.BLACK));
     LinearLayout body = new LinearLayout(this);
     body.setOrientation(LinearLayout.VERTICAL);
     body.setPadding(dp(24), dp(24), dp(24), dp(32));
@@ -65,7 +74,9 @@ public final class MainActivity extends Activity implements BridgeState.Observer
     body.addView(title);
     body.addView(label(getString(R.string.explanation), 16));
     status = label(getString(R.string.idle), 18);
-    body.addView(status);
+    body.addView(card(status));
+    systemStatus = label("", 14);
+    body.addView(systemStatus);
     share =
         button(
             getString(R.string.enable),
@@ -77,10 +88,37 @@ public final class MainActivity extends Activity implements BridgeState.Observer
               requestSharing();
             });
     body.addView(share);
+    ((MaterialButton) share)
+        .setBackgroundTintList(
+            ColorStateList.valueOf(
+                MaterialColors.getColor(share, androidx.appcompat.R.attr.colorPrimary)));
+    share.setTextColor(
+        MaterialColors.getColor(share, com.google.android.material.R.attr.colorOnPrimary));
+    ((MaterialButton) share).setStrokeWidth(0);
     body.addView(button(getString(R.string.refresh), view -> refresh()));
     speakers = new LinearLayout(this);
     speakers.setOrientation(LinearLayout.VERTICAL);
     body.addView(speakers);
+    LinearLayout volumeControls = new LinearLayout(this);
+    volumeControls.setOrientation(LinearLayout.VERTICAL);
+    volumeLabel = label(getString(R.string.volume, 0), 18);
+    volumeControls.addView(volumeLabel);
+    volume = new Slider(this);
+    volume.setValueFrom(0);
+    volume.setValueTo(BuildConfig.VOLUME_LIMIT);
+    volume.setStepSize(1);
+    volume.setLabelFormatter(value -> Math.round(value) + "%");
+    volume.addOnChangeListener(
+        (slider, value, fromUser) -> {
+          if (!fromUser || !BridgeState.connected) return;
+          BridgeState.volume = VolumePolicy.apply(Math.round(value));
+          NativeSender.volume(BridgeState.volume);
+          BridgeState.publish();
+        });
+    volumeControls.addView(volume);
+    if (BuildConfig.VOLUME_LIMIT <= 5)
+      volumeControls.addView(label(getString(R.string.volume_testing_limit), 14));
+    body.addView(card(volumeControls));
     body.addView(
         button(
             getString(R.string.open_music),
@@ -90,7 +128,6 @@ public final class MainActivity extends Activity implements BridgeState.Observer
               else startActivity(music);
             }));
     body.addView(label(getString(R.string.notes), 14));
-    body.addView(label(getString(R.string.unverified), 14));
     body.addView(button(getString(R.string.licenses), view -> licenses()));
     setContentView(scroll);
   }
@@ -136,6 +173,12 @@ public final class MainActivity extends Activity implements BridgeState.Observer
   }
 
   private void requestSharing() {
+    if (Build.VERSION.SDK_INT >= 37
+        && checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")
+            != PackageManager.PERMISSION_GRANTED) {
+      requestPermissions(new String[] {"android.permission.ACCESS_LOCAL_NETWORK"}, 4);
+      return;
+    }
     if (RootConnector.available()) {
       startForegroundService(new Intent(this, CaptureService.class).putExtra("system", true));
       return;
@@ -168,6 +211,7 @@ public final class MainActivity extends Activity implements BridgeState.Observer
     }
     if (code == 2) requestSharing();
     else if (code == 3) refresh();
+    else if (code == 4) requestSharing();
   }
 
   @Override
@@ -191,6 +235,11 @@ public final class MainActivity extends Activity implements BridgeState.Observer
     else message = getString(BridgeState.status);
     status.setText(message);
     share.setText(BridgeState.capture == null ? R.string.enable : R.string.stop);
+    systemStatus.setText(
+        RootConnector.available() ? R.string.system_ready : R.string.system_missing);
+    volumeLabel.setText(getString(R.string.volume, BridgeState.volume));
+    volume.setValue(VolumePolicy.apply(BridgeState.volume));
+    volume.setEnabled(BridgeState.connected);
     speakers.removeAllViews();
     for (Receiver receiver : BridgeState.receivers) {
       Button speaker =
@@ -219,6 +268,13 @@ public final class MainActivity extends Activity implements BridgeState.Observer
     TextView text = new TextView(this);
     text.setText(value);
     text.setTextSize(size);
+    TextViewCompat.setTextAppearance(
+        text,
+        size >= 28
+            ? com.google.android.material.R.style.TextAppearance_Material3_HeadlineLarge
+            : size >= 18
+                ? com.google.android.material.R.style.TextAppearance_Material3_TitleMedium
+                : com.google.android.material.R.style.TextAppearance_Material3_BodyMedium);
     text.setTextColor(textColor);
     text.setPadding(0, dp(12), 0, dp(12));
     text.setLineSpacing(dp(3), 1);
@@ -226,15 +282,16 @@ public final class MainActivity extends Activity implements BridgeState.Observer
   }
 
   private Button button(String label, View.OnClickListener listener) {
-    Button button = new Button(this);
+    MaterialButton button = new MaterialButton(this);
     button.setText(label);
     button.setAllCaps(false);
     button.setTextSize(16);
     button.setTextColor(textColor);
-    GradientDrawable background = new GradientDrawable();
-    background.setColor(cardColor);
-    background.setCornerRadius(dp(22));
-    button.setBackground(background);
+    button.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
+    button.setStrokeWidth(dp(1));
+    button.setStrokeColor(
+        ColorStateList.valueOf(
+            MaterialColors.getColor(button, com.google.android.material.R.attr.colorOutline)));
     button.setPadding(dp(20), dp(12), dp(20), dp(12));
     LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, -2);
     layout.setMargins(0, dp(6), 0, dp(6));
@@ -243,13 +300,26 @@ public final class MainActivity extends Activity implements BridgeState.Observer
     return button;
   }
 
+  private MaterialCardView card(View content) {
+    MaterialCardView card = new MaterialCardView(this);
+    card.setCardBackgroundColor(cardColor);
+    card.setStrokeWidth(0);
+    card.setRadius(dp(24));
+    card.setContentPadding(dp(20), dp(8), dp(20), dp(8));
+    LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, -2);
+    layout.setMargins(0, dp(8), 0, dp(8));
+    card.setLayoutParams(layout);
+    card.addView(content);
+    return card;
+  }
+
   private void licenses() {
     try (var input = getAssets().open("licenses.txt")) {
       TextView text = label(new String(input.readAllBytes(), StandardCharsets.UTF_8), 13);
       text.setPadding(dp(20), dp(12), dp(20), dp(12));
       ScrollView scroll = new ScrollView(this);
       scroll.addView(text);
-      new AlertDialog.Builder(this)
+      new MaterialAlertDialogBuilder(this)
           .setTitle(R.string.licenses)
           .setView(scroll)
           .setPositiveButton(android.R.string.ok, null)

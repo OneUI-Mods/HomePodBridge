@@ -7,7 +7,8 @@ final class NativeSender {
 
   private NativeSender() {}
 
-  static native void start(String host, int port, String name, String deviceId, String identity);
+  static native void start(
+      String host, int port, String name, String deviceId, String identity, int volumeLimit);
 
   static native boolean write(short[] pcm, int count);
 

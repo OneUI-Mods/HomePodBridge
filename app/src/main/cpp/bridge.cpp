@@ -53,7 +53,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -63,7 +63,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit] {
         try {
             fxchain::RaopLoop loop;
             fxchain::RaopEvents events;
@@ -84,6 +84,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                                     "HomePodBridge", "%s", message.c_str());
             });
             sender.setStrictReceiverAuth(true);
+            sender.setVolumePolicy(0, std::max(0, std::min(100, static_cast<int>(volumeLimit))));
             sender.setStreamBeforeRecord(false);
             fxchain::RaopIdentity source;
             source.name = "HomePod Bridge";
@@ -91,7 +92,6 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             sender.setIdentity(source);
             sender.attachRing(&engine->ring);
             sender.setInputFormat(44100);
-            sender.setVolume(30);
             sender.setAuth(fxchain::RaopDeviceInfo::Auth::HapTransient, true, id, {}, {});
             sender.start(ip, static_cast<uint16_t>(port), label);
             while (!engine->stop.load() && engine->state.load() > 0) {

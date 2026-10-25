@@ -10,6 +10,12 @@ The capture service runs as a visible mediaPlayback foreground service in system
 
 The JNI adapter feeds a bounded SPSC ring in the pinned Apache-2.0 sender. It enables strict SRP/receiver proof checks, uses HomePod transient pairing and runs the sender/network loop on its own thread. Receiver volume commands are queued to that thread. Failed handshakes never report a created route session.
 
+Every session now starts at mute. The sender must receive the successful initial volume acknowledgement before reporting readiness or arming the audio pacer. Local device-test builds cap all volume commands at 5% in Java and at the native protocol boundary; normal builds support 0–100% through an explicit build property. The upstream sender resets a pre-start setVolume() and otherwise defaults to 0 dB, so configuring it before start was insufficient. Regression tests cover that failure, delayed or refused mute acknowledgement and a 100% request under a 5% cap.
+
+The app first tries Android's process-local Wi-Fi binding. When a forced VPN prevents that, the root helper owns a temporary route matching only this application's UID and the discovered receiver's private IPv4 address. It removes the exact rule on stop, helper termination or parent-process death. It does not change a VPN profile or other applications' routes. This fallback requires granting root access to HomePod Bridge.
+
+The application uses Material Components 1.14.0 with a Material Design 3 day/night theme, dynamic colors, Material buttons/cards/dialogs and a Material volume slider.
+
 ## Verification
 
 - Java tests exercise receiver identity changes, unsupported auth/endpoints, fragmented PCM reads, byte order and truncated frames.

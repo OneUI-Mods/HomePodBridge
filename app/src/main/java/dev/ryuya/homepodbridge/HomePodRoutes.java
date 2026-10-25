@@ -74,10 +74,14 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
                       : MediaRoute2Info.CONNECTION_STATE_DISCONNECTED)
               .setVolumeHandling(MediaRoute2Info.PLAYBACK_VOLUME_VARIABLE)
               .setVolumeMax(100)
-              .setVolume(session == null ? 30 : session.getVolume())
+              .setVolume(BridgeState.volume)
               .build());
     }
     notifyRoutes(routes);
+    if (session != null && session.getVolume() != BridgeState.volume) {
+      session = new RoutingSessionInfo.Builder(session).setVolume(BridgeState.volume).build();
+      notifySessionUpdated(session);
+    }
     if (session != null
         && (!BridgeState.connected
             || BridgeState.selected == null
@@ -123,7 +127,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
                   .addSelectedRoute(routeId)
                   .setVolumeHandling(MediaRoute2Info.PLAYBACK_VOLUME_VARIABLE)
                   .setVolumeMax(100)
-                  .setVolume(30)
+                  .setVolume(0)
                   .build();
           notifySessionCreated(requestId, session);
           changed();
@@ -171,7 +175,8 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
       notifyRequestFailed(requestId, REASON_INVALID_COMMAND);
       return;
     }
-    int bounded = Math.max(0, Math.min(100, volume));
+    int bounded = VolumePolicy.apply(volume);
+    BridgeState.volume = bounded;
     NativeSender.volume(bounded);
     session = new RoutingSessionInfo.Builder(session).setVolume(bounded).build();
     notifySessionUpdated(session);

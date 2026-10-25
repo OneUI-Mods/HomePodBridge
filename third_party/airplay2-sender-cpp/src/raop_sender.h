@@ -127,6 +127,9 @@ public:
     // does not check out. Default false = log and continue (SECURITY.md).
     void setStrictReceiverAuth(bool strict) { strictAuth_ = strict; }
     void setStreamBeforeRecord(bool enabled) { streamBeforeRecord_ = enabled; }
+    // HomePod Bridge: apply the initial volume before allowing any audio packets,
+    // and clamp every subsequent command at the protocol boundary.
+    void setVolumePolicy(double initialPercent, double maximumPercent);
 
     // Connect + handshake + stream. One session at a time. `host` is what
     // the host's RaopIo can connect to (a dotted-quad from mDNS, or a name).
@@ -296,6 +299,9 @@ private:
     RaopIdentity identity_;
     bool         strictAuth_ = false;
     bool         streamBeforeRecord_ = false;
+    double       initialVolumePct_ = -1;
+    double       maximumVolumePct_ = 100;
+    bool         waitingInitialVolume_ = false;
 
     // -- RTSP session -------------------------------------------------
     bool        rtspConnected_ = false;  // the control socket is up

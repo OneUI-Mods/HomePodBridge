@@ -120,6 +120,7 @@ public final class CaptureService extends Service {
     callbackGeneration = token;
     BridgeState.selected = receiver;
     BridgeState.connected = false;
+    BridgeState.volume = 0;
     BridgeState.status = R.string.connecting;
     BridgeState.publish();
     worker.execute(() -> stream(receiver, sourcePackage, token));
@@ -130,6 +131,7 @@ public final class CaptureService extends Service {
     ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
     Network previousNetwork = connectivity.getBoundNetworkForProcess();
     boolean networkBound = false;
+    LocalRoute localRoute = null;
     boolean started = false;
     int failure = R.string.connection_failed;
     try {
@@ -150,6 +152,7 @@ public final class CaptureService extends Service {
           if (networkBound) break;
         }
       }
+      if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
       PcmPipe rootInput = null;
       if (systemMode) {
         ParcelFileDescriptor pipe = RootConnector.open(sourcePackage, lifetime);
@@ -188,7 +191,12 @@ public final class CaptureService extends Service {
           throw new IllegalStateException("Capture unavailable");
       }
       NativeSender.start(
-          receiver.host(), receiver.port(), receiver.name(), receiver.deviceId(), identity());
+          receiver.host(),
+          receiver.port(),
+          receiver.name(),
+          receiver.deviceId(),
+          identity(),
+          BuildConfig.VOLUME_LIMIT);
       short[] pcm = new short[882];
       long deadline = System.nanoTime() + 20_000_000_000L;
       while (generation.get() == token) {
@@ -220,8 +228,11 @@ public final class CaptureService extends Service {
       }
     } catch (Exception e) {
       try (var error = openFileOutput("last-capture-error.txt", MODE_PRIVATE)) {
-        error.write((e.getClass().getSimpleName() + ": " + e.getMessage()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-      } catch (java.io.IOException ignored) {}
+        error.write(
+            (e.getClass().getSimpleName() + ": " + e.getMessage())
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      } catch (java.io.IOException ignored) {
+      }
       failure = R.string.capture_failed;
     } finally {
       try (var diagnostics = openFileOutput("last-connection.txt", MODE_PRIVATE)) {
@@ -238,6 +249,7 @@ public final class CaptureService extends Service {
         recorder.release();
       }
       NativeSender.stop();
+      if (localRoute != null) localRoute.close();
       if (networkBound) connectivity.bindProcessToNetwork(previousNetwork);
       boolean wasStarted = started;
       int message = failure;

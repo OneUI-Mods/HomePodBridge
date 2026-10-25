@@ -335,6 +335,8 @@ struct FakeReceiver {
     // failure injection
     bool badSrpProof = false;
     bool badVerifySignature = false;
+    bool holdVolume = false, rejectVolume = false;
+    std::string heldVolumeReply;
 
     // receiver identity (pin / verify modes)
     Bytes srvLtsk, srvLtpk, srvId = bytesOf("AA:AA:AA:AA:AA:AA");
@@ -386,8 +388,11 @@ struct FakeReceiver {
         for (Request& r : parseRequests(plainBuf)) {
             bool switchToEncrypted = false;
             const std::string reply = handle(r, switchToEncrypted);
+            const bool volume = r.method == "SET_PARAMETER" && r.body.starts_with("volume:");
             requests.push_back(std::move(r));
-            out += encrypted ? encryptFrames(ctrlOut, ctrlOutCtr, reply) : reply;
+            std::string wire = encrypted ? encryptFrames(ctrlOut, ctrlOutCtr, reply) : reply;
+            if (holdVolume && volume) heldVolumeReply += wire;
+            else out += wire;
             if (switchToEncrypted) encrypted = true;
         }
         return out;
@@ -487,7 +492,7 @@ private:
         }
         if (r.method == "RECORD")   return rtsp200(r, "Audio-Latency: 11025\r\n");
         if (r.method == "GET")      return rtsp200(r);
-        if (r.method == "SET_PARAMETER") return rtsp200(r);
+        if (r.method == "SET_PARAMETER") return rejectVolume ? http(r, 400, "Bad Request") : rtsp200(r);
         if (r.method == "POST")     return rtsp200(r);   // /feedback
         if (r.method == "FLUSH")    return rtsp200(r);
         if (r.method == "TEARDOWN") { sawTeardown = true; return rtsp200(r); }
@@ -1416,6 +1421,44 @@ void testIdentityAndDigest() {
     }
 }
 
+void testVolumePolicy() {
+    g_test = "mute ACK before audio, hard five-percent testing limit";
+    Rig r;
+    r.rx.mode = FakeReceiver::Mode::Ap2Transient;
+    r.rx.holdVolume = true;
+    r.sender->setVolumePolicy(0, 5);
+    r.sender->setAuth(RaopDeviceInfo::Auth::HapTransient, true, "homepod", "", "");
+    r.sender->start(r.peerIp, 7000, "HomePod");
+    r.connectControl(); r.exchange();
+    REQUIRE(r.rx.last("SET_PARAMETER"), "initial mute command sent");
+    CHECK(r.rx.last("SET_PARAMETER")->body == "volume: -144.000000", "start() preserves explicit initial mute");
+    CHECK(!r.launchedOk.has_value(), "not ready before mute acknowledgement");
+    r.advance(1000);
+    auto before = r.io.takeUdp();
+    CHECK(std::none_of(before.begin(), before.end(), [](const auto& d) { return d.s == RaopUdp::Audio; }), "no RTP audio before mute ACK");
+    r.rx.holdVolume = false;
+    r.sender->onTcpData(RaopTcp::Control, spanOf(r.rx.heldVolumeReply));
+    REQUIRE(r.launchedOk && *r.launchedOk, "ready after mute ACK");
+    r.sender->setVolume(100); r.exchange();
+    CHECK(r.rx.last("SET_PARAMETER")->body == "volume: -28.500000", "100 percent request is clamped to five percent");
+    r.sender->setVolume(0); r.exchange();
+    CHECK(r.rx.last("SET_PARAMETER")->body == "volume: -144.000000", "zero remains mute");
+    r.sender->stop();
+
+    g_test = "refused initial mute fails closed";
+    Rig rejected;
+    rejected.rx.mode = FakeReceiver::Mode::Ap2Transient;
+    rejected.rx.rejectVolume = true;
+    rejected.sender->setVolumePolicy(0, 5);
+    rejected.sender->setAuth(RaopDeviceInfo::Auth::HapTransient, true, "homepod", "", "");
+    rejected.sender->start(rejected.peerIp, 7000, "HomePod");
+    rejected.connectControl(); rejected.exchange();
+    REQUIRE(rejected.launchedOk && !*rejected.launchedOk, "refused mute rejects the connection");
+    rejected.advance(1000);
+    auto datagrams = rejected.io.takeUdp();
+    CHECK(std::none_of(datagrams.begin(), datagrams.end(), [](const auto& d) { return d.s == RaopUdp::Audio; }), "no audio after refused mute");
+}
+
 void testHomePodSetupOrder() {
     g_test = "HomePod: stream SETUP before RECORD";
     Rig r;
@@ -1480,6 +1523,7 @@ int main() {
     testFailurePaths();
     testIdentityAndDigest();
     testHomePodSetupOrder();
+    testVolumePolicy();
     testResampler();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);

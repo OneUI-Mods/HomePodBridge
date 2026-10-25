@@ -20,6 +20,7 @@ final class BridgeState {
   static CaptureService capture;
   static Receiver selected;
   static boolean connected;
+  static int volume;
   static int status = R.string.idle;
 
   static void observe(Observer observer) {
