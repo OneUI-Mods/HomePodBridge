@@ -35,7 +35,10 @@ public final class CommandService extends Service {
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.diagnostics_command_running))
             .setSmallIcon(R.drawable.ic_speaker)
-            .setSilent(true)
+            .setSound(null)
+            .setVibrate(new long[0])
+            .setDefaults(0)
+            .setOnlyAlertOnce(true)
             .setOngoing(true)
             .build(),
         ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
