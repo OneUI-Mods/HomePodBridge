@@ -14,6 +14,15 @@ import java.util.concurrent.TimeUnit;
 final class CaptureProbe {
   private static boolean running;
   private static String status = "Not requested";
+  private static Runnable cancellation;
+
+  static void cancel() {
+    Runnable action;
+    synchronized (CaptureProbe.class) {
+      action = cancellation;
+    }
+    if (action != null) new Thread(action, "HomePod-probe-cancel").start();
+  }
 
   static synchronized void request(Context context) {
     request(context, 0);
@@ -53,16 +62,18 @@ final class CaptureProbe {
       RootConnector.Input input = RootConnector.open(BridgeState.MUSIC, lifetime, settings, true);
       descriptor = input.pipe();
       ParcelFileDescriptor owned = descriptor;
-      timer.schedule(
+      Runnable close =
           () -> {
             try {
               owned.close();
             } catch (java.io.IOException ignored) {
             }
             RootConnector.close(lifetime);
-          },
-          15,
-          TimeUnit.SECONDS);
+          };
+      synchronized (CaptureProbe.class) {
+        cancellation = close;
+      }
+      timer.schedule(close, 15, TimeUnit.SECONDS);
       long begin = System.nanoTime(), nextTiming = begin + TimeUnit.SECONDS.toNanos(2);
       long lastObservation = 0;
       long sampleAfter = begin + TimeUnit.SECONDS.toNanos(4);
@@ -158,6 +169,7 @@ final class CaptureProbe {
       RootConnector.close(lifetime);
       timer.shutdownNow();
       synchronized (CaptureProbe.class) {
+        cancellation = null;
         running = false;
       }
     }

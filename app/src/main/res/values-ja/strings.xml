@@ -1,4 +1,5 @@
 <resources>
+    <string name="diagnostics_command_running">音声の時間を無音で計測中</string>
     <string name="app_name">HomePod Bridge</string>
     <string name="module_description">システムのメディア出力先にHomePodを追加します。</string>
     <string name="intro">HomePod Bridge</string>

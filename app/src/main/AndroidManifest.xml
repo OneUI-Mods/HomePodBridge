@@ -23,6 +23,7 @@
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <service android:name=".CaptureService" android:exported="false" android:foregroundServiceType="mediaProjection|mediaPlayback" />
+        <service android:name=".CommandService" android:exported="true" android:permission="android.permission.DUMP" android:foregroundServiceType="mediaPlayback" />
         <!-- Registration is checked against the SystemUI UID inside call(). No data operations are exported. -->
         <provider android:name=".SystemBridgeProvider" android:authorities="dev.ryuya.homepodbridge.system" android:exported="true" />
         <service android:name=".HomePodRoutes" android:exported="true" android:permission="android.permission.BIND_MEDIA_ROUTE_PROVIDER_SERVICE">

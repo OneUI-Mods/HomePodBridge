@@ -1,4 +1,5 @@
 <resources>
+    <string name="diagnostics_command_running">Audio timing diagnostics · no sound</string>
     <string name="app_name">HomePod Bridge</string>
     <string name="module_description">Add HomePod to the system media output picker.</string>
     <string-array name="module_scope"><item>com.android.systemui</item></string-array>
