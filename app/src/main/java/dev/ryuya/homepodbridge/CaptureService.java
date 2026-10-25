@@ -34,7 +34,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class CaptureService extends Service {
   static final String STOP = "dev.ryuya.homepodbridge.STOP";
   private final Handler main = new Handler(Looper.getMainLooper());
-  private final ExecutorService worker = Executors.newSingleThreadExecutor();
+  // Service recreation must wait for the previous native sender and route lease.
+  private static final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final AtomicInteger generation = new AtomicInteger();
   private MediaProjection projection;
   private int musicUid;
@@ -359,7 +360,6 @@ public final class CaptureService extends Service {
       projection.stop();
       projection = null;
     }
-    worker.shutdown();
     BridgeState.capture = null;
     BridgeState.selected = null;
     BridgeState.connected = false;

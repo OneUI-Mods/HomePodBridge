@@ -27,6 +27,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
   @Override
   public void onCreate() {
     super.onCreate();
+    Diagnostics.route(this, "provider created");
     RootConnector.request(this);
     BridgeState.observe(this);
   }
@@ -96,6 +97,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
 
   @Override
   public void onCreateSession(long requestId, String packageName, String routeId, Bundle hints) {
+    Diagnostics.route(this, "create " + requestId + " capture=" + (BridgeState.capture != null));
     if (packageName == null || packageName.isEmpty() || BridgeState.PACKAGE.equals(packageName)) {
       notifyRequestFailed(requestId, REASON_REJECTED);
       return;
@@ -114,6 +116,12 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
           startForegroundService(new Intent(this, CaptureService.class).putExtra("system", true));
           main.postDelayed(
               () -> {
+                Diagnostics.route(
+                    this,
+                    "capture wait complete destroyed="
+                        + destroyed
+                        + " capture="
+                        + (BridgeState.capture != null));
                 if (destroyed) return;
                 if (BridgeState.capture != null)
                   onCreateSession(requestId, packageName, routeId, hints);
@@ -139,6 +147,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
         receiver,
         packageName,
         success -> {
+          Diagnostics.route(this, "native ready=" + success + " sequence=" + token);
           if (destroyed || sequence != token) return;
           creating = false;
           pending = REQUEST_ID_NONE;
@@ -156,6 +165,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
                   .setVolume(0)
                   .build();
           notifySessionCreated(requestId, session);
+          Diagnostics.route(this, "session announced " + session.getId());
           changed();
         });
     main.postDelayed(
@@ -177,6 +187,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
 
   @Override
   public void onReleaseSession(long requestId, String sessionId) {
+    Diagnostics.route(this, "release " + requestId + " " + sessionId);
     if (session == null || !session.getId().equals(sessionId)) {
       notifyRequestFailed(requestId, REASON_INVALID_COMMAND);
       return;
@@ -226,6 +237,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
 
   @Override
   public void onDestroy() {
+    Diagnostics.route(this, "provider destroyed");
     destroyed = true;
     ++sequence;
     main.removeCallbacksAndMessages(null);
