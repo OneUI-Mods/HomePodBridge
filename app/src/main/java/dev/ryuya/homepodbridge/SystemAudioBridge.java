@@ -80,9 +80,10 @@ final class SystemAudioBridge extends Binder {
           || targetPackage.isEmpty()
           || targetPackage.equals(RootProtocol.PACKAGE))
         throw new IllegalArgumentException("Invalid media package");
-      int targetUid = context.getPackageManager().getApplicationInfo(targetPackage, 0).uid;
       boolean wholeDevice = code == RootProtocol.OPEN_CONFIGURED && data.readBoolean();
       int blockMs = code == RootProtocol.OPEN_CONFIGURED ? data.readInt() : 10;
+      int targetUid =
+          wholeDevice ? -1 : context.getPackageManager().getApplicationInfo(targetPackage, 0).uid;
       StreamSettings settings = new StreamSettings(wholeDevice, 150, blockMs, 1500);
       if (stream != null) {
         stream.close();

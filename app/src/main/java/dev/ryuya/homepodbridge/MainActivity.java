@@ -212,7 +212,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       return;
     }
     try {
-      getPackageManager().getApplicationInfo(BridgeState.MUSIC, 0);
+      if (!StreamSettings.load(this).wholeDevice())
+        getPackageManager().getApplicationInfo(BridgeState.MUSIC, 0);
     } catch (PackageManager.NameNotFoundException e) {
       toast(R.string.music_missing);
       return;
@@ -266,6 +267,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     systemStatus.setText(
         RootConnector.available() ? R.string.system_ready : R.string.system_missing);
     volumeLabel.setText(getString(R.string.volume, BridgeState.volume));
+    volume.setContentDescription(getString(R.string.volume, BridgeState.volume));
     volume.setValue(VolumePolicy.apply(BridgeState.volume));
     volume.setEnabled(BridgeState.connected);
     speakers.removeAllViews();

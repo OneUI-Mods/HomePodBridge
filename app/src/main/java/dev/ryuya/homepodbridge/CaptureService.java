@@ -95,7 +95,8 @@ public final class CaptureService extends Service {
           1,
           notification(getString(R.string.sharing)),
           ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
-      musicUid = getPackageManager().getApplicationInfo(BridgeState.MUSIC, 0).uid;
+      if (!StreamSettings.load(this).wholeDevice())
+        musicUid = getPackageManager().getApplicationInfo(BridgeState.MUSIC, 0).uid;
       projection =
           getSystemService(MediaProjectionManager.class)
               .getMediaProjection(intent.getIntExtra("result", 0), consent);
@@ -120,7 +121,9 @@ public final class CaptureService extends Service {
       callback.finished(false);
       return;
     }
-    if (!systemMode && !BridgeState.MUSIC.equals(sourcePackage)) {
+    if (!systemMode
+        && !StreamSettings.load(this).wholeDevice()
+        && !BridgeState.MUSIC.equals(sourcePackage)) {
       callback.finished(false);
       return;
     }

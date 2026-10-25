@@ -51,8 +51,11 @@ public final class LegacyCastRoutes extends MediaRouteProviderService {
     @Override
     public void onDiscoveryRequestChanged(MediaRouteDiscoveryRequest request) {
       if (request == null) return;
+      Diagnostics.route(
+          context, "legacy discovery " + request.getSelector().getControlCategories());
       for (String category : request.getSelector().getControlCategories()) {
-        if (category.startsWith("com.google.android.gms.cast.CATEGORY_")) categories.add(category);
+        if (category.startsWith("com.google.android.gms.cast.CATEGORY_") && categories.size() < 32)
+          categories.add(category);
       }
       if (categories.isEmpty()) return;
       if (discovery == null)
@@ -76,6 +79,7 @@ public final class LegacyCastRoutes extends MediaRouteProviderService {
     @Override
     public void changed() {
       if (closed) return;
+      categories.addAll(BridgeState.castCategories);
       var routes = new MediaRouteProviderDescriptor.Builder();
       for (Receiver receiver : BridgeState.receivers) {
         var route =

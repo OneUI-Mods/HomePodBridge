@@ -17,6 +17,7 @@ final class BridgeState {
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
   private static final List<Observer> OBSERVERS = new ArrayList<>();
   static List<Receiver> receivers = List.of();
+  static final java.util.Set<String> castCategories = new java.util.LinkedHashSet<>();
   static CaptureService capture;
   static Receiver selected;
   static boolean connected;

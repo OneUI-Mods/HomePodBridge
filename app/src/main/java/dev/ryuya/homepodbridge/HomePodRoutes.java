@@ -58,6 +58,13 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
 
   @Override
   public void onDiscoveryPreferenceChanged(RouteDiscoveryPreference preference) {
+    boolean added = false;
+    for (String feature : preference.getPreferredFeatures()) {
+      if (feature.startsWith("com.google.android.gms.cast.CATEGORY_")
+          && BridgeState.castCategories.size() < 32)
+        added |= BridgeState.castCategories.add(feature);
+    }
+    if (added) BridgeState.publish();
     if (preference.getPreferredFeatures().isEmpty()) {
       if (discovery != null && BridgeState.capture == null) discovery.close();
       return;
@@ -87,7 +94,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
     lastIds.clear();
     for (Receiver receiver : BridgeState.receivers) {
       lastIds.add(receiver.id());
-      routes.add(
+      MediaRoute2Info.Builder builder =
           new MediaRoute2Info.Builder(receiver.id(), receiver.name())
               .addFeature(MediaRoute2Info.FEATURE_LIVE_AUDIO)
               .addFeature(MediaRoute2Info.FEATURE_REMOTE_PLAYBACK)
@@ -101,8 +108,9 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
                       : MediaRoute2Info.CONNECTION_STATE_DISCONNECTED)
               .setVolumeHandling(MediaRoute2Info.PLAYBACK_VOLUME_VARIABLE)
               .setVolumeMax(100)
-              .setVolume(BridgeState.volume)
-              .build());
+              .setVolume(BridgeState.volume);
+      for (String category : BridgeState.castCategories) builder.addFeature(category);
+      routes.add(builder.build());
     }
     notifyRoutes(routes);
     if (session != null && session.getVolume() != BridgeState.volume) {
