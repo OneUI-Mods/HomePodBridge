@@ -35,6 +35,8 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
             return false;
           }
           int value = data.readInt();
+          android.util.Log.i(
+              "HomePodBridgeVolume", "System request code=" + code + " value=" + value);
           main.post(
               () -> {
                 if (code == RootProtocol.ADJUST_VOLUME) {
@@ -70,6 +72,7 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
 
             @Override
             public void onSetVolumeTo(int volume) {
+              android.util.Log.i("HomePodBridgeVolume", "Panel set=" + volume);
               main.post(() -> apply(volume));
             }
           };
@@ -115,6 +118,7 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
     if (session == null || !BridgeState.connected || !StreamSettings.load(context).wholeDevice())
       return;
     int bounded = VolumePolicy.apply(requested);
+    android.util.Log.i("HomePodBridgeVolume", "Apply=" + bounded);
     if (bounded == BridgeState.volume) return;
     BridgeState.volume = bounded;
     NativeSender.volume(bounded);

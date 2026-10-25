@@ -366,6 +366,9 @@ final class SystemVolumeEndpoint implements AutoCloseable {
   }
 
   private void send(int code, int value) {
+    android.util.Log.i(
+        "HomePodBridgeUi",
+        "Volume callback code=" + code + " value=" + value + " closed=" + closed);
     if (closed) return;
     Parcel data = Parcel.obtain();
     try {

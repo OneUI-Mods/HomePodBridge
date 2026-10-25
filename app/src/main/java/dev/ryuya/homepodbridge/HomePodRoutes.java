@@ -284,6 +284,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
 
   @Override
   public void onSetSessionVolume(long requestId, String sessionId, int volume) {
+    android.util.Log.i("HomePodBridgeVolume", "Route set=" + volume);
     if (session == null || !session.getId().equals(sessionId)) {
       notifyRequestFailed(requestId, REASON_INVALID_COMMAND);
       return;

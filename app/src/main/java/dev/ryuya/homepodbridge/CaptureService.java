@@ -487,6 +487,13 @@ public final class CaptureService extends Service {
   @Override
   protected void dump(java.io.FileDescriptor fd, java.io.PrintWriter writer, String[] args) {
     writer.println("HomePod Bridge sender diagnostics (no recorded PCM)");
+    writer.println(
+        "connected="
+            + BridgeState.connected
+            + " volume="
+            + BridgeState.volume
+            + " wholeDevice="
+            + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
   }
 }
