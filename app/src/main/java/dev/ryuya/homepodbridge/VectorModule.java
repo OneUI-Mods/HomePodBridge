@@ -95,6 +95,10 @@ public final class VectorModule implements IXposedHookLoadPackage, IXposedHookZy
         XposedHelpers.findClassIfExists("android.media.MediaRouter2Manager", load.classLoader);
     if (manager == null) return;
     SystemRouteTransfer.install(manager);
+    Class<?> proxy =
+        XposedHelpers.findClassIfExists(
+            "android.media.MediaRouter2$ProxyMediaRouter2Impl", load.classLoader);
+    if (proxy != null) SystemRouteTransfer.install(proxy);
     XC_MethodHook includeBridge =
         new XC_MethodHook() {
           @Override
