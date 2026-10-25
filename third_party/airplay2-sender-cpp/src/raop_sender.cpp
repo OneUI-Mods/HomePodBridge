@@ -468,6 +468,8 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     firstAudio_ = true;
     srcPhase_ = 0.0;
     inBuf_.clear();
+    inputPrimed_ = false;
+    inputUnderrunFrames_ = bufferingFrames_ = rebufferCount_ = 0;
     inReadFrames_ = 0;
     backlogSeq_.assign(kBacklogSize, -1);
     pendingVolumeDb_ = kNoVolume;   // never carry volume between devices
@@ -2073,12 +2075,27 @@ size_t RaopSender::fillFrames_(int16_t* dst, size_t want) {
         // (player paused / ring priming, the timeline must keep
         // running or the receiver declares the stream dead).
         const size_t availFrames = ring_->availableRead() / kChannels;
+        if (inputBufferFrames_ > 0 && !inputPrimed_) {
+            const size_t threshold = std::min(inputBufferFrames_, ring_->capacity() / kChannels);
+            if (availFrames < threshold) {
+                std::memset(dst, 0, wantSamples * sizeof(int16_t));
+                bufferingFrames_ += want;
+                return 0;
+            }
+            inputPrimed_ = true;
+        }
         const size_t take = std::min(availFrames, want);
         if (take > 0)
             ring_->tryPop(std::span<int16_t>(dst, take * kChannels));
-        if (take < want)
+        if (take < want) {
             std::memset(dst + take * kChannels, 0,
                         (want - take) * kChannels * sizeof(int16_t));
+            inputUnderrunFrames_ += want - take;
+            if (inputBufferFrames_ > 0) {
+                inputPrimed_ = false;
+                ++rebufferCount_;
+            }
+        }
         return take;
     }
 

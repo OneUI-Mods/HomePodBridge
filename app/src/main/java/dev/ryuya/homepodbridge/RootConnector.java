@@ -30,7 +30,8 @@ final class RootConnector {
     return value != null && value.isBinderAlive();
   }
 
-  static ParcelFileDescriptor open(String packageName, IBinder lifetime) throws RemoteException {
+  static ParcelFileDescriptor open(String packageName, IBinder lifetime, StreamSettings settings)
+      throws RemoteException {
     IBinder target = bridge;
     if (target == null) throw new RemoteException("System bridge unavailable");
     Parcel input = Parcel.obtain();
@@ -39,8 +40,10 @@ final class RootConnector {
       input.writeInterfaceToken(RootProtocol.DESCRIPTOR);
       input.writeStrongBinder(lifetime);
       input.writeString(packageName);
-      if (!target.transact(RootProtocol.OPEN, input, output, 0))
-        throw new RemoteException("Open rejected");
+      input.writeBoolean(settings.wholeDevice());
+      input.writeInt(settings.blockMs());
+      if (!target.transact(RootProtocol.OPEN_CONFIGURED, input, output, 0))
+        throw new RemoteException("Reload SystemUI to load the updated audio bridge");
       output.readException();
       return ParcelFileDescriptor.CREATOR.createFromParcel(output);
     } finally {

@@ -23,6 +23,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
+import android.os.PowerManager;
 import android.os.Process;
 import java.io.InputStream;
 import java.util.Locale;
@@ -45,6 +46,15 @@ public final class CaptureService extends Service {
   private boolean destroyed;
   private ConnectionCallback pendingCallback;
   private int callbackGeneration;
+  private String selectedPackage = BridgeState.MUSIC;
+
+  void reconfigure() {
+    if (BridgeState.selected == null) return;
+    Receiver receiver = BridgeState.selected;
+    if (HomePodRoutes.available()) HomePodRoutes.selectFromSystem(selectedPackage, receiver.id());
+    else select(receiver, selectedPackage, success -> {});
+  }
+
   private final MediaProjection.Callback projectionCallback =
       new MediaProjection.Callback() {
         @Override
@@ -115,6 +125,7 @@ public final class CaptureService extends Service {
       return;
     }
     cancelPending();
+    selectedPackage = sourcePackage;
     int token = generation.incrementAndGet();
     closeSystemInput();
     pendingCallback = callback;
@@ -134,9 +145,16 @@ public final class CaptureService extends Service {
     boolean networkBound = false;
     LocalRoute localRoute = null;
     boolean started = false;
+    StreamSettings settings = StreamSettings.load(this);
+    PowerManager.WakeLock wake =
+        getSystemService(PowerManager.class)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HomePodBridge:stream");
+    wake.setReferenceCounted(false);
     int failure = R.string.connection_failed;
     try {
       if (generation.get() != token) return;
+      wake.acquire(60_000);
+      long nextWakeRefresh = android.os.SystemClock.elapsedRealtime() + 30_000;
       if (!systemMode
           && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
               != PackageManager.PERMISSION_GRANTED) {
@@ -156,20 +174,24 @@ public final class CaptureService extends Service {
       if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
       PcmPipe rootInput = null;
       if (systemMode) {
-        ParcelFileDescriptor pipe = RootConnector.open(sourcePackage, lifetime);
+        ParcelFileDescriptor pipe = RootConnector.open(sourcePackage, lifetime, settings);
         systemPipe = pipe;
         if (generation.get() != token) {
           closeSystemInput();
           return;
         }
         InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(pipe);
-        rootInput = new PcmPipe(input, 882);
+        rootInput = new PcmPipe(input, settings.samplesPerRead());
       } else {
-        AudioPlaybackCaptureConfiguration capture =
+        AudioPlaybackCaptureConfiguration.Builder captureBuilder =
             new AudioPlaybackCaptureConfiguration.Builder(projection)
-                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-                .addMatchingUid(musicUid)
-                .build();
+                .addMatchingUsage(AudioAttributes.USAGE_MEDIA);
+        if (settings.wholeDevice())
+          captureBuilder
+              .addMatchingUsage(AudioAttributes.USAGE_GAME)
+              .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN);
+        else captureBuilder.addMatchingUid(musicUid);
+        AudioPlaybackCaptureConfiguration capture = captureBuilder.build();
         AudioFormat format =
             new AudioFormat.Builder()
                 .setSampleRate(44100)
@@ -197,10 +219,17 @@ public final class CaptureService extends Service {
           receiver.name(),
           receiver.deviceId(),
           identity(),
-          BuildConfig.VOLUME_LIMIT);
-      short[] pcm = new short[882];
+          BuildConfig.VOLUME_LIMIT,
+          settings.bufferMs(),
+          settings.latencyMs());
+      short[] pcm = new short[settings.samplesPerRead()];
       long deadline = System.nanoTime() + 20_000_000_000L;
       while (generation.get() == token) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now >= nextWakeRefresh) {
+          wake.acquire(60_000);
+          nextWakeRefresh = now + 30_000;
+        }
         int state = NativeSender.state();
         if (state < 0 || (!started && System.nanoTime() > deadline)) break;
         if (!started && state == 2) {
@@ -225,7 +254,11 @@ public final class CaptureService extends Service {
           failure = R.string.capture_failed;
           break;
         }
-        if (read > 0 && state == 2) NativeSender.write(pcm, read - read % 2);
+        if (read > 0 && state == 2) {
+          while (!NativeSender.write(pcm, read - read % 2)
+              && generation.get() == token
+              && NativeSender.state() == 2) Thread.sleep(2);
+        }
         if (read == 0) Thread.sleep(5);
       }
     } catch (Exception e) {
@@ -237,33 +270,37 @@ public final class CaptureService extends Service {
       }
       failure = R.string.capture_failed;
     } finally {
-      try (var diagnostics = openFileOutput("last-connection.txt", MODE_PRIVATE)) {
-        diagnostics.write(
-            NativeSender.diagnostic().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-      } catch (java.io.IOException ignored) {
-      }
-      closeSystemInput();
-      if (recorder != null) {
-        try {
-          recorder.stop();
-        } catch (IllegalStateException ignored) {
+      try {
+        try (var diagnostics = openFileOutput("last-connection.txt", MODE_PRIVATE)) {
+          diagnostics.write(
+              NativeSender.diagnostic().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.io.IOException ignored) {
         }
-        recorder.release();
+        closeSystemInput();
+        if (recorder != null) {
+          try {
+            recorder.stop();
+          } catch (IllegalStateException ignored) {
+          }
+          recorder.release();
+        }
+        NativeSender.stop();
+        if (localRoute != null) localRoute.close();
+        if (networkBound) connectivity.bindProcessToNetwork(previousNetwork);
+        boolean wasStarted = started;
+        int message = failure;
+        main.post(
+            () -> {
+              if (destroyed || generation.get() != token) return;
+              BridgeState.connected = false;
+              BridgeState.selected = null;
+              BridgeState.status = message;
+              BridgeState.publish();
+              if (!wasStarted) complete(token, false);
+            });
+      } finally {
+        if (wake.isHeld()) wake.release();
       }
-      NativeSender.stop();
-      if (localRoute != null) localRoute.close();
-      if (networkBound) connectivity.bindProcessToNetwork(previousNetwork);
-      boolean wasStarted = started;
-      int message = failure;
-      main.post(
-          () -> {
-            if (destroyed || generation.get() != token) return;
-            BridgeState.connected = false;
-            BridgeState.selected = null;
-            BridgeState.status = message;
-            BridgeState.publish();
-            if (!wasStarted) complete(token, false);
-          });
     }
   }
 

@@ -1515,6 +1515,58 @@ void testResampler() {
     r.sender->stop();
 }
 
+void testInputJitterReserve() {
+    g_test = "input jitter reserve and starvation recovery";
+    Rig r;
+    r.sender->setInputBufferFrames(4410);
+    r.sender->setPresentationLatencyMs(500);
+    r.sender->setAuth(RaopDeviceInfo::Auth::None, false, "box", "", "");
+    r.sender->start(r.peerIp, 5000, "FakeBox");
+    r.connectControl();
+    r.exchange();
+    REQUIRE(r.launchedOk && *r.launchedOk, "streaming");
+    auto initial = r.io.takeUdp();
+    REQUIRE(!initial.empty(), "initial clock sync");
+    CHECK(be32(initial.front().data, 16) == 22050, "500 ms presentation timestamp");
+    std::vector<int16_t> small(352 * 2, 1000);
+    CHECK(r.ring.tryPush(small), "partial reserve queued");
+    r.advance(8);
+    auto packets = r.io.takeUdp();
+    REQUIRE(packets.size() == 1, "RTP continues during priming");
+    auto pcm = r.rx.decodeAudio(packets.front().data);
+    CHECK(pcm && std::all_of(pcm->begin(), pcm->end(), [](int16_t v) { return v == 0; }), "priming sends silence");
+    CHECK(r.ring.availableRead() == small.size(), "priming retains audio");
+    std::vector<int16_t> fill((4410 - 352) * 2, 1000);
+    CHECK(r.ring.tryPush(fill), "reserve filled");
+    for (int i = 0; i < 256; ++i) {
+        // Producer delivers 64 ms batches: bursty input must not puncture the audio.
+        if (i > 0 && i % 8 == 0) {
+            std::vector<int16_t> batch(2822 * 2, 1000);
+            REQUIRE(r.ring.tryPush(batch), "bounded producer batch fits");
+        }
+        r.advance(8);
+        for (const auto& packet : r.io.takeUdp()) {
+            if (packet.s != RaopUdp::Audio) continue;
+            pcm = r.rx.decodeAudio(packet.data);
+            CHECK(pcm && std::all_of(pcm->begin(), pcm->end(), [](int16_t v) { return v == 1000; }), "64 ms producer jitter preserves continuous PCM");
+        }
+    }
+    CHECK(r.sender->inputUnderrunFrames() == 0, "reserve absorbs producer scheduling jitter");
+    for (int i = 0; i < 40; ++i) r.advance(8);
+    r.io.takeUdp();
+    CHECK(r.sender->inputUnderrunFrames() > 0 && r.sender->rebufferCount() == 1, "real starvation is counted once");
+    size_t missing = 4410 - r.ring.availableRead() / 2;
+    std::vector<int16_t> recovery(missing * 2, 1000);
+    REQUIRE(r.ring.tryPush(recovery), "recovery reserve queued");
+    r.advance(8);
+    for (const auto& packet : r.io.takeUdp()) {
+        if (packet.s != RaopUdp::Audio) continue;
+        pcm = r.rx.decodeAudio(packet.data);
+        CHECK(pcm && std::all_of(pcm->begin(), pcm->end(), [](int16_t v) { return v == 1000; }), "audio resumes after refilling reserve");
+    }
+    r.sender->stop();
+}
+
 } // namespace
 
 int main() {
@@ -1530,6 +1582,7 @@ int main() {
     testHomePodSetupOrder();
     testVolumePolicy();
     testResampler();
+    testInputJitterReserve();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);
     return g_failures == 0 ? 0 : 1;

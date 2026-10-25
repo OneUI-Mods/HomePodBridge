@@ -2,6 +2,17 @@
     <string name="app_name">HomePod Bridge</string>
     <string name="module_description">システムのメディア出力先にHomePodを追加します。</string>
     <string name="intro">HomePod Bridge</string>
+    <string name="capture_mode">転送する音声</string>
+    <string name="mode_selected">選択アプリ</string>
+    <string name="mode_whole">端末全体</string>
+    <string name="mode_description">選択アプリはメディア出力で選んだアプリ、端末全体は複数アプリの再生音や通知音を転送します。マイクと通話音声は対象外です。変更すると音量0%で再接続します。</string>
+    <string name="buffer_settings">遅延とバッファ</string>
+    <string name="buffer_amount">送信前バッファ：%1$d ms</string>
+    <string name="capture_block">取り込み単位：%1$d ms</string>
+    <string name="receiver_latency">受信側の目標待ち時間：%1$d ms</string>
+    <string name="buffer_description">小さくすると遅延を減らせますが、音が途切れやすくなります。実際の遅延はHomePodとネットワークにも左右されます。設定は音量0%で再接続して反映します。</string>
+    <string name="restore_defaults">標準に戻す</string>
+    <string name="apply_settings">適用</string>
     <string name="volume">音量 · %1$d%%</string>
     <string name="system_ready">システムの音声出力と連携しています</string>
     <string name="system_missing">VectorでSystem UIを対象に有効化し、SystemUIを再読み込みしてください。</string>

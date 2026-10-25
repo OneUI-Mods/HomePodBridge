@@ -21,6 +21,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.widget.TextViewCompat;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
@@ -77,6 +78,34 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(card(status));
     systemStatus = label("", 14);
     body.addView(systemStatus);
+    LinearLayout modeControls = new LinearLayout(this);
+    modeControls.setOrientation(LinearLayout.VERTICAL);
+    modeControls.addView(label(getString(R.string.capture_mode), 18));
+    MaterialButtonToggleGroup modes = new MaterialButtonToggleGroup(this);
+    modes.setSingleSelection(true);
+    modes.setSelectionRequired(true);
+    int selectedModeId = View.generateViewId();
+    int wholeModeId = View.generateViewId();
+    for (int modeId : new int[] {selectedModeId, wholeModeId}) {
+      MaterialButton mode = new MaterialButton(this);
+      mode.setId(modeId);
+      mode.setText(modeId == selectedModeId ? R.string.mode_selected : R.string.mode_whole);
+      mode.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
+      modes.addView(mode);
+    }
+    modes.check(StreamSettings.load(this).wholeDevice() ? wholeModeId : selectedModeId);
+    modes.addOnButtonCheckedListener(
+        (group, id, checked) -> {
+          if (!checked) return;
+          StreamSettings previous = StreamSettings.load(this);
+          new StreamSettings(
+                  id == wholeModeId, previous.bufferMs(), previous.blockMs(), previous.latencyMs())
+              .save(this);
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    modeControls.addView(modes);
+    modeControls.addView(label(getString(R.string.mode_description), 14));
+    body.addView(card(modeControls));
     share =
         button(
             getString(R.string.enable),
@@ -117,6 +146,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         });
     volumeControls.addView(volume);
     body.addView(card(volumeControls));
+    body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
     body.addView(
         button(
             getString(R.string.open_music),
@@ -329,6 +359,61 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     } catch (java.io.IOException e) {
       toast(R.string.licenses);
     }
+  }
+
+  private void bufferSettings() {
+    StreamSettings settings = StreamSettings.load(this);
+    LinearLayout content = new LinearLayout(this);
+    content.setOrientation(LinearLayout.VERTICAL);
+    content.setPadding(dp(20), 0, dp(20), 0);
+    Slider buffering =
+        settingSlider(content, R.string.buffer_amount, 0, 300, 10, settings.bufferMs());
+    Slider block = settingSlider(content, R.string.capture_block, 5, 40, 5, settings.blockMs());
+    Slider latency =
+        settingSlider(content, R.string.receiver_latency, 250, 2000, 50, settings.latencyMs());
+    content.addView(label(getString(R.string.buffer_description), 14));
+    ScrollView scroll = new ScrollView(this);
+    scroll.addView(content);
+    new MaterialAlertDialogBuilder(this)
+        .setTitle(R.string.buffer_settings)
+        .setView(scroll)
+        .setNeutralButton(
+            R.string.restore_defaults, (dialog, which) -> saveBufferSettings(150, 10, 1500))
+        .setNegativeButton(android.R.string.cancel, null)
+        .setPositiveButton(
+            R.string.apply_settings,
+            (dialog, which) ->
+                saveBufferSettings(
+                    Math.round(buffering.getValue()),
+                    Math.round(block.getValue()),
+                    Math.round(latency.getValue())))
+        .show();
+  }
+
+  private Slider settingSlider(
+      LinearLayout content, int title, int min, int max, int step, int value) {
+    TextView heading = label(getString(title, value), 16);
+    content.addView(heading);
+    Slider slider = new Slider(this);
+    slider.setValueFrom(min);
+    slider.setValueTo(max);
+    slider.setStepSize(step);
+    slider.setValue(value);
+    slider.setContentDescription(getString(title, value));
+    slider.setLabelFormatter(number -> Math.round(number) + " ms");
+    slider.addOnChangeListener(
+        (view, number, fromUser) -> {
+          heading.setText(getString(title, Math.round(number)));
+          view.setContentDescription(getString(title, Math.round(number)));
+        });
+    content.addView(slider);
+    return slider;
+  }
+
+  private void saveBufferSettings(int bufferMs, int blockMs, int latencyMs) {
+    new StreamSettings(StreamSettings.load(this).wholeDevice(), bufferMs, blockMs, latencyMs)
+        .save(this);
+    if (BridgeState.capture != null) BridgeState.capture.reconfigure();
   }
 
   private int dp(int value) {

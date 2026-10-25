@@ -3,6 +3,17 @@
     <string name="module_description">Add HomePod to the system media output picker.</string>
     <string-array name="module_scope"><item>com.android.systemui</item></string-array>
     <string name="intro">HomePod Bridge</string>
+    <string name="capture_mode">Audio to share</string>
+    <string name="mode_selected">Selected app</string>
+    <string name="mode_whole">Whole device</string>
+    <string name="mode_description">Selected app shares the app chosen in media output. Whole device shares playback and notification sounds across apps. Microphone and call audio are excluded. Changing modes reconnects at 0% volume.</string>
+    <string name="buffer_settings">Latency and buffers</string>
+    <string name="buffer_amount">Send-ahead buffer: %1$d ms</string>
+    <string name="capture_block">Capture block: %1$d ms</string>
+    <string name="receiver_latency">Receiver target delay: %1$d ms</string>
+    <string name="buffer_description">Smaller values can reduce delay but increase dropouts. Actual latency also depends on HomePod and the network. Applying settings reconnects at 0% volume.</string>
+    <string name="restore_defaults">Reset</string>
+    <string name="apply_settings">Apply</string>
     <string name="volume">Volume · %1$d%%</string>
     <string name="system_ready">System audio routing is ready</string>
     <string name="system_missing">Enable the module for System UI in Vector, then reload SystemUI.</string>

@@ -43,6 +43,7 @@
 #include "raop_log.h"
 
 #include <chrono>
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -108,6 +109,14 @@ public:
     // Sample rate of the PCM in the ring (engine device rate). 44100
     // passes through; anything else is linear-resampled to 44100.
     void setInputFormat(uint32_t sampleRate);
+    // HomePod Bridge: optional input jitter reserve, preserving the RTP clock while priming.
+    void setInputBufferFrames(size_t frames) { inputBufferFrames_ = frames; inputPrimed_ = false; }
+    void setPresentationLatencyMs(uint32_t milliseconds) {
+        latency_ = std::clamp(milliseconds, 250u, 2000u) * 44100u / 1000u;
+    }
+    uint64_t inputUnderrunFrames() const { return inputUnderrunFrames_; }
+    uint64_t bufferingFrames() const { return bufferingFrames_; }
+    uint64_t rebufferCount() const { return rebufferCount_; }
 
     // v0.66.x Phase 2/3, describe how the receiver must be reached BEFORE
     // start(). `auth` selects auth-setup / legacy-PIN / HAP-transient /
@@ -361,6 +370,11 @@ private:
     // -- input conditioning (device rate -> 44.1 kHz) -----------------
     RingBuffer<int16_t>* ring_ = nullptr;
     uint32_t inputRate_ = 44100;
+    size_t inputBufferFrames_ = 0;
+    bool inputPrimed_ = false;
+    uint64_t inputUnderrunFrames_ = 0;
+    uint64_t bufferingFrames_ = 0;
+    uint64_t rebufferCount_ = 0;
     std::vector<int16_t> inBuf_;   // unconsumed input samples (interleaved)
     size_t   inReadFrames_ = 0;    // consumed frames at inBuf_'s front
     double   srcPhase_ = 0.0;      // fractional input-frame position

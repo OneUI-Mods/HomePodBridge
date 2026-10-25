@@ -45,8 +45,9 @@ final class SystemAudioBridge extends Binder {
       reply.writeString(RootProtocol.DESCRIPTOR);
       return true;
     }
-    if (code != RootProtocol.OPEN && code != RootProtocol.CLOSE)
-      return super.onTransact(code, data, reply, flags);
+    if (code != RootProtocol.OPEN
+        && code != RootProtocol.OPEN_CONFIGURED
+        && code != RootProtocol.CLOSE) return super.onTransact(code, data, reply, flags);
     data.enforceInterface(RootProtocol.DESCRIPTOR);
     try {
       var app = context.getPackageManager().getApplicationInfo(RootProtocol.PACKAGE, 0);
@@ -80,13 +81,16 @@ final class SystemAudioBridge extends Binder {
           || targetPackage.equals(RootProtocol.PACKAGE))
         throw new IllegalArgumentException("Invalid media package");
       int targetUid = context.getPackageManager().getApplicationInfo(targetPackage, 0).uid;
+      boolean wholeDevice = code == RootProtocol.OPEN_CONFIGURED && data.readBoolean();
+      int blockMs = code == RootProtocol.OPEN_CONFIGURED ? data.readInt() : 10;
+      StreamSettings settings = new StreamSettings(wholeDevice, 150, blockMs, 1500);
       if (stream != null) {
         stream.close();
         stream = null;
       }
       ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
       try {
-        stream = new Stream(client, targetUid, pipe[1]);
+        stream = new Stream(client, targetUid, appUid(), pipe[1], settings);
         reply.writeNoException();
         pipe[0].writeToParcel(reply, android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
       } catch (Throwable e) {
@@ -102,26 +106,51 @@ final class SystemAudioBridge extends Binder {
     return true;
   }
 
+  private int appUid() throws PackageManager.NameNotFoundException {
+    return context.getPackageManager().getApplicationInfo(RootProtocol.PACKAGE, 0).uid;
+  }
+
   private final class Stream implements IBinder.DeathRecipient {
     final IBinder client;
     final Object policy;
     final AudioRecord record;
     final ParcelFileDescriptor writePipe;
     final AtomicBoolean closed = new AtomicBoolean();
+    final int blockSamples;
 
-    Stream(IBinder client, int uid, ParcelFileDescriptor writePipe) throws Exception {
+    Stream(
+        IBinder client,
+        int uid,
+        int bridgeUid,
+        ParcelFileDescriptor writePipe,
+        StreamSettings settings)
+        throws Exception {
       this.client = client;
       this.writePipe = writePipe;
+      blockSamples = settings.samplesPerRead();
       ClassLoader loader = context.getClassLoader();
       Object rule =
           XposedHelpers.newInstance(
               XposedHelpers.findClass("android.media.audiopolicy.AudioMixingRule$Builder", loader));
-      XposedHelpers.callMethod(
-          rule,
-          "addRule",
-          new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build(),
-          1);
-      XposedHelpers.callMethod(rule, "addMixRule", 4, Integer.valueOf(uid)); // RULE_MATCH_UID
+      if (settings.wholeDevice()) {
+        XposedHelpers.callMethod(rule, "setTargetMixRole", 0); // MIX_ROLE_PLAYERS
+        XposedHelpers.callMethod(rule, "excludeMixRule", 4, Integer.valueOf(bridgeUid));
+        for (int usage :
+            new int[] {
+              AudioAttributes.USAGE_VOICE_COMMUNICATION,
+              AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING
+            }) {
+          XposedHelpers.callMethod(
+              rule, "excludeRule", new AudioAttributes.Builder().setUsage(usage).build(), 1);
+        }
+      } else {
+        XposedHelpers.callMethod(
+            rule,
+            "addRule",
+            new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build(),
+            1);
+        XposedHelpers.callMethod(rule, "addMixRule", 4, Integer.valueOf(uid)); // RULE_MATCH_UID
+      }
       Object mix =
           XposedHelpers.newInstance(
               XposedHelpers.findClass("android.media.audiopolicy.AudioMix$Builder", loader),
@@ -177,7 +206,7 @@ final class SystemAudioBridge extends Binder {
     private void pump() {
       android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
       try (OutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(writePipe)) {
-        short[] samples = new short[882];
+        short[] samples = new short[blockSamples];
         ByteBuffer bytes = ByteBuffer.allocate(samples.length * 2).order(ByteOrder.LITTLE_ENDIAN);
         while (!closed.get()) {
           int count = record.read(samples, 0, samples.length, AudioRecord.READ_BLOCKING);

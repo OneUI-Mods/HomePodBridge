@@ -8,7 +8,14 @@ final class NativeSender {
   private NativeSender() {}
 
   static native void start(
-      String host, int port, String name, String deviceId, String identity, int volumeLimit);
+      String host,
+      int port,
+      String name,
+      String deviceId,
+      String identity,
+      int volumeLimit,
+      int bufferMs,
+      int latencyMs);
 
   static native boolean write(short[] pcm, int count);
 
