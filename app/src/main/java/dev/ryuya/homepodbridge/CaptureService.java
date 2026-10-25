@@ -21,6 +21,9 @@ import android.os.Looper;
 import android.os.Process;
 import android.os.Binder;
 import android.os.ParcelFileDescriptor;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import java.io.InputStream;
 import java.util.Locale;
 import java.util.UUID;
@@ -95,6 +98,9 @@ public final class CaptureService extends Service {
 
     private void stream(Receiver receiver, String sourcePackage, int token) {
         AudioRecord recorder = null;
+        ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
+        Network previousNetwork = connectivity.getBoundNetworkForProcess();
+        boolean networkBound = false;
         boolean started = false;
         int failure = R.string.connection_failed;
         try {
@@ -103,6 +109,15 @@ public final class CaptureService extends Service {
                 throw new SecurityException("Audio permission revoked");
             }
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+            for (Network network : connectivity.getAllNetworks()) {
+                NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+                if (capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                        && (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))) {
+                    networkBound = connectivity.bindProcessToNetwork(network);
+                    if (networkBound) break;
+                }
+            }
+            if (!networkBound) throw new IllegalStateException("Local network unavailable");
             PcmPipe rootInput = null;
             if (systemMode) {
                 ParcelFileDescriptor pipe = RootConnector.open(sourcePackage, lifetime);
@@ -156,6 +171,7 @@ public final class CaptureService extends Service {
                 recorder.release();
             }
             NativeSender.stop();
+            if (networkBound) connectivity.bindProcessToNetwork(previousNetwork);
             boolean wasStarted = started;
             int message = failure;
             main.post(() -> {

@@ -567,6 +567,7 @@ void RaopSender::onTcpConnected(RaopTcp ch, const RaopEndpoint& local, const Rao
     if (state_ != State::Connecting) return;
     rtspConnected_ = true;
     localIp_ = local.ip;
+    info_("Cast: local network address {}", localIp_);
     hostIp_  = peer.ip;
     info_("Cast: RAOP RTSP connected to {}:{}", host_, peer.port);
     // v0.66.x Phase 2/3, run the auth/pairing chain first; for plain
@@ -2145,6 +2146,7 @@ void RaopSender::onControlDatagram_(std::span<const uint8_t> dg, const RaopEndpo
 
 void RaopSender::onTimingDatagram_(std::span<const uint8_t> dg, const RaopEndpoint& from) {
     if (dg.size() < 32) return;   // TimingPacket is 32 bytes
+    info_("Cast: timing request received");
     // pyatv TimingServer.datagram_received: echo the request's
     // sendtime as our reftime; receive + send time = NTP "now"
     // (one wall-clock read is plenty at this precision).

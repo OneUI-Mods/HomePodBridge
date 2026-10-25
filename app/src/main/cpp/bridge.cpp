@@ -91,6 +91,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             sender.setIdentity(source);
             sender.attachRing(&engine->ring);
             sender.setInputFormat(44100);
+            sender.setVolume(30);
             sender.setAuth(fxchain::RaopDeviceInfo::Auth::HapTransient, true, id, {}, {});
             sender.start(ip, static_cast<uint16_t>(port), label);
             while (!engine->stop.load() && engine->state.load() > 0) {
