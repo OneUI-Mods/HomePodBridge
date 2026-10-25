@@ -27,7 +27,7 @@ public final class HalRootProbe {
       if (android.os.Process.myUid() != 0
           || args.length < 1
           || args.length > 2
-          || (args.length == 2 && !args[1].equals("freeze"))
+          || (args.length == 2 && !List.of("freeze", "tune", "restore").contains(args[1]))
           || !(args[0].equals("none") || args[0].matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")))
         throw new IOException("Invalid probe context");
       verify(MODULE, MODULE_SHA);
@@ -113,7 +113,9 @@ public final class HalRootProbe {
           if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
             throw new IOException("Invalid native helper path");
           System.load(apk + "!/lib/arm64-v8a/libhomepod_hal.so");
-          System.out.println(freezeCheck(Integer.parseInt(pid), base, pipeBase, args[0]));
+          int operation = args[1].equals("tune") ? 1 : args[1].equals("restore") ? 2 : 0;
+          System.out.println(
+              freezeCheck(Integer.parseInt(pid), base, pipeBase, args[0], operation));
         }
       }
     } catch (Exception error) {
@@ -202,5 +204,6 @@ public final class HalRootProbe {
 
   private HalRootProbe() {}
 
-  private static native String freezeCheck(int pid, long module, long mono, String registration);
+  private static native String freezeCheck(
+      int pid, long module, long mono, String registration, int operation);
 }

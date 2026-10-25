@@ -21,11 +21,21 @@ final class HalInspection {
   private static boolean running;
 
   static synchronized void requestRoute(android.content.Context context, String registration) {
-    requestRoute(context, registration, false);
+    requestRoute(context, registration, 0);
   }
 
   static synchronized void requestRoute(
       android.content.Context context, String registration, boolean freeze) {
+    requestRoute(context, registration, freeze ? 1 : 0);
+  }
+
+  static synchronized String result() {
+    return running ? null : status;
+  }
+
+  static synchronized void requestRoute(
+      android.content.Context context, String registration, int operation) {
+    if (operation < 0 || operation > 3) return;
     if (running) return;
     String address = registration == null ? "none" : registration;
     if (!address.equals("none") && !address.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")) {
@@ -40,7 +50,8 @@ final class HalInspection {
     running = true;
     image = null;
     selected = 3;
-    status = "Inspecting owned route (read only)";
+    status = "Checking owned HAL route";
+    String action = new String[] {"", " freeze", " tune", " restore"}[operation];
     new Thread(
             () -> {
               try {
@@ -52,7 +63,7 @@ final class HalInspection {
                             + " '"
                             + address
                             + "'"
-                            + (freeze ? " freeze" : ""));
+                            + action);
                 synchronized (HalInspection.class) {
                   image = report;
                   status = new String(report, java.nio.charset.StandardCharsets.UTF_8);

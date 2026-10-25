@@ -15,7 +15,7 @@
 #include "hal_owned_layout.h"
 
 typedef struct { pid_t tid; int stopped, deliver_signal; } task;
-typedef struct { uint64_t begin,end; } region;
+typedef struct { uint64_t begin,end; int writable; } region;
 typedef struct { int fd; region maps[4096]; size_t count; } memory;
 static uint64_t monotonic_ns(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
@@ -28,6 +28,13 @@ static int read_memory(void* opaque, uint64_t address, void* output, size_t leng
         return pread(mem->fd,output,length,(off_t)address)==(ssize_t)length;
     return 0;
 }
+static int write_memory(void* opaque,uint64_t address,const void* input,size_t length) {
+    memory* mem=opaque;
+    if (length!=8 || address%8) return 0;
+    for (size_t i=0;i<mem->count;++i) if (mem->maps[i].writable && address>=mem->maps[i].begin
+        && address+length<=mem->maps[i].end) return pwrite(mem->fd,input,length,(off_t)address)==(ssize_t)length;
+    return 0;
+}
 static int load_maps(memory* mem,pid_t pid) {
     char path[64],line[1024]; snprintf(path,sizeof(path),"/proc/%d/maps",pid);
     FILE* file=fopen(path,"re"); if (!file) return 0;
@@ -36,7 +43,7 @@ static int load_maps(memory* mem,pid_t pid) {
         if (sscanf(line,"%llx-%llx %4s",&begin,&end,permissions)!=3) continue;
         if (permissions[0]!='r') continue;
         if (mem->count==4096) { fclose(file); return 0; }
-        mem->maps[mem->count++]=(region){begin,end};
+        mem->maps[mem->count++]=(region){begin,end,permissions[1]=='w'};
     }
     fclose(file); return 1;
 }
@@ -98,15 +105,14 @@ static int thaw(task* tasks,size_t count) {
 }
 
 JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
-    JNIEnv* env,jclass type,jint pid,jlong module,jlong mono,jstring registration) {
+    JNIEnv* env,jclass type,jint pid,jlong module,jlong mono,jstring registration,jint operation) {
     (void)type;
-    if (getuid()!=0 || pid<=1) return (*env)->NewStringUTF(env,"Freeze check unavailable: root required");
+    if (getuid()!=0 || pid<=1 || operation<0 || operation>2) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
     const char* address=(*env)->GetStringUTFChars(env,registration,NULL);
     if (!address) return NULL;
-    // This phase deliberately has no write operation. Validate quiescence before adding tuning.
     memory mem={.fd=-1}; task tasks[256];size_t count=0;uint64_t begin=monotonic_ns();
     const char* error=NULL;hp_owned_pipe owned={0};char path[64],report[256];
-    snprintf(path,sizeof(path),"/proc/%d/mem",pid);mem.fd=open(path,O_RDONLY|O_CLOEXEC);
+    snprintf(path,sizeof(path),"/proc/%d/mem",pid);mem.fd=open(path,(operation?O_RDWR:O_RDONLY)|O_CLOEXEC);
     if (mem.fd<0) error="read-only memory open refused";
     else if (!load_maps(&mem,pid)) error="bounded mapping inventory unavailable";
     // No EXITKILL: if this short-lived helper dies, the kernel releases its ptrace stops.
@@ -117,13 +123,16 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
         sigprocmask(SIG_UNBLOCK,&alarm_set,NULL);alarm(1);
         error=freeze(pid,tasks,&count,begin+25000000u);
         if (!error) error=hp_find_owned(read_memory,&mem,(uint64_t)module,(uint64_t)mono,address,&owned);
+        if (!error && operation) error=hp_change_reserve(read_memory,write_memory,&mem,&owned,1,
+            operation==1?2587:1856,operation==1?1856:2587);
     }
     int detached=thaw(tasks,count);
     if (!detached) raise(SIGALRM);
     alarm(0);if (mem.fd>=0) close(mem.fd);
     uint64_t elapsed=(monotonic_ns()-begin)/1000;
     if (!detached) error="detach incomplete";
-    if (error) snprintf(report,sizeof(report),"Read-only freeze check refused: %s; maps=%zu tasks=%zu elapsedUs=%llu",error,mem.count,count,(unsigned long long)elapsed);
+    if (error) snprintf(report,sizeof(report),"Owned HAL operation refused: %s; maps=%zu tasks=%zu elapsedUs=%llu",error,mem.count,count,(unsigned long long)elapsed);
+    else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu; exact field verified",operation==1?2587:1856,operation==1?1856:2587,count,(unsigned long long)elapsed);
     else snprintf(report,sizeof(report),"Read-only freeze check passed: tasks=%zu elapsedUs=%llu targetFillFrames=%llu; no memory writes",count,(unsigned long long)elapsed,(unsigned long long)owned.target);
     (*env)->ReleaseStringUTFChars(env,registration,address);
     return (*env)->NewStringUTF(env,report);

@@ -7,6 +7,7 @@
 #include <string.h>
 
 typedef int (*hp_read)(void*, uint64_t, void*, size_t);
+typedef int (*hp_write)(void*, uint64_t, const void*, size_t);
 typedef struct { uint64_t route, sink, target_address, target; } hp_owned_pipe;
 static uint64_t hp_pointer(uint64_t value) { return value & UINT64_C(0x00ffffffffffffff); }
 static uint64_t hp_u64(const void* bytes) { uint64_t value; memcpy(&value,bytes,8); return value; }
@@ -60,5 +61,25 @@ static const char* hp_find_owned(hp_read read, void* ctx, uint64_t module, uint6
     }
     if (visited!=count) return "incomplete route tree";
     return found==1?NULL:"owned registration absent";
+}
+
+// Caller must own the complete stopped-thread set and hold that exclusion through return.
+static const char* hp_change_reserve(hp_read read,hp_write write,void* ctx,const hp_owned_pipe* owned,
+                                    int exclusive,uint64_t before,uint64_t after) {
+    uint8_t original[256],expected[256],observed[256];
+    if (!exclusive) return "exclusive access required";
+    if (!((before==2587 && after==1856)||(before==1856 && after==2587))) return "unsupported reserve transition";
+    if (owned->target_address!=owned->sink+0xe8 || owned->target!=before) return "stale owned target";
+    if (!read(ctx,owned->sink,original,256) || hp_u64(original+0xe8)!=before) return "target changed";
+    memcpy(expected,original,256);memcpy(expected+0xe8,&after,8);
+    int complete=write(ctx,owned->target_address,&after,8);
+    if (read(ctx,owned->sink,observed,256)) {
+        if (complete && !memcmp(expected,observed,256)) return NULL;
+        if (!memcmp(original,observed,256)) return "reserve write not applied";
+    }
+    // Still under the same exclusion: roll back a short write/readback mismatch.
+    if (!write(ctx,owned->target_address,&before,8) || !read(ctx,owned->sink,observed,256)
+        || memcmp(original,observed,256)) return "reserve rollback failed; close owned capture";
+    return "reserve verification failed; original restored";
 }
 #endif
