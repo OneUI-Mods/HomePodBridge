@@ -1602,7 +1602,7 @@ void testInputJitterReserve() {
 
 void testLowLatencyTimeline() {
     g_test = "low latency presentation timeline";
-    for (const uint32_t latency : {20u, 50u}) {
+    for (const uint32_t latency : {10u, 20u, 50u}) {
         Rig r;
         r.sender->setInputBufferFrames(0);
         r.sender->setPresentationLatencyMs(latency);
@@ -1628,7 +1628,7 @@ void testLowLatencyTimeline() {
 void testAp2LatencyNegotiation() {
     using airplay::bplist::Value;
     g_test = "AP2 requested latency window and receiver bounds";
-    for (uint32_t target : {20u, 50u, 1500u}) {
+    for (uint32_t target : {10u, 20u, 50u, 1500u}) {
         Rig r;
         r.sender->setVolumePolicy(0, 100);
         r.sender->setPresentationLatencyMs(target);

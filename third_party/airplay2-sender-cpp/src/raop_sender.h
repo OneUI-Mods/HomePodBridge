@@ -122,7 +122,7 @@ public:
     uint64_t adaptiveBufferChanges() const { return adaptiveBufferChanges_; }
     uint64_t trimmedSilentFrames() const { return trimmedSilentFrames_; }
     void setPresentationLatencyMs(uint32_t milliseconds) {
-        requestedLatency_ = latency_ = std::clamp(milliseconds, 20u, 2000u) * 44100u / 1000u;
+        requestedLatency_ = latency_ = std::clamp(milliseconds, 10u, 2000u) * 44100u / 1000u;
     }
     uint32_t requestedLatencyFrames() const { return requestedLatency_; }
     uint32_t presentationLatencyFrames() const { return latency_; }

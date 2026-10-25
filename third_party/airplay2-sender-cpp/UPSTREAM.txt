@@ -5,3 +5,5 @@ Modified for HomePod Bridge: optional stream-SETUP-before-RECORD ordering (defau
 Additional HomePod Bridge changes: optional Apple ALAC lossless encoding, per-packet byte/time counters, 20 ms minimum presentation target and low-latency/compressed-audio regression tests. Apple codec sources are separately pinned under third_party/apple-alac.
 
 Additional HomePod Bridge changes: absolute sample-frame pacing with bounded catch-up and nanosecond Linux waits; switchable adaptive input reserve with zero-only trimming; bounded receiver latency negotiation and one compatibility retry; regression coverage for these paths.
+
+HomePod Bridge also permits a 10 ms experimental presentation target, covered by AP1/AP2 timeline and mute-ACK tests.

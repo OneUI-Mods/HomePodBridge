@@ -544,10 +544,10 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     Slider buffering =
         settingSlider(content, R.string.buffer_amount, 0, 300, 1, settings.effectiveBufferMs());
     Slider block =
-        settingSlider(content, R.string.capture_block, 5, 40, 5, settings.effectiveBlockMs());
+        settingSlider(content, R.string.capture_block, 2, 40, 1, settings.effectiveBlockMs());
     Slider latency =
         settingSlider(
-            content, R.string.receiver_latency, 20, 2000, 10, settings.effectiveLatencyMs());
+            content, R.string.receiver_latency, 10, 2000, 10, settings.effectiveLatencyMs());
     content.addView(label(getString(R.string.buffer_description), 14));
     ScrollView scroll = new ScrollView(this);
     scroll.addView(content);

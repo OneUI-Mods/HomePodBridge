@@ -22,8 +22,8 @@ record StreamSettings(
 
   StreamSettings {
     bufferMs = Math.max(0, Math.min(300, bufferMs));
-    blockMs = Math.max(5, Math.min(40, blockMs));
-    latencyMs = Math.max(20, Math.min(2000, latencyMs));
+    blockMs = Math.max(2, Math.min(40, blockMs));
+    latencyMs = Math.max(10, Math.min(2000, latencyMs));
     if (lowLatency) highQuality = false;
   }
 
@@ -125,10 +125,10 @@ record StreamSettings(
   }
 
   int effectiveBlockMs() {
-    return lowLatency ? 5 : highQuality ? 10 : blockMs;
+    return lowLatency ? 2 : highQuality ? 10 : blockMs;
   }
 
   int effectiveLatencyMs() {
-    return lowLatency ? 50 : highQuality ? 1500 : latencyMs;
+    return lowLatency ? 10 : highQuality ? 1500 : latencyMs;
   }
 }

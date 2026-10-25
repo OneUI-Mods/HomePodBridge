@@ -100,7 +100,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             sender.setInputFormat(44100);
             sender.setInputBufferFrames(static_cast<size_t>(std::clamp(static_cast<int>(bufferMs), 0, 300)) * 44100 / 1000);
             sender.setAdaptiveInputBuffer(adaptiveBuffer == JNI_TRUE);
-            sender.setPresentationLatencyMs(static_cast<uint32_t>(std::clamp(static_cast<int>(latencyMs), 20, 2000)));
+            sender.setPresentationLatencyMs(static_cast<uint32_t>(std::clamp(static_cast<int>(latencyMs), 10, 2000)));
             sender.setAuth(fxchain::RaopDeviceInfo::Auth::HapTransient, true, id, {}, {});
             sender.start(ip, static_cast<uint16_t>(port), label);
             auto nextStatistics = std::chrono::steady_clock::now();
