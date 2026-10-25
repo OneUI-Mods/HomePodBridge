@@ -64,4 +64,17 @@
     <string name="volume_exact">Set exact volume</string>
     <string name="volume_range">Volume · 0–100%</string>
     <string name="volume_invalid">Enter a number from 0 to 100.</string>
+    <string name="tab_diagnostics">Diagnostics</string>
+    <string name="diagnostics_intro">Updates about once per second while connected. Each value describes a different operation. These values cannot be added to obtain measured audible delay.</string>
+    <string name="diagnostics_idle">Connect a speaker to view live timings.</string>
+    <string name="diagnostics_unknown">Not measured</string>
+    <string name="diagnostics_ms">%1$.2f ms</string>
+    <string name="capture_standard">Standard sink</string>
+    <string name="capture_fast_requested">Small FAST sink requested; acceptance is not confirmed</string>
+    <string name="capture_fast_fallback">FAST request unavailable; using standard sink</string>
+    <string name="diagnostics_capture">Capture\nTimestamp age (estimate): %1$s\nRead wait, last / session max: %2$s / %3$s\nRead block / allocated buffer: %4$s / %5$s\n%6$s\nAllocated capacity is not measured delay.</string>
+    <string name="diagnostics_pipe">System → app\nCapture read complete → app read complete: %1$s\nPipe write wait, last / session max: %2$s / %3$s</string>
+    <string name="diagnostics_sender">Sender\nQueued PCM (snapshot): %1$s\nInput reserve: %2$s\nALAC encoding, session max: %3$s\nPacket duration: %4$s\nInput shortage, session total: %5$s\nQueue and reserve are buffer amounts, not transit measurements.</string>
+    <string name="diagnostics_handoff">Socket handoff\nTime left before target, last / session min: %1$s / %2$s\nLate packets: %3$d / %4$d\nReceiver target: %5$s\nThis is remaining time, not a measured network delay.</string>
+    <string name="diagnostics_unmeasured">Not measured\nWi-Fi one-way transit, receiver clock error, HomePod internal processing, and total audible delay.\nCapture timestamps are estimates reported by Android; vendor implementations may differ.</string>
 </resources>

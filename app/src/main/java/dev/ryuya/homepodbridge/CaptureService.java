@@ -151,6 +151,7 @@ public final class CaptureService extends Service {
     BridgeState.connected = false;
     BridgeState.volume = 0;
     BridgeState.timing = null;
+    BridgeState.pipeline = null;
     BridgeState.status = R.string.connecting;
     BridgeState.publish();
     IBinder connectionLifetime = lifetime;
@@ -182,7 +183,11 @@ public final class CaptureService extends Service {
               != PackageManager.PERMISSION_GRANTED) {
         throw new SecurityException("Audio permission revoked");
       }
-      Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+      try {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+      } catch (RuntimeException ignored) {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+      }
       for (Network network : connectivity.getAllNetworks()) {
         NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
         if (capabilities != null
@@ -196,14 +201,16 @@ public final class CaptureService extends Service {
       if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
       PcmPipe rootInput = null;
       if (systemMode) {
-        ParcelFileDescriptor pipe = RootConnector.open(sourcePackage, connectionLifetime, settings);
+        RootConnector.Input opened =
+            RootConnector.open(sourcePackage, connectionLifetime, settings);
+        ParcelFileDescriptor pipe = opened.pipe();
         systemPipe = pipe;
         if (generation.get() != token) {
           closeSystemInput();
           return;
         }
         var input = new ParcelFileDescriptor.AutoCloseInputStream(pipe);
-        rootInput = new PcmPipe(input.getChannel());
+        rootInput = new PcmPipe(input.getChannel(), opened.timed());
       } else {
         AudioPlaybackCaptureConfiguration.Builder captureBuilder =
             new AudioPlaybackCaptureConfiguration.Builder(projection)
@@ -227,7 +234,7 @@ public final class CaptureService extends Service {
             new AudioRecord.Builder()
                 .setAudioFormat(format)
                 .setAudioPlaybackCaptureConfig(capture)
-                .setBufferSizeInBytes(Math.max(16384, minimum * 2))
+                .setBufferSizeInBytes(Math.max(settings.samplesPerRead() * 2, minimum))
                 .build();
         if (recorder.getState() != AudioRecord.STATE_INITIALIZED)
           throw new IllegalStateException("Recorder unavailable");
@@ -250,7 +257,6 @@ public final class CaptureService extends Service {
           ByteBuffer.allocateDirect(settings.samplesPerRead() * 2).order(ByteOrder.LITTLE_ENDIAN);
       long deadline = System.nanoTime() + 20_000_000_000L;
       long nextTiming = 0;
-      int[] previousTiming = null;
       while (generation.get() == token) {
         long now = android.os.SystemClock.elapsedRealtime();
         if (now >= nextWakeRefresh) {
@@ -261,15 +267,18 @@ public final class CaptureService extends Service {
         if (state < 0 || (!started && System.nanoTime() > deadline)) break;
         if (state == 2 && now >= nextTiming) {
           int[] timing = NativeSender.timing();
-          if (timing != null
-              && timing.length == 4
-              && timing[1] > 0
-              && !java.util.Arrays.equals(timing, previousTiming)) {
-            previousTiming = timing;
+          if (timing != null && timing.length == 4 && timing[1] > 0) {
+            PipelineTiming pipeline =
+                new PipelineTiming(
+                    systemMode ? RootConnector.captureTiming(connectionLifetime) : null,
+                    NativeSender.pipeline(),
+                    rootInput == null ? -1 : rootInput.transitMicros(),
+                    System.nanoTime());
             main.post(
                 () -> {
                   if (generation.get() != token || destroyed) return;
                   BridgeState.timing = timing;
+                  BridgeState.pipeline = pipeline;
                   BridgeState.publish();
                 });
           }
@@ -473,6 +482,7 @@ public final class CaptureService extends Service {
     BridgeState.capture = null;
     BridgeState.selected = null;
     BridgeState.connected = false;
+    BridgeState.pipeline = null;
     BridgeState.status = R.string.idle;
     BridgeState.publish();
     stopForeground(STOP_FOREGROUND_REMOVE);
@@ -495,5 +505,10 @@ public final class CaptureService extends Service {
             + " wholeDevice="
             + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
+    PipelineTiming pipeline = BridgeState.pipeline;
+    if (pipeline != null) {
+      writer.println("captureTiming=" + java.util.Arrays.toString(pipeline.capture()));
+      writer.println("pipeTransitMicros=" + pipeline.pipeMicros());
+    }
   }
 }

@@ -47,6 +47,8 @@ final class SystemAudioBridge extends Binder {
     }
     if (code != RootProtocol.OPEN
         && code != RootProtocol.OPEN_CONFIGURED
+        && code != RootProtocol.OPEN_TIMED
+        && code != RootProtocol.CAPTURE_TIMING
         && code != RootProtocol.VOLUME_ENDPOINT
         && code != RootProtocol.CLOSE) return super.onTransact(code, data, reply, flags);
     data.enforceInterface(RootProtocol.DESCRIPTOR);
@@ -68,6 +70,11 @@ final class SystemAudioBridge extends Binder {
     if (client == null) throw new IllegalArgumentException("Client lifetime token required");
     long identity = Binder.clearCallingIdentity();
     try {
+      if (code == RootProtocol.CAPTURE_TIMING) {
+        reply.writeNoException();
+        reply.writeLongArray(stream != null && stream.client.equals(client) ? stream.timing : null);
+        return true;
+      }
       if (code == RootProtocol.VOLUME_ENDPOINT) {
         IBinder callback = data.readStrongBinder();
         if (stream != null
@@ -90,8 +97,10 @@ final class SystemAudioBridge extends Binder {
           || targetPackage.isEmpty()
           || targetPackage.equals(RootProtocol.PACKAGE))
         throw new IllegalArgumentException("Invalid media package");
-      boolean wholeDevice = code == RootProtocol.OPEN_CONFIGURED && data.readBoolean();
-      int blockMs = code == RootProtocol.OPEN_CONFIGURED ? data.readInt() : 10;
+      boolean configured = code == RootProtocol.OPEN_CONFIGURED || code == RootProtocol.OPEN_TIMED;
+      boolean wholeDevice = configured && data.readBoolean();
+      int blockMs = configured ? data.readInt() : 10;
+      boolean fast = code == RootProtocol.OPEN_TIMED && data.readBoolean();
       int targetUid =
           wholeDevice ? -1 : context.getPackageManager().getApplicationInfo(targetPackage, 0).uid;
       StreamSettings settings = new StreamSettings(wholeDevice, 150, blockMs, 1500);
@@ -101,7 +110,15 @@ final class SystemAudioBridge extends Binder {
       }
       ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
       try {
-        stream = new Stream(client, targetUid, appUid(), pipe[1], settings);
+        stream =
+            new Stream(
+                client,
+                targetUid,
+                appUid(),
+                pipe[1],
+                settings,
+                code == RootProtocol.OPEN_TIMED,
+                fast);
         reply.writeNoException();
         pipe[0].writeToParcel(reply, android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
       } catch (Throwable e) {
@@ -129,6 +146,9 @@ final class SystemAudioBridge extends Binder {
     final AtomicBoolean closed = new AtomicBoolean();
     final int blockSamples;
     final boolean wholeDevice;
+    final boolean timed;
+    volatile long[] timing;
+    private int captureRequest;
     private SystemVolumeEndpoint volumeEndpoint;
 
     Stream(
@@ -136,11 +156,14 @@ final class SystemAudioBridge extends Binder {
         int uid,
         int bridgeUid,
         ParcelFileDescriptor writePipe,
-        StreamSettings settings)
+        StreamSettings settings,
+        boolean timed,
+        boolean fast)
         throws Exception {
       this.client = client;
       this.writePipe = writePipe;
       this.wholeDevice = settings.wholeDevice();
+      this.timed = timed;
       blockSamples = settings.samplesPerRead();
       ClassLoader loader = context.getClassLoader();
       Object rule =
@@ -192,7 +215,61 @@ final class SystemAudioBridge extends Binder {
         throw new IllegalStateException("Policy registration failed"); // AudioManager.SUCCESS
       AudioRecord created = null;
       try {
-        created = (AudioRecord) XposedHelpers.callMethod(policy, "createAudioRecordSink", audioMix);
+        if (fast) {
+          // Request a smaller FAST sink only for this registered mix; the audio server has final
+          // say.
+          try {
+            String address =
+                (String)
+                    XposedHelpers.callStaticMethod(policy.getClass(), "addressForTag", audioMix);
+            AudioAttributes.Builder attributes = new AudioAttributes.Builder();
+            XposedHelpers.callMethod(attributes, "setInternalCapturePreset", 8);
+            XposedHelpers.callMethod(attributes, "addTag", address);
+            XposedHelpers.callMethod(attributes, "addTag", "fixedVolume");
+            AudioFormat inputFormat =
+                new AudioFormat.Builder(format)
+                    .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
+                    .build();
+            Class<?> flagsClass =
+                XposedHelpers.findClass("android.media.audio.common.AudioInputFlags", loader);
+            int fastFlag = 1 << XposedHelpers.getStaticIntField(flagsClass, "FAST");
+            created =
+                (AudioRecord)
+                    XposedHelpers.newInstance(
+                        AudioRecord.class,
+                        attributes.build(),
+                        inputFormat,
+                        blockSamples * 2,
+                        AudioManager.AUDIO_SESSION_ID_GENERATE,
+                        context,
+                        0,
+                        fastFlag);
+            if (created.getState() != AudioRecord.STATE_INITIALIZED) {
+              created.release();
+              created = null;
+            }
+            captureRequest = created != null ? 1 : 2;
+          } catch (Throwable ignored) {
+            if (created != null) created.release();
+            created = null;
+            captureRequest = 2;
+          }
+        }
+        if (created == null) {
+          // The builder overload can honor a smaller allocation on newer compatible frameworks.
+          try {
+            created =
+                (AudioRecord)
+                    XposedHelpers.callMethod(
+                        policy,
+                        "createAudioRecordSink",
+                        audioMix,
+                        new AudioRecord.Builder().setBufferSizeInBytes(blockSamples * 2));
+          } catch (Throwable ignored) {
+            created =
+                (AudioRecord) XposedHelpers.callMethod(policy, "createAudioRecordSink", audioMix);
+          }
+        }
         if (created == null || created.getState() != AudioRecord.STATE_INITIALIZED)
           throw new IllegalStateException("Audio sink unavailable");
         record = created;
@@ -218,44 +295,79 @@ final class SystemAudioBridge extends Binder {
     }
 
     private void pump() {
-      android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+      try {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+      } catch (RuntimeException ignored) {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+      }
       try (OutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(writePipe)) {
         var channel = ((java.io.FileOutputStream) output).getChannel();
         ByteBuffer bytes =
             ByteBuffer.allocateDirect(blockSamples * 2).order(ByteOrder.LITTLE_ENDIAN);
         var timestamp = new android.media.AudioTimestamp();
+        ByteBuffer header = ByteBuffer.allocateDirect(16);
+        ByteBuffer[] packet = {header, bytes};
+        long maxReadUs = 0, maxWriteUs = 0;
+        long latestAgeUs = -1, ageObservedAt = 0;
         long readFrames = 0;
         long nextTimestamp = System.nanoTime() + 1_000_000_000L;
         int observations = 0;
         while (!closed.get()) {
           bytes.clear();
+          long readBegin = System.nanoTime();
           int count = record.read(bytes, bytes.capacity(), AudioRecord.READ_BLOCKING);
+          long readEnd = System.nanoTime();
           if (count < 0) break;
           if (count == 0) continue;
           if (count % 4 != 0) break;
           readFrames += count / 4;
           bytes.position(0).limit(count);
-          while (bytes.hasRemaining() && !closed.get()) channel.write(bytes);
-          if (observations < 5 && System.nanoTime() >= nextTimestamp) {
+          if (timed) {
+            header.clear();
+            header.putInt(PcmPipe.MAGIC).putInt(count).putLong(readEnd).flip();
+            while ((header.hasRemaining() || bytes.hasRemaining()) && !closed.get())
+              channel.write(packet);
+          } else {
+            while (bytes.hasRemaining() && !closed.get()) channel.write(bytes);
+          }
+          long writeEnd = System.nanoTime();
+          long readUs = (readEnd - readBegin) / 1000;
+          long writeUs = (writeEnd - readEnd) / 1000;
+          maxReadUs = Math.max(maxReadUs, readUs);
+          maxWriteUs = Math.max(maxWriteUs, writeUs);
+          if (System.nanoTime() >= nextTimestamp) {
             // Optional diagnostics must never interrupt capture when a sink lacks timestamps.
             try {
               int result =
                   record.getTimestamp(timestamp, android.media.AudioTimestamp.TIMEBASE_MONOTONIC);
               if (result == 0) {
-                long latestAgeUs =
+                latestAgeUs =
                     (System.nanoTime()
                             - timestamp.nanoTime
                             + (timestamp.framePosition - readFrames) * 1_000_000_000L / 44100)
                         / 1000;
-                android.util.Log.i("HomePodBridgeCapture", "latestFrameAgeMicros=" + latestAgeUs);
-              } else
-                android.util.Log.i(
-                    "HomePodBridgeCapture", "Capture timestamp unavailable code=" + result);
+                ageObservedAt = System.nanoTime();
+                if (observations < 5)
+                  android.util.Log.i("HomePodBridgeCapture", "latestFrameAgeMicros=" + latestAgeUs);
+              } else latestAgeUs = -1;
             } catch (RuntimeException ignored) {
-              android.util.Log.i("HomePodBridgeCapture", "Capture timestamp unavailable");
+              latestAgeUs = -1;
             }
             observations++;
             nextTimestamp = System.nanoTime() + 1_000_000_000L;
+            timing =
+                new long[] {
+                  1,
+                  latestAgeUs,
+                  ageObservedAt,
+                  readUs,
+                  maxReadUs,
+                  writeUs,
+                  maxWriteUs,
+                  record.getBufferSizeInFrames(),
+                  blockSamples / 2,
+                  captureRequest
+                };
           }
         }
       } catch (IOException | RuntimeException ignored) {

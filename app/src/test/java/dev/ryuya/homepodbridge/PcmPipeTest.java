@@ -46,4 +46,65 @@ public final class PcmPipeTest {
     assertEquals(4, pcm.limit());
     assertEquals(-1, pipe.read(pcm));
   }
+
+  private static byte[] timed(int magic, int length, long stamp, byte[] pcm) {
+    return ByteBuffer.allocate(16 + pcm.length)
+        .putInt(magic)
+        .putInt(length)
+        .putLong(stamp)
+        .put(pcm)
+        .array();
+  }
+
+  @Test
+  public void timedFragmentsKeepHeaderOutOfPcmAndMeasureMatchingBlock() throws Exception {
+    byte[] pcm = {0, (byte) 128, (byte) 255, 127, 1, 0, (byte) 255, (byte) 255};
+    var input =
+        new ByteArrayInputStream(timed(PcmPipe.MAGIC, 8, 1_000_000, pcm)) {
+          @Override
+          public synchronized int read(byte[] out, int offset, int length) {
+            return super.read(out, offset, Math.min(3, length));
+          }
+        };
+    PcmPipe pipe = new PcmPipe(Channels.newChannel(input), true, () -> 1_234_000L);
+    ByteBuffer buffer = ByteBuffer.allocateDirect(16).order(ByteOrder.LITTLE_ENDIAN);
+    assertEquals(8, pipe.read(buffer));
+    byte[] actual = new byte[8];
+    buffer.get(actual);
+    assertArrayEquals(pcm, actual);
+    assertEquals(234, pipe.transitMicros());
+    assertEquals(-1, pipe.read(buffer));
+  }
+
+  @Test
+  public void malformedTimingAndPartialPayloadFailClosed() throws Exception {
+    byte[][] invalid = {
+      new byte[] {1, 2, 3},
+      timed(0, 4, 1, new byte[4]),
+      timed(PcmPipe.MAGIC, 3, 1, new byte[3]),
+      timed(PcmPipe.MAGIC, 20, 1, new byte[20]),
+      timed(PcmPipe.MAGIC, 0, 1, new byte[0]),
+      timed(PcmPipe.MAGIC, 8, 1, new byte[4])
+    };
+    for (byte[] raw : invalid) {
+      try {
+        new PcmPipe(Channels.newChannel(new ByteArrayInputStream(raw)), true)
+            .read(ByteBuffer.allocateDirect(16));
+        fail("Malformed timed block accepted");
+      } catch (IOException expected) {
+      }
+    }
+  }
+
+  @Test
+  public void futureTimestampIsUnknownRatherThanNegativeLatency() throws Exception {
+    PcmPipe pipe =
+        new PcmPipe(
+            Channels.newChannel(
+                new ByteArrayInputStream(timed(PcmPipe.MAGIC, 4, 10_000, new byte[4]))),
+            true,
+            () -> 9_000);
+    assertEquals(4, pipe.read(ByteBuffer.allocateDirect(4)));
+    assertEquals(-1, pipe.transitMicros());
+  }
 }

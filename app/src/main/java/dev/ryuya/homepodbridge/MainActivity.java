@@ -37,6 +37,10 @@ import java.util.List;
 public final class MainActivity extends AppCompatActivity implements BridgeState.Observer {
   private TextView status;
   private TextView timingStatus;
+  private TextView captureTiming;
+  private TextView pipeTiming;
+  private TextView senderTiming;
+  private TextView handoffTiming;
   private LinearLayout speakers;
   private Button share;
   private int textColor;
@@ -93,7 +97,10 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     LinearLayout connectionBody = page(pages);
     LinearLayout audioBody = page(pages);
     LinearLayout tuningBody = page(pages);
-    int[] tabNames = {R.string.tab_connection, R.string.tab_audio, R.string.tab_tuning};
+    LinearLayout diagnosticsBody = page(pages);
+    int[] tabNames = {
+      R.string.tab_connection, R.string.tab_audio, R.string.tab_tuning, R.string.tab_diagnostics
+    };
     for (int name : tabNames) tabs.addTab(tabs.newTab().setText(name));
     tabs.addOnTabSelectedListener(
         new TabLayout.OnTabSelectedListener() {
@@ -111,8 +118,9 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         });
     pages.getChildAt(1).setVisibility(View.GONE);
     pages.getChildAt(2).setVisibility(View.GONE);
+    pages.getChildAt(3).setVisibility(View.GONE);
     tabs.selectTab(
-        tabs.getTabAt(state == null ? 0 : Math.max(0, Math.min(2, state.getInt("tab", 0)))));
+        tabs.getTabAt(state == null ? 0 : Math.max(0, Math.min(3, state.getInt("tab", 0)))));
     LinearLayout body = connectionBody;
     body.addView(label(getString(R.string.explanation), 16));
     status = label(getString(R.string.idle), 18);
@@ -265,6 +273,17 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
     body.addView(label(getString(R.string.notes), 14));
     body.addView(button(getString(R.string.licenses), view -> licenses()));
+    body = diagnosticsBody;
+    body.addView(label(getString(R.string.diagnostics_intro), 14));
+    captureTiming = label("", 16);
+    body.addView(card(captureTiming));
+    pipeTiming = label("", 16);
+    body.addView(card(pipeTiming));
+    senderTiming = label("", 16);
+    body.addView(card(senderTiming));
+    handoffTiming = label("", 16);
+    body.addView(card(handoffTiming));
+    body.addView(card(label(getString(R.string.diagnostics_unmeasured), 14)));
     syncSettings();
     setContentView(root);
   }
@@ -420,6 +439,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
 
   @Override
   public void changed() {
+    updatePipeline();
     if (status == null) return;
     syncSettings();
     String message;
@@ -475,6 +495,77 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     }
     if (!BridgeState.receivers.isEmpty() && BridgeState.status == R.string.searching)
       status.setText(R.string.ready);
+  }
+
+  private String millis(long micros) {
+    return micros < 0
+        ? getString(R.string.diagnostics_unknown)
+        : getString(R.string.diagnostics_ms, micros / 1000.0);
+  }
+
+  private String framesTime(long frames) {
+    return frames < 0
+        ? getString(R.string.diagnostics_unknown)
+        : millis(frames * 1_000_000L / 44100);
+  }
+
+  private void updatePipeline() {
+    PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
+    if (t == null) {
+      for (TextView label : new TextView[] {captureTiming, pipeTiming, senderTiming, handoffTiming})
+        label.setText(R.string.diagnostics_idle);
+      return;
+    }
+    String request =
+        getString(
+            t.capture(9) == 1
+                ? R.string.capture_fast_requested
+                : t.capture(9) == 2
+                    ? R.string.capture_fast_fallback
+                    : t.capture(9) == 0 ? R.string.capture_standard : R.string.diagnostics_unknown);
+    captureTiming.setText(
+        getString(
+            R.string.diagnostics_capture,
+            millis(t.captureAgeFresh() ? t.capture(1) : -1),
+            millis(t.capture(3)),
+            millis(t.capture(4)),
+            framesTime(t.capture(8)),
+            framesTime(t.capture(7)),
+            request));
+    pipeTiming.setText(
+        getString(
+            R.string.diagnostics_pipe,
+            millis(t.pipeMicros()),
+            millis(t.capture(5)),
+            millis(t.capture(6))));
+    senderTiming.setText(
+        getString(
+            R.string.diagnostics_sender,
+            framesTime(t.sender(0)),
+            framesTime(t.sender(1)),
+            millis(t.sender(2)),
+            framesTime(t.sender(10)),
+            framesTime(t.sender(7))));
+    // Negative lead is meaningful lateness, unlike an unavailable positive duration.
+    String last =
+        t.sender(6) > 0
+            ? getString(R.string.diagnostics_ms, t.sender(4) / 1000.0)
+            : getString(R.string.diagnostics_unknown);
+    String minimum =
+        t.sender(6) > 0
+            ? getString(R.string.diagnostics_ms, t.sender(3) / 1000.0)
+            : getString(R.string.diagnostics_unknown);
+    int[] targets = BridgeState.timing;
+    handoffTiming.setText(
+        getString(
+            R.string.diagnostics_handoff,
+            last,
+            minimum,
+            Math.max(0, t.sender(5)),
+            Math.max(0, t.sender(6)),
+            targets == null
+                ? getString(R.string.diagnostics_unknown)
+                : millis(targets[1] * 1000L)));
   }
 
   private TextView label(String value, int size) {

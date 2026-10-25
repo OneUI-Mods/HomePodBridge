@@ -61,3 +61,5 @@ python tools/check_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
 本プロジェクトはApache-2.0です。AirPlay 2送信部分は[airplay2-sender-cpp](https://github.com/akustikrausch/airplay2-sender-cpp)を利用しています。上流コミットはthird_party/airplay2-sender-cpp/UPSTREAM.txtに固定し、著作権・ライセンスを保持しています。Mbed TLSとAppleのALACコーデックは上流のコミットに固定しています。アプリの「オープンソースライセンス」からも確認できます。
 
 AirMusicのソースやAPKを流用していません。Apple、Samsung、AirMusic、Vectorの公式アプリではありません。
+
+「診断」タブで取り込み時刻からの推定経過、システムからアプリへの転送時間、待機音声量、圧縮処理時間、送信時点の余裕を確認できます。Wi-Fiの片道時間・HomePod内部・総遅延は未測定として表示します。容量や目標値を実測遅延として合算しません。

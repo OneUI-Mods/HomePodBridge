@@ -24,6 +24,7 @@ struct Engine {
     std::string diagnostic;
     std::string statistics;
     jint timing[4] = {0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
+    jlong pipeline[11] = {};
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
 };
@@ -68,7 +69,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
     }
     engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, compressedAudio, adaptiveBuffer] {
         try {
-            if (setpriority(PRIO_PROCESS, 0, -16) != 0)
+            if (setpriority(PRIO_PROCESS, 0, -19) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
             fxchain::RaopLoop loop;
             fxchain::RaopEvents events;
@@ -116,6 +117,17 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                     engine->timing[1] = ms(sender.presentationLatencyFrames());
                     engine->timing[2] = sender.receiverMinimumLatencyFrames() < 0 ? -1 : ms(sender.receiverMinimumLatencyFrames());
                     engine->timing[3] = sender.latencyCompatibilityFallback() ? 1 : 0;
+                    const jlong pipeline[] = {
+                        static_cast<jlong>(engine->ring.availableRead() / 2),
+                        static_cast<jlong>(sender.inputBufferFrames()),
+                        static_cast<jlong>(sender.maximumEncodeMicros()),
+                        sender.minimumHandoffLeadMicros(), sender.lastHandoffLeadMicros(),
+                        static_cast<jlong>(sender.lateHandoffPackets()),
+                        static_cast<jlong>(sender.measuredHandoffPackets()),
+                        static_cast<jlong>(sender.inputUnderrunFrames()),
+                        static_cast<jlong>(sender.bufferingFrames()),
+                        static_cast<jlong>(engine->backpressure.load()), 352};
+                    std::copy(std::begin(pipeline), std::end(pipeline), engine->pipeline);
                     engine->statistics = "queueFrames=" + std::to_string(engine->ring.availableRead() / 2)
                         + " requestedLatencyMs=" + std::to_string(engine->timing[0])
                         + " targetLatencyMs=" + std::to_string(engine->timing[1])
@@ -188,4 +200,15 @@ Java_dev_ryuya_homepodbridge_NativeSender_diagnostic(JNIEnv* env, jclass) {
     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
     std::string result = engine->diagnostic + "\n" + engine->statistics;
     return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_pipeline(JNIEnv* env, jclass) {
+    auto engine = getEngine();
+    if (!engine) return nullptr;
+    auto result = env->NewLongArray(11);
+    if (!result) return nullptr;
+    std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+    env->SetLongArrayRegion(result, 0, 11, engine->pipeline);
+    return result;
 }
