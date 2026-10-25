@@ -50,6 +50,7 @@ public final class CaptureService extends Service {
 
   void reconfigure() {
     if (BridgeState.selected == null) return;
+    if (HomePodRoutes.restartCurrent(selectedPackage)) return;
     Receiver receiver = BridgeState.selected;
     if (HomePodRoutes.available()) HomePodRoutes.selectFromSystem(selectedPackage, receiver.id());
     else select(receiver, selectedPackage, success -> {});
@@ -148,6 +149,8 @@ public final class CaptureService extends Service {
     boolean networkBound = false;
     LocalRoute localRoute = null;
     boolean started = false;
+    long capturedFrames = 0;
+    long signalBlocks = 0;
     StreamSettings settings = StreamSettings.load(this);
     PowerManager.WakeLock wake =
         getSystemService(PowerManager.class)
@@ -258,6 +261,13 @@ public final class CaptureService extends Service {
           break;
         }
         if (read > 0 && state == 2) {
+          capturedFrames += read / 2;
+          for (int i = 0; i < read; i++) {
+            if (pcm[i] != 0) {
+              signalBlocks++;
+              break;
+            }
+          }
           while (!NativeSender.write(pcm, read - read % 2)
               && generation.get() == token
               && NativeSender.state() == 2) Thread.sleep(2);
@@ -277,6 +287,21 @@ public final class CaptureService extends Service {
         try (var diagnostics = openFileOutput("last-connection.txt", MODE_PRIVATE)) {
           diagnostics.write(
               NativeSender.diagnostic().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+          diagnostics.write(
+              ("\ncapturedFrames="
+                      + capturedFrames
+                      + " signalBlocks="
+                      + signalBlocks
+                      + " wholeDevice="
+                      + settings.wholeDevice()
+                      + " bufferMs="
+                      + settings.bufferMs()
+                      + " blockMs="
+                      + settings.blockMs()
+                      + " latencyMs="
+                      + settings.latencyMs()
+                      + "\n")
+                  .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (java.io.IOException ignored) {
         }
         closeSystemInput();

@@ -29,7 +29,7 @@
     <string name="playing">%1$s で再生中</string>
     <string name="connection_failed">接続できませんでした。AirPlayのアクセス設定で同じネットワークからの接続が許可されているか確認してください。</string>
     <string name="capture_failed">音声の共有が終了しました。もう一度、音声の共有を許可してください。</string>
-    <string name="notes">実験版 • Android 16/17\nVectorではSystem UIを対象に有効化してください。初回はローカルネットワークへのアクセス許可が必要です。HomePodのステレオペアには未対応です。Apple Music内のCast専用一覧からは選択できません。</string>
+    <string name="notes">実験版 • Android 16/17\nVectorではSystem UIを対象に有効化してください。初回はローカルネットワークへのアクセス許可が必要です。Apple Musicのキャスト一覧とシステムのメディア出力から選択できます。HomePodのステレオペアには未対応です。</string>
     <string name="open_music">Apple Musicを開く</string>
     <string name="music_missing">音声の共有にはApple Musicをインストールしてください。</string>
     <string name="licenses">オープンソースライセンス</string>

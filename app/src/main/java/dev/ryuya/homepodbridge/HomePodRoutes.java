@@ -26,6 +26,32 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
     if (available()) active.onCreateSession(REQUEST_ID_NONE, packageName, routeId, null);
   }
 
+  static boolean restartCurrent(String packageName) {
+    if (!available()
+        || active.creating
+        || active.session == null
+        || BridgeState.selected == null
+        || BridgeState.capture == null) return false;
+    HomePodRoutes provider = active;
+    Receiver receiver = BridgeState.selected;
+    long token = ++provider.sequence;
+    provider.creating = true;
+    BridgeState.capture.select(
+        receiver,
+        packageName,
+        success -> {
+          if (provider.destroyed || provider.sequence != token) return;
+          provider.creating = false;
+          if (success && provider.session != null) {
+            provider.session =
+                new RoutingSessionInfo.Builder(provider.session).setVolume(0).build();
+            provider.notifySessionUpdated(provider.session);
+          }
+          provider.changed();
+        });
+    return true;
+  }
+
   static void stopFromSystem() {
     if (!available()) return;
     HomePodRoutes provider = active;
@@ -133,6 +159,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
       notifySessionUpdated(session);
     }
     if (session != null
+        && !creating
         && (!BridgeState.connected
             || BridgeState.selected == null
             || !lastIds.contains(BridgeState.selected.id()))) {
@@ -200,6 +227,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
           pending = REQUEST_ID_NONE;
           if (!success) {
             notifyRequestFailed(requestId, REASON_NETWORK_ERROR);
+            changed();
             return;
           }
           if (session != null) notifySessionReleased(session.getId());

@@ -162,15 +162,6 @@
     "project": "https://developer.android.com/jetpack/androidx/releases/customview#1.2.0"
   },
   {
-    "coordinate": "androidx.documentfile:documentfile:1.0.0",
-    "license": "Apache-2.0",
-    "declaredLicense": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://dl.google.com/dl/android/maven2/androidx/documentfile/documentfile/1.0.0/documentfile-1.0.0.pom",
-    "licensePom": "https://dl.google.com/dl/android/maven2/androidx/documentfile/documentfile/1.0.0/documentfile-1.0.0.pom",
-    "project": "http://developer.android.com/tools/extras/support-library.html"
-  },
-  {
     "coordinate": "androidx.drawerlayout:drawerlayout:1.1.1",
     "license": "Apache-2.0",
     "declaredLicense": "The Apache Software License, Version 2.0",
@@ -231,15 +222,6 @@
     "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
     "pom": "https://dl.google.com/dl/android/maven2/androidx/interpolator/interpolator/1.0.0/interpolator-1.0.0.pom",
     "licensePom": "https://dl.google.com/dl/android/maven2/androidx/interpolator/interpolator/1.0.0/interpolator-1.0.0.pom",
-    "project": "http://developer.android.com/tools/extras/support-library.html"
-  },
-  {
-    "coordinate": "androidx.legacy:legacy-support-core-utils:1.0.0",
-    "license": "Apache-2.0",
-    "declaredLicense": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://dl.google.com/dl/android/maven2/androidx/legacy/legacy-support-core-utils/1.0.0/legacy-support-core-utils-1.0.0.pom",
-    "licensePom": "https://dl.google.com/dl/android/maven2/androidx/legacy/legacy-support-core-utils/1.0.0/legacy-support-core-utils-1.0.0.pom",
     "project": "http://developer.android.com/tools/extras/support-library.html"
   },
   {
@@ -312,51 +294,6 @@
     "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
     "pom": "https://dl.google.com/dl/android/maven2/androidx/loader/loader/1.0.0/loader-1.0.0.pom",
     "licensePom": "https://dl.google.com/dl/android/maven2/androidx/loader/loader/1.0.0/loader-1.0.0.pom",
-    "project": "http://developer.android.com/tools/extras/support-library.html"
-  },
-  {
-    "coordinate": "androidx.localbroadcastmanager:localbroadcastmanager:1.0.0",
-    "license": "Apache-2.0",
-    "declaredLicense": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://dl.google.com/dl/android/maven2/androidx/localbroadcastmanager/localbroadcastmanager/1.0.0/localbroadcastmanager-1.0.0.pom",
-    "licensePom": "https://dl.google.com/dl/android/maven2/androidx/localbroadcastmanager/localbroadcastmanager/1.0.0/localbroadcastmanager-1.0.0.pom",
-    "project": "http://developer.android.com/tools/extras/support-library.html"
-  },
-  {
-    "coordinate": "androidx.media:media:1.4.1",
-    "license": "Apache-2.0",
-    "declaredLicense": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://dl.google.com/dl/android/maven2/androidx/media/media/1.4.1/media-1.4.1.pom",
-    "licensePom": "https://dl.google.com/dl/android/maven2/androidx/media/media/1.4.1/media-1.4.1.pom",
-    "project": "https://developer.android.com/jetpack/androidx/releases/media#1.4.1"
-  },
-  {
-    "coordinate": "androidx.mediarouter:mediarouter:1.8.1",
-    "license": "Apache-2.0",
-    "declaredLicense": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://dl.google.com/dl/android/maven2/androidx/mediarouter/mediarouter/1.8.1/mediarouter-1.8.1.pom",
-    "licensePom": "https://dl.google.com/dl/android/maven2/androidx/mediarouter/mediarouter/1.8.1/mediarouter-1.8.1.pom",
-    "project": "https://developer.android.com/jetpack/androidx/releases/mediarouter#1.8.1"
-  },
-  {
-    "coordinate": "androidx.palette:palette:1.0.0",
-    "license": "Apache-2.0",
-    "declaredLicense": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://dl.google.com/dl/android/maven2/androidx/palette/palette/1.0.0/palette-1.0.0.pom",
-    "licensePom": "https://dl.google.com/dl/android/maven2/androidx/palette/palette/1.0.0/palette-1.0.0.pom",
-    "project": "http://developer.android.com/tools/extras/support-library.html"
-  },
-  {
-    "coordinate": "androidx.print:print:1.0.0",
-    "license": "Apache-2.0",
-    "declaredLicense": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://dl.google.com/dl/android/maven2/androidx/print/print/1.0.0/print-1.0.0.pom",
-    "licensePom": "https://dl.google.com/dl/android/maven2/androidx/print/print/1.0.0/print-1.0.0.pom",
     "project": "http://developer.android.com/tools/extras/support-library.html"
   },
   {

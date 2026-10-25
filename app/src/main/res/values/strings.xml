@@ -30,7 +30,7 @@
     <string name="playing">Playing on %1$s</string>
     <string name="connection_failed">Could not connect. Check that AirPlay access allows devices on the same network.</string>
     <string name="capture_failed">Audio sharing ended. Tap Allow audio sharing to start again.</string>
-    <string name="notes">Experimental • Android 16/17\nEnable the module for System UI in Vector. Allow local network access on first use. HomePod stereo pairs are not supported. The Apple Music in-app Cast-only picker cannot select HomePod.</string>
+    <string name="notes">Experimental • Android 16/17\nEnable the module for System UI in Vector. Allow local network access on first use. Select HomePod in Apple Music’s Cast chooser or the system media output picker. HomePod stereo pairs are not supported.</string>
     <string name="open_music">Open Apple Music</string>
     <string name="music_missing">Install Apple Music to share its audio.</string>
     <string name="licenses">Open-source licenses</string>
