@@ -8,6 +8,10 @@ final class RootProtocol {
   static final int OPEN = android.os.IBinder.FIRST_CALL_TRANSACTION;
   static final int CLOSE = OPEN + 1;
   static final int OPEN_CONFIGURED = CLOSE + 1;
+  static final int VOLUME_ENDPOINT = OPEN_CONFIGURED + 1;
+  static final String VOLUME_CALLBACK = PACKAGE + ".VolumeCallback";
+  static final int ADJUST_VOLUME = android.os.IBinder.FIRST_CALL_TRANSACTION;
+  static final int SET_VOLUME = ADJUST_VOLUME + 1;
 
   private RootProtocol() {}
 }

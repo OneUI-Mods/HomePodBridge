@@ -41,13 +41,17 @@ public final class CaptureService extends Service {
   private MediaProjection projection;
   private int musicUid;
   private boolean systemMode;
-  private final IBinder lifetime = new Binder();
+  private IBinder lifetime = new Binder();
   private volatile ParcelFileDescriptor systemPipe;
   private boolean destroyed;
   private ConnectionCallback pendingCallback;
   private int callbackGeneration;
   private String selectedPackage = BridgeState.MUSIC;
   private WholeDeviceVolume wholeDeviceVolume;
+
+  IBinder lifetime() {
+    return lifetime;
+  }
 
   @Override
   public void onCreate() {
@@ -139,6 +143,7 @@ public final class CaptureService extends Service {
     selectedPackage = sourcePackage;
     int token = generation.incrementAndGet();
     closeSystemInput();
+    lifetime = new Binder();
     pendingCallback = callback;
     callbackGeneration = token;
     BridgeState.selected = receiver;
@@ -146,10 +151,12 @@ public final class CaptureService extends Service {
     BridgeState.volume = 0;
     BridgeState.status = R.string.connecting;
     BridgeState.publish();
-    worker.execute(() -> stream(receiver, sourcePackage, token));
+    IBinder connectionLifetime = lifetime;
+    worker.execute(() -> stream(receiver, sourcePackage, token, connectionLifetime));
   }
 
-  private void stream(Receiver receiver, String sourcePackage, int token) {
+  private void stream(
+      Receiver receiver, String sourcePackage, int token, IBinder connectionLifetime) {
     AudioRecord recorder = null;
     ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
     Network previousNetwork = connectivity.getBoundNetworkForProcess();
@@ -187,7 +194,7 @@ public final class CaptureService extends Service {
       if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
       PcmPipe rootInput = null;
       if (systemMode) {
-        ParcelFileDescriptor pipe = RootConnector.open(sourcePackage, lifetime, settings);
+        ParcelFileDescriptor pipe = RootConnector.open(sourcePackage, connectionLifetime, settings);
         systemPipe = pipe;
         if (generation.get() != token) {
           closeSystemInput();

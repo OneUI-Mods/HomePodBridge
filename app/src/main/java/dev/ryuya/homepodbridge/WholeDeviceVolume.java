@@ -6,7 +6,10 @@ import android.media.MediaMetadata;
 import android.media.VolumeProvider;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.os.Binder;
 import android.os.Handler;
+import android.os.Parcel;
+import android.os.RemoteException;
 
 /** A remote volume endpoint owned only while whole-device sharing is connected. */
 final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
@@ -16,6 +19,32 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
   private VolumeProvider provider;
   private String receiverName;
   private int lastAudible = 1;
+  private final Binder callback =
+      new Binder() {
+        @Override
+        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
+            throws RemoteException {
+          if (code != RootProtocol.ADJUST_VOLUME && code != RootProtocol.SET_VOLUME)
+            return super.onTransact(code, data, reply, flags);
+          data.enforceInterface(RootProtocol.VOLUME_CALLBACK);
+          try {
+            if (getCallingUid()
+                != context.getPackageManager().getApplicationInfo("com.android.systemui", 0).uid)
+              throw new SecurityException("SystemUI only");
+          } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return false;
+          }
+          int value = data.readInt();
+          main.post(
+              () -> {
+                if (code == RootProtocol.ADJUST_VOLUME) {
+                  if (session != null && BridgeState.connected)
+                    session.getController().adjustVolume(value, AudioManager.FLAG_SHOW_UI);
+                } else apply(value);
+              });
+          return true;
+        }
+      };
 
   WholeDeviceVolume(Context context, Handler main) {
     this.context = context;
@@ -65,6 +94,8 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
     if (BridgeState.volume > 0) lastAudible = BridgeState.volume;
     if (provider.getCurrentVolume() != BridgeState.volume)
       provider.setCurrentVolume(BridgeState.volume);
+    if (BridgeState.capture != null)
+      RootConnector.volumeEndpoint(BridgeState.capture.lifetime(), callback, BridgeState.volume);
   }
 
   private void adjust(int direction) {

@@ -7,6 +7,31 @@ import android.os.RemoteException;
 
 final class RootConnector {
   private static volatile IBinder bridge;
+  private static final java.util.concurrent.ExecutorService controls =
+      java.util.concurrent.Executors.newSingleThreadExecutor();
+
+  static void volumeEndpoint(IBinder lifetime, IBinder callback, int volume) {
+    IBinder target = bridge;
+    if (target == null) return;
+    controls.execute(
+        () -> {
+          Parcel input = Parcel.obtain();
+          Parcel output = Parcel.obtain();
+          try {
+            input.writeInterfaceToken(RootProtocol.DESCRIPTOR);
+            input.writeStrongBinder(lifetime);
+            input.writeStrongBinder(callback);
+            input.writeInt(VolumePolicy.apply(volume));
+            if (target.transact(RootProtocol.VOLUME_ENDPOINT, input, output, 0))
+              output.readException();
+          } catch (RemoteException | RuntimeException ignored) {
+            // The ordinary remote session remains usable if a ROM lacks this API.
+          } finally {
+            input.recycle();
+            output.recycle();
+          }
+        });
+  }
 
   static void register(IBinder value) throws RemoteException {
     if (value == null) throw new IllegalArgumentException("Missing system bridge");

@@ -47,6 +47,7 @@ final class SystemAudioBridge extends Binder {
     }
     if (code != RootProtocol.OPEN
         && code != RootProtocol.OPEN_CONFIGURED
+        && code != RootProtocol.VOLUME_ENDPOINT
         && code != RootProtocol.CLOSE) return super.onTransact(code, data, reply, flags);
     data.enforceInterface(RootProtocol.DESCRIPTOR);
     try {
@@ -67,6 +68,16 @@ final class SystemAudioBridge extends Binder {
     if (client == null) throw new IllegalArgumentException("Client lifetime token required");
     long identity = Binder.clearCallingIdentity();
     try {
+      if (code == RootProtocol.VOLUME_ENDPOINT) {
+        IBinder callback = data.readStrongBinder();
+        int volume = data.readInt();
+        if (stream != null
+            && stream.client.equals(client)
+            && stream.wholeDevice
+            && callback != null) stream.volumeEndpoint(callback, volume);
+        reply.writeNoException();
+        return true;
+      }
       if (code == RootProtocol.CLOSE) {
         if (stream != null && stream.client.equals(client)) {
           stream.close();
@@ -118,6 +129,8 @@ final class SystemAudioBridge extends Binder {
     final ParcelFileDescriptor writePipe;
     final AtomicBoolean closed = new AtomicBoolean();
     final int blockSamples;
+    final boolean wholeDevice;
+    private SystemVolumeEndpoint volumeEndpoint;
 
     Stream(
         IBinder client,
@@ -128,6 +141,7 @@ final class SystemAudioBridge extends Binder {
         throws Exception {
       this.client = client;
       this.writePipe = writePipe;
+      this.wholeDevice = settings.wholeDevice();
       blockSamples = settings.samplesPerRead();
       ClassLoader loader = context.getClassLoader();
       Object rule =
@@ -236,6 +250,12 @@ final class SystemAudioBridge extends Binder {
 
     void close() {
       if (!closed.compareAndSet(false, true)) return;
+      synchronized (this) {
+        if (volumeEndpoint != null) {
+          volumeEndpoint.close();
+          volumeEndpoint = null;
+        }
+      }
       try {
         record.stop();
       } catch (RuntimeException ignored) {
@@ -249,6 +269,22 @@ final class SystemAudioBridge extends Binder {
     @Override
     public void binderDied() {
       close();
+    }
+
+    synchronized void volumeEndpoint(IBinder callback, int volume) {
+      if (closed.get()) return;
+      if (volumeEndpoint == null) {
+        try {
+          volumeEndpoint = new SystemVolumeEndpoint(context, callback, volume);
+          de.robv.android.xposed.XposedBridge.log("HomePod Bridge: system volume endpoint ready");
+        } catch (Throwable e) {
+          de.robv.android.xposed.XposedBridge.log(
+              "HomePod Bridge: system volume endpoint unavailable ("
+                  + e.getClass().getSimpleName()
+                  + ")");
+          de.robv.android.xposed.XposedBridge.log(e);
+        }
+      } else volumeEndpoint.update(volume);
     }
   }
 }
