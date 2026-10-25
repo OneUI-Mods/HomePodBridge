@@ -291,10 +291,15 @@ void testFullSession() {
     std::thread rx(fakeReceiver, lfd, &res, false);
 
     Session s;
+    CHECK(s.loop.tcpRttMicros(RaopTcp::Control)[0] == -1, "unconnected RTT is unavailable, not zero");
     s.start("127.0.0.1", port);
     CHECK(!s.launched.has_value(), "start() reports nothing synchronously");
     REQUIRE(s.pumpUntil([&] { return s.launched.has_value(); }, 5000), "launched within 5 s");
     CHECK(*s.launched, std::string("launched ok: " + s.error).c_str());
+#if defined(__linux__) || defined(__ANDROID__)
+    const auto rtt = s.loop.tcpRttMicros(RaopTcp::Control);
+    CHECK(rtt[0] > 0 && rtt[1] >= 0, "connected Linux control socket has kernel RTT evidence");
+#endif
     CHECK(res.announceSawLoopback.load(), "SDP c= line carries the resolved peer address");
     // stream for a bit, until the receiver has probed us
     s.pumpUntil([&] { return res.retransmitReplyOk.load() || res.timingReplyOk.load(); }, 4000);
@@ -306,6 +311,7 @@ void testFullSession() {
     CHECK(res.timingReplyOk.load(), "timing reply lands at the requesting socket");
     CHECK(res.retransmitReplyOk.load(), "retransmit reply lands at the requesting socket");
     s.sender->stop();
+    CHECK(s.loop.tcpRttMicros(RaopTcp::Control)[0] == -1, "closed RTT never retains a stale sample");
     rx.join();
     CHECK(res.sawTeardown.load(), "TEARDOWN reached the receiver before the socket closed");
     CHECK(res.sawEof.load(), "and the receiver saw our FIN");

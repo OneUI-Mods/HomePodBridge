@@ -9,3 +9,5 @@ Additional HomePod Bridge changes: absolute sample-frame pacing with bounded cat
 HomePod Bridge also permits a 10 ms experimental presentation target, covered by AP1/AP2 timeline and mute-ACK tests.
 
 Additional HomePod Bridge diagnostics measure local socket-handoff lead relative to the nominal RTP presentation deadline and count late handoffs; no network/receiver/acoustic timing is inferred.
+
+HomePod Bridge reads the control socket TCP_INFO smoothed RTT/deviation on Linux/Android for numeric diagnostics; unsupported platforms report unknown. This does not change socket traffic or pacing.

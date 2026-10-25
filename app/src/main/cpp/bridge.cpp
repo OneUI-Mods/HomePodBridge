@@ -24,7 +24,7 @@ struct Engine {
     std::string diagnostic;
     std::string statistics;
     jint timing[4] = {0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
-    jlong pipeline[11] = {};
+    jlong pipeline[13] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1};
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
 };
@@ -117,6 +117,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                     engine->timing[1] = ms(sender.presentationLatencyFrames());
                     engine->timing[2] = sender.receiverMinimumLatencyFrames() < 0 ? -1 : ms(sender.receiverMinimumLatencyFrames());
                     engine->timing[3] = sender.latencyCompatibilityFallback() ? 1 : 0;
+                    const auto rtt = loop.tcpRttMicros(fxchain::RaopTcp::Control);
                     const jlong pipeline[] = {
                         static_cast<jlong>(engine->ring.availableRead() / 2),
                         static_cast<jlong>(sender.inputBufferFrames()),
@@ -126,7 +127,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         static_cast<jlong>(sender.measuredHandoffPackets()),
                         static_cast<jlong>(sender.inputUnderrunFrames()),
                         static_cast<jlong>(sender.bufferingFrames()),
-                        static_cast<jlong>(engine->backpressure.load()), 352};
+                        static_cast<jlong>(engine->backpressure.load()), 352, rtt[0], rtt[1]};
                     std::copy(std::begin(pipeline), std::end(pipeline), engine->pipeline);
                     engine->statistics = "queueFrames=" + std::to_string(engine->ring.availableRead() / 2)
                         + " requestedLatencyMs=" + std::to_string(engine->timing[0])
@@ -206,9 +207,9 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_pipeline(JNIEnv* env, jclass) {
     auto engine = getEngine();
     if (!engine) return nullptr;
-    auto result = env->NewLongArray(11);
+    auto result = env->NewLongArray(13);
     if (!result) return nullptr;
     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
-    env->SetLongArrayRegion(result, 0, 11, engine->pipeline);
+    env->SetLongArrayRegion(result, 0, 13, engine->pipeline);
     return result;
 }

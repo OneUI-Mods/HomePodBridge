@@ -21,6 +21,8 @@
 
 #include "raop_io.h"
 
+#include <array>
+#include <cstdint>
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -47,6 +49,8 @@ public:
     void requestStop() { stop_.store(true); }
     bool stopRequested() const { return stop_.load(); }
     void clearStopRequest() { stop_.store(false); }
+    // Kernel-smoothed control TCP RTT/deviation; not UDP one-way or receiver rendering time.
+    std::array<int64_t, 2> tcpRttMicros(RaopTcp channel) const;
 
     // RaopIo
     void tcpConnect(RaopTcp ch, const std::string& host, uint16_t port) override;

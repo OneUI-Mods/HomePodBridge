@@ -41,6 +41,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView pipeTiming;
   private TextView senderTiming;
   private TextView handoffTiming;
+  private TextView networkTiming;
   private LinearLayout speakers;
   private Button share;
   private int textColor;
@@ -284,6 +285,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(card(senderTiming));
     handoffTiming = label("", 16);
     body.addView(card(handoffTiming));
+    networkTiming = label("", 16);
+    body.addView(card(networkTiming));
     body.addView(card(label(getString(R.string.diagnostics_unmeasured), 14)));
     syncSettings();
     setContentView(root);
@@ -523,7 +526,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private void updatePipeline() {
     PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
     if (t == null) {
-      for (TextView label : new TextView[] {captureTiming, pipeTiming, senderTiming, handoffTiming})
+      for (TextView label :
+          new TextView[] {captureTiming, pipeTiming, senderTiming, handoffTiming, networkTiming})
         label.setText(R.string.diagnostics_idle);
       return;
     }
@@ -577,6 +581,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
             targets == null
                 ? getString(R.string.diagnostics_unknown)
                 : millis(targets[1] * 1000L)));
+    networkTiming.setText(
+        getString(R.string.diagnostics_network, millis(t.sender(11)), millis(t.sender(12))));
   }
 
   private TextView label(String value, int size) {

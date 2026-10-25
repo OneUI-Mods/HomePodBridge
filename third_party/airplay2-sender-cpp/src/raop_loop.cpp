@@ -213,6 +213,21 @@ RaopLoop::~RaopLoop() {
 #endif
 }
 
+std::array<int64_t, 2> RaopLoop::tcpRttMicros(RaopTcp channel) const {
+#if defined(__linux__) || defined(__ANDROID__)
+    const auto& socket = d_->t(channel);
+    if (socket.fd != kBadSock && socket.connected) {
+        struct tcp_info info{};
+        socklen_t length = sizeof(info);
+        if (::getsockopt(socket.fd, IPPROTO_TCP, TCP_INFO, &info, &length) == 0 && info.tcpi_rtt > 0)
+            return {info.tcpi_rtt, info.tcpi_rttvar};
+    }
+#else
+    (void)channel;
+#endif
+    return {-1, -1};
+}
+
 // -- RaopIo: tcp -------------------------------------------------------
 
 void RaopLoop::tcpConnect(RaopTcp ch, const std::string& host, uint16_t port) {

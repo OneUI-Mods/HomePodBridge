@@ -7,7 +7,7 @@ record PipelineTiming(long[] capture, long[] sender, long pipeMicros, long sampl
   }
 
   long sender(int index) {
-    return sender != null && sender.length == 11 ? sender[index] : -1;
+    return sender != null && sender.length == 13 ? sender[index] : -1;
   }
 
   boolean captureAgeFresh() {
