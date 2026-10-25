@@ -286,6 +286,8 @@ private:
 
     // Streaming
     void onPacerTick_();
+    void startAudioClock_();
+    void scheduleAudio_();
     void sendAudioPacket_();
     std::string encodeAlacFrame_(const int16_t* frames, int nFrames);   // #90 ALAC, one 352-frame packet
     size_t fillFrames_(int16_t* dst, size_t want); // ring -> 44.1 kHz frames
@@ -361,7 +363,7 @@ private:
     uint16_t   timingPort_  = 0;
 
     // -- stream clock / RTP state -------------------------------------
-    Timer_   pacer_;         // 8 ms precise, token-bucket sender
+    Timer_   pacer_;         // one-shot deadline derived from framesSent_
     Timer_   syncTimer_;     // 1 Hz sync packets
     Timer_   timeout_;       // handshake watchdog
     Timer_   pinTimeout_;    // on-screen-PIN wait watchdog (user-driven)

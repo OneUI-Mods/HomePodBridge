@@ -104,7 +104,6 @@ constexpr uint32_t kRaopRate        = 44100;        // RAOP fixed
 constexpr int      kChannels        = 2;
 constexpr int      kPayloadBytes    = kFramesPerPacket * kChannels * 2;
 constexpr int      kBacklogSize     = 1024;         // power of two
-constexpr int      kPacerMs         = 8;            // ~ 1 packet/tick
 constexpr int      kMaxPacketsPerTick = 16;         // GUI-stall catch-up cap
 constexpr int      kHandshakeTimeoutMs = 10000;
 constexpr int      kPinWaitTimeoutMs  = 180000;     // 3 min, read a code off the TV
@@ -283,11 +282,8 @@ RaopSender::RaopSender(RaopIo& io, RaopEvents events, RaopLogSink log)
     backlog_.resize(kBacklogSize);
     backlogSeq_.assign(kBacklogSize, -1);
 
-    // 8 ms PRECISE pacer; a coarse timer's slack at 125 ticks/s would
-    // wander audibly against the 44.1 kHz budget; the token bucket in
-    // onPacerTick_ absorbs the remainder (and any late tick()).
-    pacer_.interval         = std::chrono::milliseconds(kPacerMs);
-    pacer_.repeating        = true;
+    // HomePod Bridge: a one-shot absolute frame deadline, never now + 8 ms.
+    pacer_.repeating        = false;
     syncTimer_.interval     = std::chrono::milliseconds(1000);
     syncTimer_.repeating    = true;
     timeout_.interval       = std::chrono::milliseconds(kHandshakeTimeoutMs);
@@ -974,7 +970,7 @@ void RaopSender::handleResponse_(const std::string& method, int code, const Head
             if (code != 200) { fail_("Receiver rejected the initial volume; audio was not started"); return; }
             disarm_(timeout_);
             state_ = State::Streaming;
-            arm_(pacer_);
+            startAudioClock_();
             if (events_.launched) events_.launched(true, std::string());
             return;
         }
@@ -1145,12 +1141,8 @@ void RaopSender::startStreaming_() {
     // pyatv StreamContext.reset(): anchor the timeline on wall-clock
     // NTP so sync-packet NTP values and our timing-server replies share
     // one epoch (the receiver correlates the two for clock recovery).
-    startTs_ = ntp2ts(ntpNow_(), kRaopRate);
     framesSent_ = 0;
     firstAudio_ = true;
-    clockStart_ = now_();
-    sendSyncPacket_(true);   // first sync carries the marker bit
-    arm_(syncTimer_);
     // #90, RECORD already ran between session + stream SETUP (owntone order),
     // so streaming just needs sync + volume + the RTP loop here.
     // Volume requested before the session was up? Apply it now. pyatv
@@ -1175,7 +1167,7 @@ void RaopSender::startStreaming_() {
             vh.push_back({"Session", rtspSession_});
         sendRequest_("SET_PARAMETER", rtspUri_(), "text/parameters", body, vh);
     }
-    if (!waitingInitialVolume_) arm_(pacer_);   // configured initial volume must be ACKed first
+    if (!waitingInitialVolume_) startAudioClock_();
     if (airplay2_) {
         // AP2: feedback is an HTTP POST /feedback every 2 s (pyatv
         // FEEDBACK_INTERVAL).
@@ -1970,6 +1962,7 @@ std::string RaopSender::encryptAudioPayload_(const std::string& rtpHeader,
 // -- Streaming -----------------------------------------------------
 
 void RaopSender::onPacerTick_() {
+    if (state_ != State::Streaming) return;
     // Token bucket: frames-on-the-wire must track wall clock at
     // 44100/s (pyatv paces identically off monotonic time). A GUI
     // stall is repaid in bursts, capped so we never flood the LAN,
@@ -1983,6 +1976,26 @@ void RaopSender::onPacerTick_() {
         sendAudioPacket_();
         ++sentThisTick;
     }
+    scheduleAudio_();
+    // Retain the catch-up cap without an immediate polling loop on a stale deadline.
+    if (sentThisTick == kMaxPacketsPerTick && framesSent_ + kFramesPerPacket <= target)
+        pacer_.due = now_() + std::chrono::ceil<Clock::duration>(
+            std::chrono::nanoseconds((uint64_t(kFramesPerPacket) * 1000000000ULL + kRaopRate - 1) / kRaopRate));
+}
+
+void RaopSender::startAudioClock_() {
+    // A slow mute ACK must not become a backlog of already-late audio packets.
+    clockStart_ = now_();
+    startTs_ = ntp2ts(ntpNow_(), kRaopRate);
+    sendSyncPacket_(true);
+    arm_(syncTimer_);
+    scheduleAudio_();
+}
+
+void RaopSender::scheduleAudio_() {
+    const uint64_t nanos = ((framesSent_ + kFramesPerPacket) * 1000000000ULL + kRaopRate - 1) / kRaopRate;
+    pacer_.due = clockStart_ + std::chrono::ceil<Clock::duration>(std::chrono::nanoseconds(nanos));
+    pacer_.active = true;
 }
 
 // #90, encode one frame of interleaved s16 stereo PCM as an UNCOMPRESSED ALAC

@@ -1461,6 +1461,14 @@ void testVolumePolicy() {
     r.rx.holdVolume = false;
     r.sender->onTcpData(RaopTcp::Control, spanOf(r.rx.heldVolumeReply));
     REQUIRE(r.launchedOk && *r.launchedOk, "ready after mute ACK");
+    r.io.takeUdp();
+    r.sender->tick();
+    CHECK(r.io.takeUdp().empty(), "a delayed mute ACK creates no overdue audio burst");
+    r.advance(7);
+    CHECK(r.io.takeUdp().empty(), "first packet waits for its complete frame interval");
+    r.advance(1);
+    auto first = r.io.takeUdp();
+    CHECK(first.size() == 1 && first[0].s == RaopUdp::Audio, "one packet after ACK, not catch-up from handshake time");
     r.sender->setVolume(100); r.exchange();
     CHECK(r.rx.last("SET_PARAMETER")->body == "volume: -28.500000", "100 percent request is clamped to five percent");
     r.sender->setVolume(0); r.exchange();
@@ -1609,6 +1617,36 @@ void testLowLatencyTimeline() {
     }
 }
 
+void testFrameClockPacing() {
+    g_test = "absolute sample-frame pacing with scheduler jitter";
+    Rig r;
+    r.sender->setAuth(RaopDeviceInfo::Auth::None, false, "box", "", "");
+    r.sender->start(r.peerIp, 5000, "FakeBox");
+    r.connectControl(); r.exchange();
+    REQUIRE(r.launchedOk && *r.launchedOk, "streaming");
+    r.io.takeUdp();
+    const auto start = r.now;
+    uint64_t sent = 0;
+    for (int tick = 1; tick <= 2000; ++tick) {
+        r.now = start + std::chrono::ceil<Clock::duration>(std::chrono::microseconds(tick * 997LL));
+        r.sender->tick();
+        for (const auto& packet : r.io.takeUdp()) {
+            if (packet.s != RaopUdp::Audio) continue;
+            CHECK(be32(packet.data, 4) == 66150 + sent * 352, "RTP sample timeline is continuous");
+            ++sent;
+        }
+        const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(r.now - start).count();
+        CHECK(sent == uint64_t(nanos) * 44100 / 1000000000ULL / 352, "late wakes do not move the next audio deadline");
+    }
+    r.now += std::chrono::seconds(1);
+    r.sender->tick();
+    size_t burst = 0;
+    for (const auto& packet : r.io.takeUdp()) if (packet.s == RaopUdp::Audio) ++burst;
+    CHECK(burst == 16, "long-stall catch-up remains bounded");
+    CHECK(r.sender->nextDeadline() && *r.sender->nextDeadline() > r.now, "bounded catch-up does not spin on a past deadline");
+    r.sender->stop();
+}
+
 void testCompressedAp2Audio() {
         g_test = "compressed encrypted ALAC and runtime opt-out";
         Rig r;
@@ -1655,6 +1693,7 @@ int main() {
     testInputJitterReserve();
     testLowLatencyTimeline();
     testCompressedAp2Audio();
+    testFrameClockPacing();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);
     return g_failures == 0 ? 0 : 1;

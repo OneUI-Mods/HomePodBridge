@@ -371,15 +371,12 @@ void RaopLoop::pump(RaopSender& sender, std::chrono::milliseconds maxWait) {
     }
 
     // 2. how long may we block: the sender's next deadline, capped.
-    long long waitMs = maxWait.count();
+    auto wait = duration_cast<nanoseconds>(maxWait);
     if (const auto dl = sender.nextDeadline()) {
         const auto left = *dl - RaopSender::Clock::now();
-        // round UP so a deadline 0.3 ms away does not turn into a busy spin
-        const long long ms = left.count() <= 0
-            ? 0 : duration_cast<milliseconds>(left + microseconds(999)).count();
-        waitMs = std::min(waitMs, ms);
+        wait = std::min(wait, duration_cast<nanoseconds>(left));
     }
-    if (waitMs < 0) waitMs = 0;
+    if (wait.count() < 0) wait = nanoseconds::zero();
 
     // 3. snapshot the live sockets.
     struct Entry { bool tcp; size_t idx; sock_t fd; uint32_t gen; };
@@ -410,9 +407,17 @@ void RaopLoop::pump(RaopSender& sender, std::chrono::milliseconds maxWait) {
     // 4. wait.
     int ready = 0;
     if (pfds.empty()) {
-        if (waitMs > 0) std::this_thread::sleep_for(milliseconds(waitMs));
+        if (wait.count() > 0) std::this_thread::sleep_for(wait);
     } else {
-        ready = pollSockets(pfds.data(), pfds.size(), int(waitMs));
+#if defined(__linux__)
+        // Android/Linux: preserve sub-millisecond frame deadlines in the kernel wait.
+        timespec timeout{};
+        timeout.tv_sec = static_cast<time_t>(wait.count() / 1000000000LL);
+        timeout.tv_nsec = static_cast<long>(wait.count() % 1000000000LL);
+        ready = ::ppoll(pfds.data(), pfds.size(), &timeout, nullptr);
+#else
+        ready = pollSockets(pfds.data(), pfds.size(), int(ceil<milliseconds>(wait).count()));
+#endif
     }
 
     // 5. deliver. every sender call may close/open slots: re-validate by
