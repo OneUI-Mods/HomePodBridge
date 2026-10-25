@@ -21,6 +21,11 @@ final class HalInspection {
   private static boolean running;
 
   static synchronized void requestRoute(android.content.Context context, String registration) {
+    requestRoute(context, registration, false);
+  }
+
+  static synchronized void requestRoute(
+      android.content.Context context, String registration, boolean freeze) {
     if (running) return;
     String address = registration == null ? "none" : registration;
     if (!address.equals("none") && !address.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")) {
@@ -46,7 +51,8 @@ final class HalInspection {
                             + "' exec app_process /system/bin dev.ryuya.homepodbridge.HalRootProbe"
                             + " '"
                             + address
-                            + "'");
+                            + "'"
+                            + (freeze ? " freeze" : ""));
                 synchronized (HalInspection.class) {
                   image = report;
                   status = new String(report, java.nio.charset.StandardCharsets.UTF_8);

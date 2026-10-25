@@ -16,6 +16,10 @@ final class CaptureProbe {
   private static String status = "Not requested";
 
   static synchronized void request(Context context) {
+    request(context, false);
+  }
+
+  static synchronized void request(Context context, boolean freeze) {
     if (running) return;
     if (BridgeState.capture != null || !RootConnector.available()) {
       status = "Probe requires idle sharing and an available system bridge";
@@ -24,10 +28,10 @@ final class CaptureProbe {
     running = true;
     status = "Capture-only probe running; no network sender or playback command";
     Context app = context.getApplicationContext();
-    new Thread(() -> run(app), "HomePod-capture-probe").start();
+    new Thread(() -> run(app, freeze), "HomePod-capture-probe").start();
   }
 
-  private static void run(Context context) {
+  private static void run(Context context, boolean freeze) {
     Binder lifetime = new Binder();
     ParcelFileDescriptor descriptor = null;
     var timer = Executors.newSingleThreadScheduledExecutor();
@@ -78,7 +82,7 @@ final class CaptureProbe {
           }
           if (!inspected) {
             inspected = true;
-            HalInspection.requestRoute(context, input.registration());
+            HalInspection.requestRoute(context, input.registration(), freeze);
           }
         }
       }

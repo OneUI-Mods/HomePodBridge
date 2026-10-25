@@ -13,7 +13,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 
-/** Read-only, exact-build inspection. No writes, injection, signals, or thread suspension. */
+/** Exact-build read-only inspection; optional bounded quiescence check never writes memory. */
 public final class HalRootProbe {
   private static final String MODULE = "/vendor/lib64/libaudioserviceexampleimpl.so";
   private static final String PIPE = "/vendor/lib64/libnbaio_mono.so";
@@ -25,7 +25,9 @@ public final class HalRootProbe {
   public static void main(String[] args) {
     try {
       if (android.os.Process.myUid() != 0
-          || args.length != 1
+          || args.length < 1
+          || args.length > 2
+          || (args.length == 2 && !args[1].equals("freeze"))
           || !(args[0].equals("none") || args[0].matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")))
         throw new IOException("Invalid probe context");
       verify(MODULE, MODULE_SHA);
@@ -42,6 +44,8 @@ public final class HalRootProbe {
           new String(Files.readAllBytes(proc.resolve("status")), StandardCharsets.UTF_8);
       if (!status.matches("(?s).*\\nUid:\\s+1041\\s+1041\\s+1041\\s+1041\\s*\\n.*"))
         throw new IOException("Unexpected service identity");
+      if (status.contains("State:\tT") || status.contains("State:\tt"))
+        throw new IOException("Service already stopped");
       String command =
           new String(Files.readAllBytes(proc.resolve("cmdline")), StandardCharsets.UTF_8);
       if (!command.split("\u0000")[0].endsWith("audiohalservice.qti"))
@@ -102,6 +106,13 @@ public final class HalRootProbe {
         if (seen.size() != count || !Arrays.equals(before, memory.read(base + 0x1b4730, 24)))
           throw new IOException("Route set changed during observation");
         System.out.println(report == null ? "No matching live owned route" : report);
+        if (report != null && args.length == 2) {
+          String apk = System.getenv("CLASSPATH");
+          if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
+            throw new IOException("Invalid native helper path");
+          System.load(apk + "!/lib/arm64-v8a/libhomepod_hal.so");
+          System.out.println(freezeCheck(Integer.parseInt(pid), base, pipeBase, args[0]));
+        }
       }
     } catch (Exception error) {
       System.out.println(
@@ -188,4 +199,6 @@ public final class HalRootProbe {
   }
 
   private HalRootProbe() {}
+
+  private static native String freezeCheck(int pid, long module, long mono, String registration);
 }

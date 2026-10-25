@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 project(homepod_bridge LANGUAGES C CXX)
+add_library(homepod_hal SHARED hal_probe.c)
+target_compile_options(homepod_hal PRIVATE -Wall -Wextra -Werror)
+target_link_options(homepod_hal PRIVATE "-Wl,-z,max-page-size=16384")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(AIRPLAY_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)

@@ -27,6 +27,11 @@ jobs:
         run: |
           python3 tools/check_licenses.py
           python3 tools/check_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: HAL identity and process cleanup tests
+        run: |
+          cmake -S app/src/test/cpp -B build-hal -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-hal --parallel 4
+          ctest --test-dir build-hal --output-on-failure
   protocol:
     runs-on: ubuntu-latest
     steps:
