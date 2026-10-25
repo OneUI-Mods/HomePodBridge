@@ -96,7 +96,7 @@ final class SystemVolumeEndpoint implements AutoCloseable {
                   "getNumStreamTypes");
       for (int stream = 0; stream < streams; stream++) {
         if (!(Boolean)
-            XposedHelpers.callStaticMethod(AudioManager.class, "isPublicStreamType", stream))
+            XposedHelpers.callStaticMethod(AudioManager.class, "isVolumeControlStreamType", stream))
           continue;
         Object builder = XposedHelpers.newInstance(infoBuilder, stream);
         XposedHelpers.callMethod(
