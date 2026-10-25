@@ -136,6 +136,8 @@ final class CaptureProbe {
                 + (ages.isEmpty() ? -1 : ages.get(ages.size() / 2))
                 + " maxAgeUs="
                 + (ages.isEmpty() ? -1 : ages.get(ages.size() - 1))
+                + " ageSamplesUs="
+                + ages
                 + "; zero-only input; no sender or music playback; HALoperation="
                 + operation
                 + (operation == 2

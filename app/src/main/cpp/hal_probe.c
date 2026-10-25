@@ -123,6 +123,7 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
         sigprocmask(SIG_UNBLOCK,&alarm_set,NULL);alarm(1);
         error=freeze(pid,tasks,&count,begin+25000000u);
         if (!error) error=hp_find_owned(read_memory,&mem,(uint64_t)module,(uint64_t)mono,address,&owned);
+        if (!error && monotonic_ns()>begin+25000000u) error="exclusive interval exceeded";
         if (!error && operation) error=hp_change_reserve(read_memory,write_memory,&mem,&owned,1,
             operation==1?2587:1856,operation==1?1856:2587);
     }
