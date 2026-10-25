@@ -1,6 +1,7 @@
 package dev.ryuya.homepodbridge;
 
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.media.MediaRoute2Info;
 import android.media.MediaRoute2ProviderService;
 import android.media.RouteDiscoveryPreference;
@@ -110,6 +111,20 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
               .setVolumeMax(100)
               .setVolume(BridgeState.volume);
       for (String category : BridgeState.castCategories) builder.addFeature(category);
+      // AndroidX drops framework routes lacking its descriptor metadata before a chooser sees them.
+      Bundle extras = new Bundle();
+      extras.putBundle("androidx.mediarouter.media.KEY_EXTRAS", Bundle.EMPTY);
+      extras.putInt("androidx.mediarouter.media.KEY_DEVICE_TYPE", 2);
+      extras.putInt("androidx.mediarouter.media.KEY_PLAYBACK_TYPE", 1);
+      extras.putString("androidx.mediarouter.media.KEY_ORIGINAL_ROUTE_ID", receiver.id());
+      ArrayList<IntentFilter> filters = new ArrayList<>();
+      for (String category : BridgeState.castCategories) {
+        IntentFilter filter = new IntentFilter();
+        filter.addCategory(category);
+        filters.add(filter);
+      }
+      extras.putParcelableArrayList("androidx.mediarouter.media.KEY_CONTROL_FILTERS", filters);
+      builder.setExtras(extras);
       routes.add(builder.build());
     }
     notifyRoutes(routes);
