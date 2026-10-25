@@ -16,6 +16,8 @@ The app first tries Android's process-local Wi-Fi binding. When a forced VPN pre
 
 The application uses Material Components 1.14.0 with a Material Design 3 day/night theme, dynamic colors, Material buttons/cards/dialogs and a Material volume slider.
 
+HomePod transient authentication now derives the event-channel keys from the full SRP session key. The upstream path derived them only for pair-verify, silently discarded transient event requests and lost the receiver after roughly 30 seconds. The transient test now validates fragmented encrypted requests and the encrypted keep-alive reply.
+
 ## Verification
 
 - Java tests exercise receiver identity changes, unsupported auth/endpoints, fragmented PCM reads, byte order and truncated frames.

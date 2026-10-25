@@ -521,6 +521,7 @@ private:
                 if (mode == Mode::Ap2Transient) {
                     sharedSecret = srp.K;
                     deriveControlKeys();
+                    deriveEventKeys();
                     audioKey = Bytes(sharedSecret.begin(), sharedSecret.begin() + 32);
                     switchToEncrypted = true;   // the very next request is encrypted
                 }
@@ -1012,10 +1013,14 @@ void testAp2Transient() {
     pcm = r.rx.decodeAudio(dgs[0].data);
     CHECK(pcm && *pcm == rampExpect(704, int16_t(704 * 37)), "second packet continues the ring");
 
-    // the event channel exists but transient pairing has no event keys: pushes are drained, not answered
+    // HomePod transient sessions need the encrypted event keep-alive as well.
     r.sender->onTcpConnected(RaopTcp::Event, {r.localIp, 50001}, {r.peerIp, 7001});
-    r.sender->onTcpData(RaopTcp::Event, spanOf(std::string_view("\x05\x00garbage-frame-bytes-here")));
-    CHECK(r.io.takeTcp(RaopTcp::Event).empty() && r.sender->active(), "unkeyed event channel: drained quietly");
+    const std::string event = r.rx.pushEvent("POST /command RTSP/1.0\r\nCSeq: 4\r\nContent-Length: 0\r\n\r\n");
+    r.sender->onTcpData(RaopTcp::Event, spanOf(std::string_view(event).substr(0, 3)));
+    CHECK(r.io.takeTcp(RaopTcp::Event).empty(), "transient event waits for a complete encrypted frame");
+    r.sender->onTcpData(RaopTcp::Event, spanOf(std::string_view(event).substr(3)));
+    CHECK(r.rx.readEventReplies(r.io.takeTcp(RaopTcp::Event)) == "RTSP/1.0 200 OK\r\nServer: AirTunes/550.10\r\nCSeq: 4\r\n\r\n", "transient SRP-derived event keys produce a valid encrypted keep-alive reply");
+    CHECK(r.sender->active(), "transient stream remains active after keep-alive");
 
     // AP2 feedback every 2 s, as an RTSP/1.0 POST with the identity headers
     r.advance(1900);

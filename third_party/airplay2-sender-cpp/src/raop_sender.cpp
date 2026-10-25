@@ -1577,6 +1577,11 @@ void RaopSender::handlePairSetupM4_(const std::string& body) {
         ap2_->controlIn  = hkdfSha512("Control-Salt",
                                       "Control-Read-Encryption-Key",
                                       ap2_->sharedSecret, 32);
+        // HomePod transient sessions also need their encrypted event-channel
+        // keep-alive. Without these keys incoming commands are silently drained
+        // and the receiver closes an otherwise healthy stream after ~30 seconds.
+        ap2_->eventIn = hkdfSha512("Events-Salt", "Events-Write-Encryption-Key", ap2_->sharedSecret, 32);
+        ap2_->eventOut = hkdfSha512("Events-Salt", "Events-Read-Encryption-Key", ap2_->sharedSecret, 32);
         pairStage_ = PairStage::Done;
         afterAuthOk_();
         return;

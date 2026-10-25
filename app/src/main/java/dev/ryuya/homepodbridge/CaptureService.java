@@ -208,6 +208,7 @@ public final class CaptureService extends Service {
               () -> {
                 if (generation.get() != token || destroyed) return;
                 BridgeState.connected = true;
+                deleteFile("last-capture-error.txt");
                 BridgeState.status = R.string.playing;
                 BridgeState.publish();
                 getSystemService(NotificationManager.class)

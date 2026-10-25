@@ -1,5 +1,6 @@
 package dev.ryuya.homepodbridge;
 
+import android.content.Intent;
 import android.media.MediaRoute2Info;
 import android.media.MediaRoute2ProviderService;
 import android.media.RouteDiscoveryPreference;
@@ -26,6 +27,7 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
   @Override
   public void onCreate() {
     super.onCreate();
+    RootConnector.request(this);
     BridgeState.observe(this);
   }
 
@@ -100,7 +102,31 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
     }
     Receiver receiver =
         BridgeState.receivers.stream().filter(r -> r.id().equals(routeId)).findFirst().orElse(null);
-    if (receiver == null || BridgeState.capture == null) {
+    if (receiver == null) {
+      notifyRequestFailed(requestId, REASON_REJECTED);
+      prompt();
+      return;
+    }
+    if (BridgeState.capture == null) {
+      RootConnector.request(this);
+      if (RootConnector.available()) {
+        try {
+          startForegroundService(new Intent(this, CaptureService.class).putExtra("system", true));
+          main.postDelayed(
+              () -> {
+                if (destroyed) return;
+                if (BridgeState.capture != null)
+                  onCreateSession(requestId, packageName, routeId, hints);
+                else {
+                  notifyRequestFailed(requestId, REASON_REJECTED);
+                  prompt();
+                }
+              },
+              200);
+          return;
+        } catch (RuntimeException ignored) {
+        }
+      }
       notifyRequestFailed(requestId, REASON_REJECTED);
       prompt();
       return;
