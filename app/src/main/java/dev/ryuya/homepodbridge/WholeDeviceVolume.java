@@ -81,6 +81,8 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
               .setState(PlaybackState.STATE_PLAYING, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1f)
               .build());
       session.setActive(true);
+      if (BridgeState.capture != null)
+        RootConnector.volumeEndpoint(BridgeState.capture.lifetime(), callback);
     }
     if (!BridgeState.selected.name().equals(receiverName)) {
       receiverName = BridgeState.selected.name();
@@ -94,8 +96,6 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
     if (BridgeState.volume > 0) lastAudible = BridgeState.volume;
     if (provider.getCurrentVolume() != BridgeState.volume)
       provider.setCurrentVolume(BridgeState.volume);
-    if (BridgeState.capture != null)
-      RootConnector.volumeEndpoint(BridgeState.capture.lifetime(), callback, BridgeState.volume);
   }
 
   private void adjust(int direction) {

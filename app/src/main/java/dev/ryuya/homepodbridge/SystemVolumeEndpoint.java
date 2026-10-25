@@ -23,9 +23,8 @@ final class SystemVolumeEndpoint implements AutoCloseable {
   private final Class<?> infoBuilder;
   private volatile boolean closed;
   private boolean registered;
-  private volatile int current;
 
-  SystemVolumeEndpoint(Context context, IBinder callback, int volume) {
+  SystemVolumeEndpoint(Context context, IBinder callback) {
     this.callback = callback;
     audio = context.getSystemService(AudioManager.class);
     ClassLoader loader = context.getClassLoader();
@@ -43,7 +42,6 @@ final class SystemVolumeEndpoint implements AutoCloseable {
         XposedHelpers.callMethod(
             XposedHelpers.newInstance(infoBuilder, AudioManager.STREAM_MUSIC), "build");
     previousVolume = XposedHelpers.callMethod(manager, "getDeviceVolume", query, device);
-    current = VolumePolicy.apply(volume);
     thread.start();
     handler = new Handler(thread.getLooper());
     try {
@@ -80,6 +78,9 @@ final class SystemVolumeEndpoint implements AutoCloseable {
                     send(
                         RootProtocol.SET_VOLUME,
                         (Integer) XposedHelpers.callMethod(args[1], "getVolumeIndex"));
+                    // Restore the unused speaker without feeding its quantized index back.
+                    XposedHelpers.callMethod(
+                        manager, "notifyAbsoluteVolumeChanged", previousVolume, device);
                   }
                   return null;
                 } catch (Throwable error) {
@@ -103,9 +104,7 @@ final class SystemVolumeEndpoint implements AutoCloseable {
             builder,
             "setMaxVolumeIndex",
             stream == AudioManager.STREAM_MUSIC ? 100 : audio.getStreamMaxVolume(stream));
-        // Other streams keep their current state and pass commands through unchanged.
-        if (stream == AudioManager.STREAM_MUSIC)
-          XposedHelpers.callMethod(builder, "setVolumeIndex", current);
+        // Every index stays unset: registration must not alter local volumes.
         volumes.add(XposedHelpers.callMethod(builder, "build"));
       }
       Executor executor = command -> handler.post(command);
@@ -136,29 +135,6 @@ final class SystemVolumeEndpoint implements AutoCloseable {
     } finally {
       data.recycle();
     }
-  }
-
-  void update(int volume) {
-    int bounded = VolumePolicy.apply(volume);
-    if (current == bounded || closed) return;
-    current = bounded;
-    handler.post(
-        () -> {
-          try {
-            if (closed) return;
-            Object builder = XposedHelpers.newInstance(infoBuilder, AudioManager.STREAM_MUSIC);
-            XposedHelpers.callMethod(builder, "setMinVolumeIndex", 0);
-            XposedHelpers.callMethod(builder, "setMaxVolumeIndex", 100);
-            XposedHelpers.callMethod(builder, "setVolumeIndex", current);
-            XposedHelpers.callMethod(
-                manager,
-                "notifyAbsoluteVolumeChanged",
-                XposedHelpers.callMethod(builder, "build"),
-                device);
-          } catch (Throwable error) {
-            close();
-          }
-        });
   }
 
   @Override

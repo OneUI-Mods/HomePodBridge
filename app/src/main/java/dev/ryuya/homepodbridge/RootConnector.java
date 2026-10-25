@@ -10,7 +10,7 @@ final class RootConnector {
   private static final java.util.concurrent.ExecutorService controls =
       java.util.concurrent.Executors.newSingleThreadExecutor();
 
-  static void volumeEndpoint(IBinder lifetime, IBinder callback, int volume) {
+  static void volumeEndpoint(IBinder lifetime, IBinder callback) {
     IBinder target = bridge;
     if (target == null) return;
     controls.execute(
@@ -21,7 +21,6 @@ final class RootConnector {
             input.writeInterfaceToken(RootProtocol.DESCRIPTOR);
             input.writeStrongBinder(lifetime);
             input.writeStrongBinder(callback);
-            input.writeInt(VolumePolicy.apply(volume));
             if (target.transact(RootProtocol.VOLUME_ENDPOINT, input, output, 0))
               output.readException();
           } catch (RemoteException | RuntimeException ignored) {

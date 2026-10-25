@@ -70,11 +70,10 @@ final class SystemAudioBridge extends Binder {
     try {
       if (code == RootProtocol.VOLUME_ENDPOINT) {
         IBinder callback = data.readStrongBinder();
-        int volume = data.readInt();
         if (stream != null
             && stream.client.equals(client)
             && stream.wholeDevice
-            && callback != null) stream.volumeEndpoint(callback, volume);
+            && callback != null) stream.volumeEndpoint(callback);
         reply.writeNoException();
         return true;
       }
@@ -271,11 +270,11 @@ final class SystemAudioBridge extends Binder {
       close();
     }
 
-    synchronized void volumeEndpoint(IBinder callback, int volume) {
+    synchronized void volumeEndpoint(IBinder callback) {
       if (closed.get()) return;
       if (volumeEndpoint == null) {
         try {
-          volumeEndpoint = new SystemVolumeEndpoint(context, callback, volume);
+          volumeEndpoint = new SystemVolumeEndpoint(context, callback);
           de.robv.android.xposed.XposedBridge.log("HomePod Bridge: system volume endpoint ready");
         } catch (Throwable e) {
           de.robv.android.xposed.XposedBridge.log(
@@ -284,7 +283,7 @@ final class SystemAudioBridge extends Binder {
                   + ")");
           de.robv.android.xposed.XposedBridge.log(e);
         }
-      } else volumeEndpoint.update(volume);
+      }
     }
   }
 }
