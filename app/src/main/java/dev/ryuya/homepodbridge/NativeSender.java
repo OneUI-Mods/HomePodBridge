@@ -23,6 +23,8 @@ final class NativeSender {
 
   static native int state();
 
+  static native int[] timing();
+
   static native void volume(int volume);
 
   static native void stop();

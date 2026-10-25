@@ -56,4 +56,8 @@
     <string name="route_description">AirPlayで音声を再生</string>
     <string name="route_not_ready">HomePod Bridgeを開いて、音声の共有を許可してください。</string>
     <string name="scan_failed">スピーカーを探せませんでした。Wi-Fiとローカルネットワークの権限を確認してください。</string>
+    <string name="latency_unknown">応答なし</string>
+    <string name="latency_ms">%1$d ms</string>
+    <string name="latency_active">送信目標：%1$d ms（設定：%2$d ms）\n受信機の最小値：%3$s\n通信上の目標値です。実際に音が届くまでの遅延の測定値ではありません。</string>
+    <string name="latency_fallback">スピーカーの互換性のため、遅延の許容範囲を広げました。</string>
 </resources>

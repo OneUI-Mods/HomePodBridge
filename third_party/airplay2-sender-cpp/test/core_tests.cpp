@@ -339,6 +339,9 @@ struct FakeReceiver {
     bool badSrpProof = false;
     bool badVerifySignature = false;
     bool holdVolume = false, rejectVolume = false;
+    std::optional<airplay::bplist::Value> latencyMinimum, latencyMaximum;
+    int streamSetups = 0, setupRejectCode = 0;
+    bool rejectAllStreamSetups = false;
     std::string heldVolumeReply;
 
     // receiver identity (pin / verify modes)
@@ -493,10 +496,15 @@ private:
             auto root = bplist::decode(bytesOf(r.body));
             bplist::Dict d;
             if (root && root->find("streams")) {
+                ++streamSetups;
+                if (setupRejectCode && (streamSetups == 1 || rejectAllStreamSetups))
+                    return http(r, setupRejectCode, "Rejected");
                 bplist::Dict s;
                 s.emplace_back("dataPort", bplist::Value::integer(dataPort));
                 s.emplace_back("controlPort", bplist::Value::integer(ap2ControlPort));
                 s.emplace_back("type", bplist::Value::integer(0x60));
+                if (latencyMinimum) s.emplace_back("latencyMin", *latencyMinimum);
+                if (latencyMaximum) s.emplace_back("latencyMax", *latencyMaximum);
                 bplist::Array arr;
                 arr.push_back(bplist::Value::object(std::move(s)));
                 d.emplace_back("streams", bplist::Value::array(std::move(arr)));
@@ -991,7 +999,7 @@ void testAp2Transient() {
         auto i = [&](const char* k) { auto* v = st.find(k); return v ? v->asInt(-1) : int64_t(-1); };
         CHECK(i("audioFormat") == 0x40000 && i("ct") == 2 && i("type") == 0x60 && i("spf") == 352 && i("sr") == 44100,
               "realtime ALAC stream: audioFormat 0x40000, ct 2, type 0x60, spf 352, sr 44100");
-        CHECK(i("controlPort") == 40002 && i("latencyMin") == 11025 && i("latencyMax") == 88200, "our control port + latency window");
+        CHECK(i("controlPort") == 40002 && i("latencyMin") == 11025 && i("latencyMax") == 66150, "our control port + configured latency window");
         CHECK(i("dataPort") == 40001, "realtime stream advertises the bound sender audio port");
         CHECK(i("streamConnectionID") == int64_t(sid), "streamConnectionID == the rtsp session id");
         auto* shk = st.find("shk");
@@ -1617,6 +1625,98 @@ void testLowLatencyTimeline() {
     }
 }
 
+void testAp2LatencyNegotiation() {
+    using airplay::bplist::Value;
+    g_test = "AP2 requested latency window and receiver bounds";
+    for (uint32_t target : {20u, 50u, 1500u}) {
+        Rig r;
+        r.sender->setVolumePolicy(0, 100);
+        r.sender->setPresentationLatencyMs(target);
+        r.rx.holdVolume = true;
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        const auto* request = r.rx.last("SETUP");
+        REQUIRE(request, "stream SETUP present");
+        auto plist = airplay::bplist::decode(bytesOf(request->body));
+        REQUIRE(plist && plist->find("streams"), "stream descriptor present");
+        const auto& stream = plist->find("streams")->arr.front();
+        CHECK(stream.find("latencyMax")->asInt() == target * 44100 / 1000, "maximum follows requested target instead of fixed two seconds");
+        CHECK(stream.find("latencyMin")->asInt() == std::min(target * 44100 / 1000, 11025u), "minimum never exceeds maximum");
+        CHECK(r.sender->presentationLatencyFrames() == target * 44100 / 1000, "effective target retained when receiver omits bounds");
+        CHECK(r.sender->receiverMinimumLatencyFrames() == -1, "omitted receiver minimum remains unknown");
+        CHECK(!r.launchedOk && r.io.takeUdp().empty(), "no readiness or RTP before mute ACK");
+        r.sender->onTcpData(RaopTcp::Control, spanOf(r.rx.heldVolumeReply));
+        REQUIRE(r.launchedOk && *r.launchedOk, "mute ACK releases connection");
+        auto sync = r.io.takeUdp();
+        REQUIRE(!sync.empty(), "initial sync after ACK");
+        CHECK(be32(sync.front().data, 16) == target * 44100 / 1000, "sync uses requested timeline");
+        r.sender->stop();
+    }
+    for (bool upperBound : {false, true}) {
+        Rig r;
+        r.sender->setPresentationLatencyMs(upperBound ? 1500 : 50);
+        r.rx.latencyMinimum = Value::integer(11025);
+        r.rx.latencyMaximum = Value::integer(22050);
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        REQUIRE(r.launchedOk && *r.launchedOk, "bounded receiver accepts session");
+        uint32_t effective = upperBound ? 22050 : 11025;
+        CHECK(r.sender->presentationLatencyFrames() == effective, "target respects reported receiver range");
+        CHECK(r.sender->receiverMinimumLatencyFrames() == 11025, "reported minimum retained separately");
+        auto sync = r.io.takeUdp();
+        REQUIRE(!sync.empty(), "bounded initial sync");
+        CHECK(be32(sync.front().data, 16) == effective, "timeline reflects actual target");
+        r.sender->stop();
+    }
+    const std::vector<Value> invalid{Value::integer(0), Value::integer(-1), Value::integer(441001), Value::str("11025")};
+    for (const auto& minimum : invalid) {
+        Rig r;
+        r.sender->setPresentationLatencyMs(50);
+        r.rx.latencyMinimum = minimum;
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        REQUIRE(r.launchedOk && *r.launchedOk, "invalid optional bounds do not break ports or session");
+        CHECK(r.sender->presentationLatencyFrames() == 2205 && r.sender->receiverMinimumLatencyFrames() == -1, "invalid bound ignored without wrapping");
+        r.sender->stop();
+    }
+    {
+        Rig r;
+        r.sender->setPresentationLatencyMs(50);
+        r.rx.latencyMinimum = Value::integer(22050);
+        r.rx.latencyMaximum = Value::integer(11025);
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        CHECK(r.sender->presentationLatencyFrames() == 2205 && r.sender->receiverMinimumLatencyFrames() == -1, "contradictory bounds ignored together");
+        r.sender->stop();
+    }
+    g_test = "AP2 single compatibility retry without auth bypass";
+    for (int status : {400, 406, 415, 451, 401, 403, 470}) {
+        Rig r;
+        r.sender->setVolumePolicy(0, 100);
+        r.sender->setPresentationLatencyMs(50);
+        r.rx.setupRejectCode = status;
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        bool retry = status != 401 && status != 403 && status != 470;
+        CHECK(r.rx.streamSetups == (retry ? 2 : 1), "only format/parameter rejection permits one retry");
+        CHECK(r.sender->latencyCompatibilityFallback() == retry, "compatibility flag explicit");
+        if (retry) {
+            REQUIRE(r.launchedOk && *r.launchedOk, "compatibility retry accepted");
+            CHECK(r.sender->requestedLatencyFrames() == 2205 && r.sender->presentationLatencyFrames() == 11025, "larger fallback target is reported, request retained");
+            auto plist = airplay::bplist::decode(bytesOf(r.rx.last("SETUP")->body));
+            REQUIRE(plist && plist->find("streams"), "compatibility descriptor");
+            const auto& stream = plist->find("streams")->arr.front();
+            CHECK(stream.find("latencyMin")->asInt() == 11025 && stream.find("latencyMax")->asInt() == 88200, "retry uses the known compatibility window");
+        } else CHECK(r.launchedOk && !*r.launchedOk, "auth refusal fails closed");
+        r.sender->stop();
+    }
+    {
+        Rig r;
+        r.sender->setVolumePolicy(0, 100);
+        r.rx.setupRejectCode = 400;
+        r.rx.rejectAllStreamSetups = true;
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        CHECK(r.rx.streamSetups == 2 && r.launchedOk && !*r.launchedOk, "repeated refusal fails after exactly two attempts");
+        CHECK(r.io.takeUdp().empty(), "no audio on repeated refusal");
+        r.sender->stop();
+    }
+}
+
 void testFrameClockPacing() {
     g_test = "absolute sample-frame pacing with scheduler jitter";
     Rig r;
@@ -1744,6 +1844,7 @@ int main() {
     testResampler();
     testInputJitterReserve();
     testLowLatencyTimeline();
+    testAp2LatencyNegotiation();
     testCompressedAp2Audio();
     testFrameClockPacing();
     testAdaptiveReserve();

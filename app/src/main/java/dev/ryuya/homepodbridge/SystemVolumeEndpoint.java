@@ -162,6 +162,20 @@ final class SystemVolumeEndpoint implements AutoCloseable {
     }
   }
 
+  String receiverNameFor(Object sessionId) {
+    if (closed) return null;
+    try {
+      Object token = sessionId;
+      if (!(token instanceof android.media.session.MediaSession.Token))
+        token = XposedHelpers.getObjectField(sessionId, "token");
+      if (!remoteController.getSessionToken().equals(token)) return null;
+      MediaMetadata metadata = remoteController.getMetadata();
+      return metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
   boolean redirectLocalUi(Object controller, int flags) {
     if (closed || audio.getMode() != AudioManager.MODE_NORMAL) return false;
     try {

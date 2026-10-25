@@ -34,6 +34,7 @@ import java.util.List;
 
 public final class MainActivity extends AppCompatActivity implements BridgeState.Observer {
   private TextView status;
+  private TextView timingStatus;
   private LinearLayout speakers;
   private Button share;
   private int textColor;
@@ -113,6 +114,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(label(getString(R.string.explanation), 16));
     status = label(getString(R.string.idle), 18);
     body.addView(card(status));
+    timingStatus = label("", 14);
+    body.addView(timingStatus);
     systemStatus = label("", 14);
     body.addView(systemStatus);
     body = audioBody;
@@ -421,6 +424,18 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       message = getString(R.string.playing, BridgeState.selected.name());
     else message = getString(BridgeState.status);
     status.setText(message);
+    int[] timing = BridgeState.timing;
+    boolean showTiming = BridgeState.connected && timing != null;
+    timingStatus.setVisibility(showTiming ? View.VISIBLE : View.GONE);
+    if (showTiming) {
+      String minimum =
+          timing[2] < 0
+              ? getString(R.string.latency_unknown)
+              : getString(R.string.latency_ms, timing[2]);
+      timingStatus.setText(
+          getString(R.string.latency_active, timing[1], timing[0], minimum)
+              + (timing[3] != 0 ? "\n" + getString(R.string.latency_fallback) : ""));
+    }
     share.setText(BridgeState.capture == null ? R.string.enable : R.string.stop);
     systemStatus.setText(
         RootConnector.available() ? R.string.system_ready : R.string.system_missing);

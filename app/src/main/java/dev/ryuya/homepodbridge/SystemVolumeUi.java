@@ -28,6 +28,23 @@ final class SystemVolumeUi {
                 param.setResult(false);
             }
           });
+      Class<?> callbacks =
+          XposedHelpers.findClass(
+              "com.android.systemui.volume.VolumeDialogControllerImpl$MediaSessionsCallbacks",
+              loader);
+      XposedBridge.hookAllMethods(
+          callbacks,
+          "onRemoteUpdate",
+          new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+              SystemVolumeEndpoint endpoint = active;
+              if (endpoint != null && param.args.length == 3) {
+                String name = endpoint.receiverNameFor(param.args[0]);
+                if (name != null) param.args[1] = name;
+              }
+            }
+          });
       available = true;
     } catch (Throwable error) {
       XposedBridge.log(

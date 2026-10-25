@@ -150,6 +150,7 @@ public final class CaptureService extends Service {
     BridgeState.selected = receiver;
     BridgeState.connected = false;
     BridgeState.volume = 0;
+    BridgeState.timing = null;
     BridgeState.status = R.string.connecting;
     BridgeState.publish();
     IBinder connectionLifetime = lifetime;
@@ -248,6 +249,8 @@ public final class CaptureService extends Service {
       ByteBuffer pcm =
           ByteBuffer.allocateDirect(settings.samplesPerRead() * 2).order(ByteOrder.LITTLE_ENDIAN);
       long deadline = System.nanoTime() + 20_000_000_000L;
+      long nextTiming = 0;
+      int[] previousTiming = null;
       while (generation.get() == token) {
         long now = android.os.SystemClock.elapsedRealtime();
         if (now >= nextWakeRefresh) {
@@ -256,6 +259,22 @@ public final class CaptureService extends Service {
         }
         int state = NativeSender.state();
         if (state < 0 || (!started && System.nanoTime() > deadline)) break;
+        if (state == 2 && now >= nextTiming) {
+          int[] timing = NativeSender.timing();
+          if (timing != null
+              && timing.length == 4
+              && timing[1] > 0
+              && !java.util.Arrays.equals(timing, previousTiming)) {
+            previousTiming = timing;
+            main.post(
+                () -> {
+                  if (generation.get() != token || destroyed) return;
+                  BridgeState.timing = timing;
+                  BridgeState.publish();
+                });
+          }
+          nextTiming = now + 1000;
+        }
         if (!started && state == 2) {
           started = true;
           main.post(

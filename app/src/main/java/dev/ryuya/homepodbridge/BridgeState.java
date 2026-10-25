@@ -22,6 +22,7 @@ final class BridgeState {
   static Receiver selected;
   static boolean connected;
   static int volume;
+  static int[] timing;
   static int status = R.string.idle;
 
   static void observe(Observer observer) {

@@ -23,6 +23,7 @@ struct Engine {
     std::mutex diagnosticMutex;
     std::string diagnostic;
     std::string statistics;
+    jint timing[4] = {0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
 };
@@ -110,7 +111,16 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                 auto now = std::chrono::steady_clock::now();
                 if (now >= nextStatistics) {
                     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+                    auto ms = [](uint32_t frames) { return static_cast<jint>((uint64_t(frames) * 1000 + 44099) / 44100); };
+                    engine->timing[0] = ms(sender.requestedLatencyFrames());
+                    engine->timing[1] = ms(sender.presentationLatencyFrames());
+                    engine->timing[2] = sender.receiverMinimumLatencyFrames() < 0 ? -1 : ms(sender.receiverMinimumLatencyFrames());
+                    engine->timing[3] = sender.latencyCompatibilityFallback() ? 1 : 0;
                     engine->statistics = "queueFrames=" + std::to_string(engine->ring.availableRead() / 2)
+                        + " requestedLatencyMs=" + std::to_string(engine->timing[0])
+                        + " targetLatencyMs=" + std::to_string(engine->timing[1])
+                        + " receiverMinimumMs=" + std::to_string(engine->timing[2])
+                        + " latencyCompatibility=" + std::to_string(engine->timing[3])
                         + " underrunFrames=" + std::to_string(sender.inputUnderrunFrames())
                         + " bufferingFrames=" + std::to_string(sender.bufferingFrames())
                         + " rebuffers=" + std::to_string(sender.rebufferCount())
@@ -157,6 +167,16 @@ Java_dev_ryuya_homepodbridge_NativeSender_volume(JNIEnv*, jclass, jint volume) {
 }
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_stop(JNIEnv*, jclass) { closeEngine(); }
+extern "C" JNIEXPORT jintArray JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_timing(JNIEnv* env, jclass) {
+    auto engine = getEngine();
+    if (!engine) return nullptr;
+    jintArray result = env->NewIntArray(4);
+    if (!result) return nullptr;
+    std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+    env->SetIntArrayRegion(result, 0, 4, engine->timing);
+    return result;
+}
 extern "C" JNIEXPORT jstring JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_diagnostic(JNIEnv* env, jclass) {
     auto engine = getEngine();

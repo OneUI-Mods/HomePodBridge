@@ -57,4 +57,8 @@
     <string name="route_description">Audio via AirPlay</string>
     <string name="route_not_ready">Open HomePod Bridge and allow audio sharing first.</string>
     <string name="scan_failed">Speaker discovery failed. Check Wi-Fi and local network permission.</string>
+    <string name="latency_unknown">not reported</string>
+    <string name="latency_ms">%1$d ms</string>
+    <string name="latency_active">Send target: %1$d ms (requested %2$d ms)\nReceiver minimum: %3$s\nThis is a protocol target, not measured audible delay.</string>
+    <string name="latency_fallback">The speaker required a compatibility latency window.</string>
 </resources>

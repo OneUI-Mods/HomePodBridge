@@ -122,8 +122,12 @@ public:
     uint64_t adaptiveBufferChanges() const { return adaptiveBufferChanges_; }
     uint64_t trimmedSilentFrames() const { return trimmedSilentFrames_; }
     void setPresentationLatencyMs(uint32_t milliseconds) {
-        latency_ = std::clamp(milliseconds, 20u, 2000u) * 44100u / 1000u;
+        requestedLatency_ = latency_ = std::clamp(milliseconds, 20u, 2000u) * 44100u / 1000u;
     }
+    uint32_t requestedLatencyFrames() const { return requestedLatency_; }
+    uint32_t presentationLatencyFrames() const { return latency_; }
+    int32_t receiverMinimumLatencyFrames() const { return receiverMinimumLatency_; }
+    bool latencyCompatibilityFallback() const { return latencyCompatibilityFallback_; }
     uint64_t inputUnderrunFrames() const { return inputUnderrunFrames_; }
     uint64_t bufferingFrames() const { return bufferingFrames_; }
     uint64_t rebufferCount() const { return rebufferCount_; }
@@ -380,7 +384,9 @@ private:
     Clock::time_point clockStart_{};     // monotonic pacing reference
     uint64_t startTs_ = 0;       // NTP-derived start timestamp (pyatv model)
     uint64_t framesSent_ = 0;    // 44.1 kHz frames put on the wire
-    uint32_t latency_ = 22050 + 44100;   // fixed RAOP latency (pyatv)
+    uint32_t requestedLatency_ = 66150, latency_ = 66150;
+    int32_t receiverMinimumLatency_ = -1; // unknown when the receiver omits its bounds
+    bool latencyCompatibilityFallback_ = false;
     uint16_t seq_ = 0;           // RTP sequence number
     bool     firstAudio_ = true; // marker bit on the first audio packet
     double   pendingVolumeDb_ = kNoVolume;   // setVolume before RECORD
