@@ -48,7 +48,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView profileSelection;
   private TextView profileDetails;
   private TabLayout tabs;
-  private TextView volumeKeyStatus;
   private boolean updatingSettings;
   private MediaRouter2 router;
   private final MediaRouter2.RouteCallback routes = new MediaRouter2.RouteCallback() {};
@@ -242,27 +241,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     compressionControls.addView(label(getString(R.string.compressed_audio_description), 14));
     body.addView(card(compressionControls));
     body = tuningBody;
-    LinearLayout keyControls = new LinearLayout(this);
-    keyControls.setOrientation(LinearLayout.VERTICAL);
-    volumeKeyStatus = label("", 18);
-    keyControls.addView(volumeKeyStatus);
-    keyControls.addView(label(getString(R.string.volume_keys_description), 14));
-    keyControls.addView(
-        button(
-            getString(R.string.volume_keys_settings),
-            view -> {
-              Intent settings =
-                  new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                      .putExtra(
-                          Intent.EXTRA_COMPONENT_NAME,
-                          new android.content.ComponentName(this, VolumeKeyService.class));
-              try {
-                startActivity(settings);
-              } catch (android.content.ActivityNotFoundException e) {
-                startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-              }
-            }));
-    body.addView(card(keyControls));
     body.addView(label(getString(R.string.tuning_description), 16));
     body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
     body.addView(label(getString(R.string.notes), 14));
@@ -316,8 +294,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
             settings.effectiveBlockMs(),
             settings.effectiveLatencyMs()));
     updatingSettings = false;
-    volumeKeyStatus.setText(
-        VolumeKeyService.enabled(this) ? R.string.volume_keys_ready : R.string.volume_keys_off);
   }
 
   @Override

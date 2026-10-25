@@ -49,11 +49,6 @@ public final class CaptureService extends Service {
   private String selectedPackage = BridgeState.MUSIC;
   private WholeDeviceVolume wholeDeviceVolume;
 
-  boolean adjustWholeDeviceVolume(int direction) {
-    if (!BridgeState.connected || !StreamSettings.load(this).wholeDevice()) return false;
-    return wholeDeviceVolume.dispatchVolumeKey(direction);
-  }
-
   @Override
   public void onCreate() {
     super.onCreate();

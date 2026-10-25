@@ -14,11 +14,6 @@
     <string name="tab_connection">Connect</string>
     <string name="tab_audio">Audio</string>
     <string name="tab_tuning">Tune</string>
-    <string name="volume_keys">HomePod volume buttons</string>
-    <string name="volume_keys_ready">Volume buttons: enabled</string>
-    <string name="volume_keys_off">Volume buttons: setup needed</string>
-    <string name="volume_keys_settings">Set up volume buttons</string>
-    <string name="volume_keys_description">Enable HomePod volume buttons in Android Accessibility settings. While connected in Whole device mode, volume keys control HomePod even with another app in front. Outside that mode and during calls, normal key handling is retained. This service does not read screen content.</string>
     <string name="high_quality_mode">High quality · Lossless</string>
     <string name="high_quality_description">Preserve captured 44.1 kHz / 16-bit stereo without discarding samples. Uses a 150 ms reserve and 1500 ms receiver target for stable listening. Low latency uses the same audio precision. This does not turn the source into high-resolution audio.</string>
     <string name="profile_selected">Active profile: %1$s</string>

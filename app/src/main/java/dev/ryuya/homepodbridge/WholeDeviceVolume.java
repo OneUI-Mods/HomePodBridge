@@ -67,13 +67,6 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
       provider.setCurrentVolume(BridgeState.volume);
   }
 
-  boolean dispatchVolumeKey(int direction) {
-    if (session == null || !BridgeState.connected || !StreamSettings.load(context).wholeDevice())
-      return false;
-    session.getController().adjustVolume(direction, AudioManager.FLAG_SHOW_UI);
-    return true;
-  }
-
   private void adjust(int direction) {
     int target =
         switch (direction) {
