@@ -1,0 +1,9 @@
+.gradle/
+**/build/
+**/.cxx/
+local.properties
+.research/
+.signing/
+dist/
+*.log
+__pycache__/

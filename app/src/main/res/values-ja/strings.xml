@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">HomePod Bridge</string>
+    <string name="module_description">Apple Musicのメディア出力先にHomePod Bridgeのスピーカーを追加します。</string>
+    <string name="intro">Apple MusicをHomePodで</string>
+    <string name="explanation">HomePodと同じWi-Fiに接続し、音声の共有を許可してからスピーカーを選びます。Vectorでモジュールを有効にすると、システムのメディア出力からも選択できるようにします。</string>
+    <string name="enable">音声の共有を許可</string>
+    <string name="stop">共有を終了</string>
+    <string name="refresh">スピーカーを探す</string>
+    <string name="ready">スピーカーを選んでください</string>
+    <string name="idle">音声は共有していません</string>
+    <string name="searching">同じネットワークのHomePodを探しています…</string>
+    <string name="permission_needed">設定で音声とローカルネットワークへのアクセスを許可してください。</string>
+    <string name="sharing">音声を共有する準備ができました</string>
+    <string name="connecting">%1$s に接続しています…</string>
+    <string name="playing">%1$s で再生中</string>
+    <string name="connection_failed">接続できませんでした。AirPlayのアクセス設定で同じネットワークからの接続が許可されているか確認してください。</string>
+    <string name="capture_failed">音声の共有が終了しました。もう一度、音声の共有を許可してください。</string>
+    <string name="notes">実験版 • Android 16/17\nVectorが有効な場合、選択したアプリのメディア音声をシステム側で転送します。マイクは使用しません。モジュールが無効な場合、Apple Musicの共有にはAndroidの音声共有への同意が必要です。HomePodのステレオペアとApple Music内のキャスト一覧は未検証です。</string>
+    <string name="open_music">Apple Musicを開く</string>
+    <string name="music_missing">音声の共有にはApple Musicをインストールしてください。</string>
+    <string name="licenses">オープンソースライセンス</string>
+    <string name="channel">音声の共有</string>
+    <string name="channel_description">Apple Musicの音声共有を操作します</string>
+    <string name="route_description">Apple MusicをAirPlayで再生</string>
+    <string name="route_not_ready">HomePod Bridgeを開いて、音声の共有を許可してください。</string>
+    <string name="scan_failed">スピーカーを探せませんでした。Wi-Fiとローカルネットワークの権限を確認してください。</string>
+    <string name="unverified">VectorでHomePod Bridgeの対象にSystem UIを指定してください。実機での確認は保留中です。</string>
+</resources>
