@@ -147,6 +147,9 @@ public final class CaptureService extends Service {
         } catch (Exception e) {
             failure = R.string.capture_failed;
         } finally {
+            try (var diagnostics = openFileOutput("last-connection.txt", MODE_PRIVATE)) {
+                diagnostics.write(NativeSender.diagnostic().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            } catch (java.io.IOException ignored) {}
             closeSystemInput();
             if (recorder != null) {
                 try { recorder.stop(); } catch (IllegalStateException ignored) {}

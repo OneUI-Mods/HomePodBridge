@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <exception>
 #include "raop_loop.h"
 #include "raop_sender.h"
 #include "ring_buffer.h"
@@ -19,6 +20,8 @@ struct Engine {
     std::atomic<bool> stop{false};
     std::atomic<int> state{1}; // connecting, 2=RECORD accepted, negative=failure
     std::atomic<int> volume{-1};
+    std::mutex diagnosticMutex;
+    std::string diagnostic;
     std::thread worker;
 };
 std::mutex engineMutex;
@@ -65,6 +68,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             fxchain::RaopLoop loop;
             fxchain::RaopEvents events;
             events.launched = [engine](bool ok, const std::string& error) {
+                if (!ok) { std::lock_guard<std::mutex> lock(engine->diagnosticMutex); engine->diagnostic += "Failure: " + error + "\n"; }
                 if (!ok) __android_log_print(ANDROID_LOG_WARN, "HomePodBridge", "AirPlay connection failed: %s", error.c_str());
                 engine->state.store(ok ? 2 : -1);
             };
@@ -73,7 +77,9 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                 engine->state.store(-2);
             };
             events.pinRequired = [engine](const std::string&) { engine->state.store(-3); };
-            fxchain::RaopSender sender(loop, std::move(events), [](fxchain::RaopLogLevel level, const std::string& message) {
+            fxchain::RaopSender sender(loop, std::move(events), [engine](fxchain::RaopLogLevel level, const std::string& message) {
+                { std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+                  if (engine->diagnostic.size() < 16384) engine->diagnostic += message + "\n"; }
                 __android_log_print(level == fxchain::RaopLogLevel::Warn ? ANDROID_LOG_WARN : ANDROID_LOG_INFO,
                                     "HomePodBridge", "%s", message.c_str());
             });
@@ -92,7 +98,11 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                 loop.pump(sender, std::chrono::milliseconds(20));
             }
             sender.stop();
+        } catch (const std::exception& error) {
+            { std::lock_guard<std::mutex> lock(engine->diagnosticMutex); engine->diagnostic += std::string("Exception: ") + error.what() + "\n"; }
+            engine->state.store(-4);
         } catch (...) {
+            { std::lock_guard<std::mutex> lock(engine->diagnosticMutex); engine->diagnostic += "Unknown native exception\n"; }
             engine->state.store(-4);
         }
     });
@@ -119,3 +129,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_volume(JNIEnv*, jclass, jint volume) {
 }
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_stop(JNIEnv*, jclass) { closeEngine(); }
+extern "C" JNIEXPORT jstring JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_diagnostic(JNIEnv* env, jclass) {
+    auto engine = getEngine();
+    if (!engine) return env->NewStringUTF("No sender instance");
+    std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+    return env->NewStringUTF(engine->diagnostic.c_str());
+}

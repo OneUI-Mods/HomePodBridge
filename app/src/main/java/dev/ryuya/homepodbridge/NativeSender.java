@@ -8,4 +8,5 @@ final class NativeSender {
     static native int state();
     static native void volume(int volume);
     static native void stop();
+    static native String diagnostic();
 }
