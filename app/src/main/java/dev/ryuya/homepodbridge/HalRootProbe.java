@@ -38,7 +38,8 @@ public final class HalRootProbe {
       if (!query.waitFor(2, java.util.concurrent.TimeUnit.SECONDS) || !pid.matches("[0-9]{1,7}"))
         throw new IOException("Missing submix service");
       Path proc = Path.of("/proc", pid);
-      String status = Files.readString(proc.resolve("status"));
+      String status =
+          new String(Files.readAllBytes(proc.resolve("status")), StandardCharsets.UTF_8);
       if (!status.matches("(?s).*\\nUid:\\s+1041\\s+1041\\s+1041\\s+1041\\s*\\n.*"))
         throw new IOException("Unexpected service identity");
       String command =
@@ -112,6 +113,8 @@ public final class HalRootProbe {
   }
 
   private static void verify(String file, String expected) throws Exception {
+    if (Files.size(Path.of(file)) > 4 * 1024 * 1024)
+      throw new IOException("Unexpected library size");
     byte[] bytes = Files.readAllBytes(Path.of(file));
     if (bytes.length > 4 * 1024 * 1024) throw new IOException("Unexpected library size");
     byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
