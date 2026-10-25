@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Modified for HomePod Bridge: optional stream-SETUP-before-RECORD ordering.
 #pragma once
 //
 // raop_sender.h -- the airplay sender state machine. this IS the recipe.
@@ -125,6 +126,7 @@ public:
     // Fail closed when the receiver's SRP proof or its pair-verify signature
     // does not check out. Default false = log and continue (SECURITY.md).
     void setStrictReceiverAuth(bool strict) { strictAuth_ = strict; }
+    void setStreamBeforeRecord(bool enabled) { streamBeforeRecord_ = enabled; }
 
     // Connect + handshake + stream. One session at a time. `host` is what
     // the host's RaopIo can connect to (a dotted-quad from mDNS, or a name).
@@ -293,6 +295,7 @@ private:
     std::function<Clock::time_point()> clock_;
     RaopIdentity identity_;
     bool         strictAuth_ = false;
+    bool         streamBeforeRecord_ = false;
 
     // -- RTSP session -------------------------------------------------
     bool        rtspConnected_ = false;  // the control socket is up

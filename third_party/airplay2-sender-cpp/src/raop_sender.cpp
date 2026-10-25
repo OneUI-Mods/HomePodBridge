@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Modified for HomePod Bridge: HomePod stream-SETUP-before-RECORD ordering.
 //
 // v0.66.x, RaopSender implementation (AirPlay-1 / RAOP + AirPlay-2 audio sender).
 //
@@ -560,6 +561,7 @@ void RaopSender::onTcpConnected(RaopTcp ch, const RaopEndpoint& local, const Rao
     if (ch == RaopTcp::Event) {
         if (state_ != State::Idle)
             info_("Cast: AirPlay 2 event channel open ({}:{})", peer.ip, peer.port);
+        if (streamBeforeRecord_ && pairStage_ == PairStage::Ap2Session) sendAp2SetupStream_();
         return;
     }
     if (state_ != State::Connecting) return;
@@ -1291,6 +1293,11 @@ void RaopSender::onPairingResponse_(int code, const Headers& headers, const std:
     // anyway so the stream is at least established. Handled before the generic
     // non-2xx abort below so a RECORD 500 doesn't kill the session.
     if (pairStage_ == PairStage::Ap2Record) {
+        if (streamBeforeRecord_) {
+            if (code >= 200 && code < 300) startStreaming_();
+            else fail_(raopFormat("AirPlay RECORD rejected ({})", code));
+            return;
+        }
         info_("Cast: AirPlay 2 RECORD reply ({}){}, proceeding to stream SETUP",
               code, (code >= 200 && code < 300) ? " OK" : " (not accepted)");
         sendAp2SetupStream_();
@@ -1812,7 +1819,8 @@ void RaopSender::handleAp2SetupSession_(const std::string& body) {
         io_.tcpConnect(RaopTcp::Event, hostIp_, ap2_->eventPort);
         info_("Cast: AirPlay 2 opening event channel -> {}:{}", host_, ap2_->eventPort);
     }
-    sendAp2Record_();
+    if (!streamBeforeRecord_) sendAp2Record_();
+    else if (ap2_->eventPort == 0) sendAp2SetupStream_();
 }
 
 void RaopSender::sendAp2Record_() {
@@ -1904,7 +1912,8 @@ void RaopSender::handleAp2SetupStream_(const std::string& body) {
     // AP2 realtime does NOT use RTSP RECORD, the Apple TV never replies to it
     // (it anchors the timeline via the SYNC/NTP channel). Go straight to
     // streaming; startStreaming_ pushes the initial volume + sync + RTP.
-    startStreaming_();
+    if (streamBeforeRecord_) sendAp2Record_();
+    else startStreaming_();
 }
 
 // -- per-session audio encryption hook ---------------------------------

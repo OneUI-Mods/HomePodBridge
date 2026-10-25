@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Modified for HomePod Bridge: test the alternative HomePod setup sequence.
 //
 // core_tests.cpp -- the protocol core against an in-process fake receiver.
 //
@@ -1414,6 +1415,26 @@ void testIdentityAndDigest() {
     }
 }
 
+void testHomePodSetupOrder() {
+    g_test = "HomePod: stream SETUP before RECORD";
+    Rig r;
+    r.rx.mode = FakeReceiver::Mode::Ap2Transient;
+    r.sender->setStreamBeforeRecord(true);
+    r.sender->setStrictReceiverAuth(true);
+    r.sender->setAuth(RaopDeviceInfo::Auth::HapTransient, true, "homepod", "", "");
+    r.sender->start(r.peerIp, 7000, "HomePod");
+    r.connectControl();
+    r.exchange();
+    CHECK(!r.launchedOk.has_value(), "wait for event channel before stream SETUP");
+    r.sender->onTcpConnected(RaopTcp::Event, {r.localIp, 50001}, {r.peerIp, 7001});
+    r.exchange();
+    REQUIRE(r.launchedOk && *r.launchedOk, "HomePod session ready after RECORD");
+    const auto& reqs = r.rx.requests;
+    REQUIRE(reqs.size() >= 6, "full handshake captured");
+    CHECK(reqs[3].method == "SETUP" && reqs[4].method == "SETUP" && reqs[5].method == "RECORD", "session SETUP, stream SETUP, RECORD");
+    r.sender->stop();
+}
+
 void testResampler() {
     g_test = "48 kHz input is resampled to 44.1 kHz";
     Rig r;
@@ -1457,6 +1478,7 @@ int main() {
     testStrictReceiverAuth();
     testFailurePaths();
     testIdentityAndDigest();
+    testHomePodSetupOrder();
     testResampler();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);

@@ -1,3 +1,3 @@
 https://github.com/akustikrausch/airplay2-sender-cpp
 fc913509039412790aa2427558d35178aa7842ea
-Vendored unchanged; optional example and Qt host sources are omitted. Android integration lives in app/src/main/cpp.
+Modified for HomePod Bridge: optional stream-SETUP-before-RECORD ordering, tested separately from the upstream default. See marked source files and docs/development.md. The example is omitted. Android integration lives in app/src/main/cpp.
