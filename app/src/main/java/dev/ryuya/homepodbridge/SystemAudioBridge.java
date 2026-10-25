@@ -9,7 +9,6 @@ import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.os.Binder;
 import android.os.IBinder;
-import android.os.Looper;
 import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
@@ -146,6 +145,7 @@ final class SystemAudioBridge extends Binder {
     final int blockSamples;
     final boolean wholeDevice;
     final boolean timed;
+    final android.os.HandlerThread policyCallbacks;
     volatile long[] timing;
     private int captureRequest;
     private SystemVolumeEndpoint volumeEndpoint;
@@ -205,13 +205,29 @@ final class SystemAudioBridge extends Binder {
           XposedHelpers.newInstance(
               XposedHelpers.findClass("android.media.audiopolicy.AudioPolicy$Builder", loader),
               context);
-      XposedHelpers.callMethod(builder, "setLooper", Looper.getMainLooper());
-      XposedHelpers.callMethod(builder, "addMix", audioMix);
-      policy = XposedHelpers.callMethod(builder, "build");
       AudioManager manager = context.getSystemService(AudioManager.class);
-      int result = (Integer) XposedHelpers.callMethod(manager, "registerAudioPolicy", policy);
-      if (result != 0)
-        throw new IllegalStateException("Policy registration failed"); // AudioManager.SUCCESS
+      policyCallbacks =
+          new android.os.HandlerThread("HomePod-policy", android.os.Process.THREAD_PRIORITY_AUDIO);
+      policyCallbacks.start();
+      Object registeredPolicy = null;
+      try {
+        XposedHelpers.callMethod(builder, "setLooper", policyCallbacks.getLooper());
+        XposedHelpers.callMethod(builder, "addMix", audioMix);
+        registeredPolicy = XposedHelpers.callMethod(builder, "build");
+        int result =
+            (Integer) XposedHelpers.callMethod(manager, "registerAudioPolicy", registeredPolicy);
+        if (result != 0) throw new IllegalStateException("Policy registration failed");
+      } catch (Throwable e) {
+        if (registeredPolicy != null) {
+          try {
+            XposedHelpers.callMethod(manager, "unregisterAudioPolicy", registeredPolicy);
+          } catch (Throwable ignored) {
+          }
+        }
+        policyCallbacks.quitSafely();
+        throw new IllegalStateException("Policy initialization failed", e);
+      }
+      policy = registeredPolicy;
       AudioRecord created = null;
       try {
         if (fast) {
@@ -286,6 +302,7 @@ final class SystemAudioBridge extends Binder {
           XposedHelpers.callMethod(manager, "unregisterAudioPolicy", policy);
         } catch (Throwable ignored) {
         }
+        policyCallbacks.quitSafely();
         throw new IllegalStateException("System audio initialization failed", e);
       }
       Thread thread = new Thread(this::pump, "HomePod-system-audio");
@@ -382,6 +399,7 @@ final class SystemAudioBridge extends Binder {
               context.getSystemService(AudioManager.class), "unregisterAudioPolicy", policy);
         } catch (Throwable ignored) {
         }
+        policyCallbacks.quitSafely();
         try {
           client.unlinkToDeath(this, 0);
         } catch (RuntimeException ignored) {
