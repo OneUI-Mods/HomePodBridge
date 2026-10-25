@@ -16,7 +16,7 @@
 
 typedef struct { pid_t tid; int stopped, deliver_signal; } task;
 typedef struct { uint64_t begin,end; } region;
-typedef struct { int fd; region maps[1024]; size_t count; } memory;
+typedef struct { int fd; region maps[4096]; size_t count; } memory;
 static uint64_t monotonic_ns(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
     return (uint64_t)ts.tv_sec*1000000000u+(uint64_t)ts.tv_nsec;
@@ -35,7 +35,7 @@ static int load_maps(memory* mem,pid_t pid) {
         unsigned long long begin,end; char permissions[5];
         if (sscanf(line,"%llx-%llx %4s",&begin,&end,permissions)!=3) continue;
         if (permissions[0]!='r') continue;
-        if (mem->count==1024) { fclose(file); return 0; }
+        if (mem->count==4096) { fclose(file); return 0; }
         mem->maps[mem->count++]=(region){begin,end};
     }
     fclose(file); return 1;
@@ -107,7 +107,8 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     memory mem={.fd=-1}; task tasks[256];size_t count=0;uint64_t begin=monotonic_ns();
     const char* error=NULL;hp_owned_pipe owned={0};char path[64],report[256];
     snprintf(path,sizeof(path),"/proc/%d/mem",pid);mem.fd=open(path,O_RDONLY|O_CLOEXEC);
-    if (mem.fd<0 || !load_maps(&mem,pid)) error="read-only memory unavailable";
+    if (mem.fd<0) error="read-only memory open refused";
+    else if (!load_maps(&mem,pid)) error="bounded mapping inventory unavailable";
     // No EXITKILL: if this short-lived helper dies, the kernel releases its ptrace stops.
     // A hard timeout also prevents a stalled probe from retaining traced service threads.
     if (!error) {
@@ -122,7 +123,7 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     alarm(0);if (mem.fd>=0) close(mem.fd);
     uint64_t elapsed=(monotonic_ns()-begin)/1000;
     if (!detached) error="detach incomplete";
-    if (error) snprintf(report,sizeof(report),"Read-only freeze check refused: %s; tasks=%zu elapsedUs=%llu",error,count,(unsigned long long)elapsed);
+    if (error) snprintf(report,sizeof(report),"Read-only freeze check refused: %s; maps=%zu tasks=%zu elapsedUs=%llu",error,mem.count,count,(unsigned long long)elapsed);
     else snprintf(report,sizeof(report),"Read-only freeze check passed: tasks=%zu elapsedUs=%llu targetFillFrames=%llu; no memory writes",count,(unsigned long long)elapsed,(unsigned long long)owned.target);
     (*env)->ReleaseStringUTFChars(env,registration,address);
     return (*env)->NewStringUTF(env,report);

@@ -59,6 +59,8 @@ public final class HalRootProbe {
           System.out.println(
               "Read-only exact-build service verified; routes="
                   + count
+                  + " mappedRegions="
+                  + memory.maps.size()
                   + "; no owned registration; no route objects inspected");
           return;
         }
