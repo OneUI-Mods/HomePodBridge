@@ -272,7 +272,6 @@ final class SystemAudioBridge extends Binder {
         if (created == null || created.getState() != AudioRecord.STATE_INITIALIZED)
           throw new IllegalStateException("Audio sink unavailable");
         record = created;
-        if (fast) CapturePeriodRequest.request(record, audioMix, blockSamples / 2);
         client.linkToDeath(this, 0);
         record.startRecording();
         if (record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
