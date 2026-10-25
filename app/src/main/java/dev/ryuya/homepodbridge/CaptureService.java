@@ -279,10 +279,10 @@ public final class CaptureService extends Service {
                   if (generation.get() != token || destroyed) return;
                   BridgeState.timing = timing;
                   BridgeState.pipeline = pipeline;
-                  BridgeState.publish();
+                  BridgeState.publishTiming();
                 });
           }
-          nextTiming = now + 1000;
+          nextTiming = now + 2000;
         }
         if (!started && state == 2) {
           started = true;

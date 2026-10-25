@@ -90,6 +90,7 @@ final class RootConnector {
       input.writeBoolean(settings.lowLatency());
       boolean timed = target.transact(RootProtocol.OPEN_TIMED, input, output, 0);
       if (!timed) {
+        output.setDataSize(0);
         output.setDataPosition(0);
         if (!target.transact(RootProtocol.OPEN_CONFIGURED, input, output, 0))
           throw new RemoteException("Reload SystemUI to load the updated audio bridge");

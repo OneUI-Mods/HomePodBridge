@@ -17,7 +17,6 @@ import de.robv.android.xposed.XposedHelpers;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Runs only inside SystemUI. Captures USAGE_MEDIA for one package, never a microphone. */
@@ -302,8 +301,12 @@ final class SystemAudioBridge extends Binder {
       }
       try (OutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(writePipe)) {
         var channel = ((java.io.FileOutputStream) output).getChannel();
-        ByteBuffer bytes =
-            ByteBuffer.allocateDirect(blockSamples * 2).order(ByteOrder.LITTLE_ENDIAN);
+        PcmCaptureReader capture =
+            new PcmCaptureReader(
+                blockSamples * 2,
+                timed,
+                (buffer, length, mode) -> record.read(buffer, length, mode));
+        ByteBuffer bytes = capture.buffer;
         var timestamp = new android.media.AudioTimestamp();
         ByteBuffer header = ByteBuffer.allocateDirect(16);
         ByteBuffer[] packet = {header, bytes};
@@ -313,9 +316,8 @@ final class SystemAudioBridge extends Binder {
         long nextTimestamp = System.nanoTime() + 1_000_000_000L;
         int observations = 0;
         while (!closed.get()) {
-          bytes.clear();
           long readBegin = System.nanoTime();
-          int count = record.read(bytes, bytes.capacity(), AudioRecord.READ_BLOCKING);
+          int count = capture.read();
           long readEnd = System.nanoTime();
           if (count < 0) break;
           if (count == 0) continue;

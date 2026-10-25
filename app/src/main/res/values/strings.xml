@@ -65,7 +65,7 @@
     <string name="volume_range">Volume · 0–100%</string>
     <string name="volume_invalid">Enter a number from 0 to 100.</string>
     <string name="tab_diagnostics">Diagnostics</string>
-    <string name="diagnostics_intro">Updates about once per second while connected. Each value describes a different operation. These values cannot be added to obtain measured audible delay.</string>
+    <string name="diagnostics_intro">Updates about every two seconds while connected. Each value describes a different operation. These values cannot be added to obtain measured audible delay.</string>
     <string name="diagnostics_idle">Connect a speaker to view live timings.</string>
     <string name="diagnostics_unknown">Not measured</string>
     <string name="diagnostics_ms">%1$.2f ms</string>

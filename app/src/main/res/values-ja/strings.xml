@@ -64,7 +64,7 @@
     <string name="volume_range">音量 · 0〜100%</string>
     <string name="volume_invalid">0〜100の数値を入力してください。</string>
     <string name="tab_diagnostics">診断</string>
-    <string name="diagnostics_intro">接続中は約1秒ごとに更新します。各値は異なる処理を表し、足し合わせても実際に音が届くまでの遅延にはなりません。</string>
+    <string name="diagnostics_intro">接続中は約2秒ごとに更新します。各値は異なる処理を表し、足し合わせても実際に音が届くまでの遅延にはなりません。</string>
     <string name="diagnostics_idle">スピーカーに接続すると現在の時間を表示します。</string>
     <string name="diagnostics_unknown">未測定</string>
     <string name="diagnostics_ms">%1$.2f ms</string>

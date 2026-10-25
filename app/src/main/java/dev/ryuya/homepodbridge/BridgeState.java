@@ -12,6 +12,8 @@ final class BridgeState {
 
   interface Observer {
     void changed();
+
+    default void timingChanged() {}
   }
 
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -37,6 +39,10 @@ final class BridgeState {
 
   static void publish() {
     for (Observer observer : new ArrayList<>(OBSERVERS)) observer.changed();
+  }
+
+  static void publishTiming() {
+    for (Observer observer : new ArrayList<>(OBSERVERS)) observer.timingChanged();
   }
 
   static void status(int statusId) {

@@ -108,6 +108,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
           public void onTabSelected(TabLayout.Tab tab) {
             for (int i = 0; i < pages.getChildCount(); i++)
               pages.getChildAt(i).setVisibility(i == tab.getPosition() ? View.VISIBLE : View.GONE);
+            if (captureTiming != null && tab.getPosition() == 3) updatePipeline();
           }
 
           @Override
@@ -439,7 +440,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
 
   @Override
   public void changed() {
-    updatePipeline();
+    timingChanged();
     if (status == null) return;
     syncSettings();
     String message;
@@ -449,18 +450,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       message = getString(R.string.playing, BridgeState.selected.name());
     else message = getString(BridgeState.status);
     status.setText(message);
-    int[] timing = BridgeState.timing;
-    boolean showTiming = BridgeState.connected && timing != null;
-    timingStatus.setVisibility(showTiming ? View.VISIBLE : View.GONE);
-    if (showTiming) {
-      String minimum =
-          timing[2] < 0
-              ? getString(R.string.latency_unknown)
-              : getString(R.string.latency_ms, timing[2]);
-      timingStatus.setText(
-          getString(R.string.latency_active, timing[1], timing[0], minimum)
-              + (timing[3] != 0 ? "\n" + getString(R.string.latency_fallback) : ""));
-    }
     share.setText(BridgeState.capture == null ? R.string.enable : R.string.stop);
     systemStatus.setText(
         RootConnector.available() ? R.string.system_ready : R.string.system_missing);
@@ -495,6 +484,28 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     }
     if (!BridgeState.receivers.isEmpty() && BridgeState.status == R.string.searching)
       status.setText(R.string.ready);
+  }
+
+  @Override
+  public void timingChanged() {
+    if (captureTiming == null) return;
+    if (tabs.getSelectedTabPosition() == 3) updatePipeline();
+    updateTargetTiming();
+  }
+
+  private void updateTargetTiming() {
+    int[] timing = BridgeState.timing;
+    boolean showTiming = BridgeState.connected && timing != null;
+    timingStatus.setVisibility(showTiming ? View.VISIBLE : View.GONE);
+    if (showTiming) {
+      String minimum =
+          timing[2] < 0
+              ? getString(R.string.latency_unknown)
+              : getString(R.string.latency_ms, timing[2]);
+      timingStatus.setText(
+          getString(R.string.latency_active, timing[1], timing[0], minimum)
+              + (timing[3] != 0 ? "\n" + getString(R.string.latency_fallback) : ""));
+    }
   }
 
   private String millis(long micros) {
