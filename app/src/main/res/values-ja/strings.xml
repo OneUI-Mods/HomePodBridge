@@ -16,7 +16,7 @@
     <string name="volume">音量 · %1$d%%</string>
     <string name="system_ready">システムの音声出力と連携しています</string>
     <string name="system_missing">VectorでSystem UIを対象に有効化し、SystemUIを再読み込みしてください。</string>
-    <string name="explanation">HomePodと同じWi-Fiに接続してください。システムの「メディア出力」からHomePodを選ぶと、音声の転送が始まります。接続時の音量は0%です。</string>
+    <string name="explanation">HomePodと同じWi-Fiに接続してください。Apple Musicのキャスト一覧やシステムの「メディア出力」から選ぶと、音声の転送が始まります。接続時の音量は0%です。</string>
     <string name="enable">音声の共有を許可</string>
     <string name="stop">共有を終了</string>
     <string name="refresh">スピーカーを探す</string>

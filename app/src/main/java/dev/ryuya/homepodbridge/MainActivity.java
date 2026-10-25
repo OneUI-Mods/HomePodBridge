@@ -133,6 +133,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     volumeLabel = label(getString(R.string.volume, 0), 18);
     volumeControls.addView(volumeLabel);
     volume = new Slider(this);
+    volume.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     volume.setValueFrom(0);
     volume.setValueTo(BuildConfig.VOLUME_LIMIT);
     volume.setStepSize(1);
@@ -397,6 +398,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     TextView heading = label(getString(title, value), 16);
     content.addView(heading);
     Slider slider = new Slider(this);
+    slider.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     slider.setValueFrom(min);
     slider.setValueTo(max);
     slider.setStepSize(step);

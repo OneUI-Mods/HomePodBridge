@@ -17,7 +17,7 @@
     <string name="volume">Volume · %1$d%%</string>
     <string name="system_ready">System audio routing is ready</string>
     <string name="system_missing">Enable the module for System UI in Vector, then reload SystemUI.</string>
-    <string name="explanation">Connect to the same Wi-Fi as your HomePod. Choose HomePod in the system media output picker to start sharing audio. Each connection starts at 0% volume.</string>
+    <string name="explanation">Connect to the same Wi-Fi as your HomePod. Select it in Apple Music’s Cast chooser or the system media output picker. Each connection starts at 0% volume.</string>
     <string name="enable">Allow audio sharing</string>
     <string name="stop">Stop sharing</string>
     <string name="refresh">Find speakers</string>
