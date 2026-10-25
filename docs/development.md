@@ -137,3 +137,12 @@ The network reference card reads TCP_INFO from the existing control socket on An
 A read-only HAL dump exposes cumulative MonoPipe framesWritten/framesRead counters. Their difference is not FIFO occupancy: upstream MonoPipe increments framesWritten only after the write pacing sleep, so an in-flight write may already be in the FIFO without appearing in the cumulative counter. These counters are not displayed as actual queue delay. Upstream source also separates maximum capacity, requested capacity and target fill: initial target fill is 11/16 of requested frames, independent of the later power-of-two allocation. This explains why changing the mix sample rate alone did not provide the predicted benefit. HAL-internal reserve tuning is not included in the application; scope confirmation is pending. No HAL process memory or global settings were changed.
 
 Policy callbacks use a per-stream audio-priority HandlerThread rather than the SystemUI main Looper. Registration and recorder initialization failures, normal capture teardown and client death release it after policy cleanup. Timing refresh remains isolated from route/volume observers.
+
+
+## Dedicated HAL inspection
+
+The user authorized investigation and tuning of the Bridge-owned HAL route. Vector remains scoped to SystemUI; Apple Music, other routes, global capture policies and SELinux configuration remain untouched. Inspection alone does not change the HAL or establish a latency improvement.
+
+An explicit activity dump request `--inspect-dedicated-hal N` (indices 0–2 only) starts a background, read-only root helper for three fixed audio implementation libraries. There is no caller-supplied path or command. Each read is limited to 16 MiB and 10 seconds; process streams are closed and the helper destroyed on all exits. Nothing runs automatically during app startup or capture. `--dedicated-hal-image` exports only the last inspected image through the existing DUMP-protected activity diagnostics; binary contents and root stderr are not written to logcat. The image is held in memory only. Private research copies must remain outside Git and source archives.
+
+This is a capability investigation, not an active low-latency HAL backend. Route identity, object lifetime, writer quiescence and restoration must be established before any future live modification. Until then the shipped capture path retains its previous behavior.
