@@ -72,7 +72,7 @@
     <string name="capture_standard">Standard sink</string>
     <string name="capture_fast_requested">Small FAST sink requested; acceptance is not confirmed</string>
     <string name="capture_fast_fallback">FAST request unavailable; using standard sink</string>
-    <string name="diagnostics_capture">Capture\nTimestamp age (estimate): %1$s\nRead wait, last / session max: %2$s / %3$s\nRead block / allocated buffer: %4$s / %5$s\n%6$s\nAllocated capacity is not measured delay.</string>
+    <string name="diagnostics_capture">Capture\nTimestamp age (estimate): %1$s\nRead wait, last / session max: %2$s / %3$s\nRead block limit / allocated buffer: %4$s / %5$s\n%6$s\nAllocated capacity is not measured delay.</string>
     <string name="diagnostics_pipe">System → app\nCapture read complete → app read complete: %1$s\nPipe write wait, last / session max: %2$s / %3$s</string>
     <string name="diagnostics_sender">Sender\nQueued PCM (snapshot): %1$s\nInput reserve: %2$s\nALAC encoding, session max: %3$s\nPacket duration: %4$s\nInput shortage, session total: %5$s\nQueue and reserve are buffer amounts, not transit measurements.</string>
     <string name="diagnostics_handoff">Socket handoff\nTime left before target, last / session min: %1$s / %2$s\nLate packets: %3$d / %4$d\nReceiver target: %5$s\nThis is remaining time, not a measured network delay.</string>

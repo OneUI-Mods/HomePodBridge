@@ -71,7 +71,7 @@
     <string name="capture_standard">通常の取り込み経路</string>
     <string name="capture_fast_requested">小さいFAST経路を要求済み・採用されたかは未確認</string>
     <string name="capture_fast_fallback">FAST要求を利用できないため通常経路を使用</string>
-    <string name="diagnostics_capture">取り込み\n時刻からの経過（推定）：%1$s\n読み取り待ち・直近／接続中最大：%2$s／%3$s\n読み取り単位／確保したバッファ容量：%4$s／%5$s\n%6$s\n確保した容量は遅延の測定値ではありません。</string>
+    <string name="diagnostics_capture">取り込み\n時刻からの経過（推定）：%1$s\n読み取り待ち・直近／接続中最大：%2$s／%3$s\n読み取り上限／確保したバッファ容量：%4$s／%5$s\n%6$s\n確保した容量は遅延の測定値ではありません。</string>
     <string name="diagnostics_pipe">システム → アプリ\n取り込み完了 → アプリ読み取り完了：%1$s\n書き込み待ち・直近／接続中最大：%2$s／%3$s</string>
     <string name="diagnostics_sender">送信処理\n待機中の音声量（現在値）：%1$s\n送信前の予備バッファ：%2$s\nALAC圧縮・接続中最大：%3$s\n1パケットの音声時間：%4$s\n入力不足・接続中累計：%5$s\n音声量と予備バッファは転送時間の測定値ではありません。</string>
     <string name="diagnostics_handoff">ソケットへの送信\n目標時刻までの余裕・直近／接続中最小：%1$s／%2$s\n期限超過パケット：%3$d／%4$d\n受信目標：%5$s\n余裕時間はネットワーク遅延の測定値ではありません。</string>
