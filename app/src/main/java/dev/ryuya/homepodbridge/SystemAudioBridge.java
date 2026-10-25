@@ -23,12 +23,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class SystemAudioBridge extends Binder {
   private final Context context;
   private final Signature[] moduleSignatures;
-  private final String modulePath;
   private Stream stream;
 
   SystemAudioBridge(Context context, String modulePath) {
     this.context = context;
-    this.modulePath = modulePath;
     var archive =
         context
             .getPackageManager()
@@ -274,11 +272,6 @@ final class SystemAudioBridge extends Binder {
         if (created == null || created.getState() != AudioRecord.STATE_INITIALIZED)
           throw new IllegalStateException("Audio sink unavailable");
         record = created;
-        if (fast) {
-          int periodResult = RootCaptureTuner.request(record, blockSamples / 2, modulePath);
-          android.util.Log.i(
-              "HomePodBridgeCapture", "Per-recorder period request status=" + periodResult);
-        }
         client.linkToDeath(this, 0);
         record.startRecording();
         if (record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
