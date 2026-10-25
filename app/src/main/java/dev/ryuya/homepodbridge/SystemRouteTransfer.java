@@ -24,9 +24,7 @@ final class SystemRouteTransfer {
       new ConcurrentHashMap<>();
 
   static void install(Class<?> manager) {
-    XposedBridge.hookAllMethods(
-        manager,
-        "transfer",
+    XC_MethodHook transfer =
         new XC_MethodHook() {
           @Override
           protected void beforeHookedMethod(MethodHookParam param) {
@@ -68,7 +66,10 @@ final class SystemRouteTransfer {
                       + ")");
             }
           }
-        });
+        };
+    int hooks = XposedBridge.hookAllMethods(manager, "transfer", transfer).size();
+    hooks += XposedBridge.hookAllMethods(manager, "requestCreateSession", transfer).size();
+    XposedBridge.log("HomePod Bridge: system transfer hooks installed=" + hooks);
     XposedBridge.hookAllMethods(
         manager,
         "createSessionOnHandler",
