@@ -44,7 +44,8 @@ def main():
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if commit != head: raise RuntimeError("Package the checked-out HEAD to match the source archive")
     gradle = ROOT / ("gradlew.bat" if os.name == "nt" else "gradlew")
-    run([gradle, ":app:testDebugUnitTest", ":app:lintRelease", ":app:assembleRelease", f"-PvolumeLimit={args.volume_limit}", "--console=plain"])
+    run([gradle, ":app:testDebugUnitTest", ":app:lintRelease", ":app:assembleRelease", ":app:writeRuntimeDependencyList", f"-PvolumeLimit={args.volume_limit}", "--console=plain"])
+    run([os.sys.executable, "tools/check_licenses.py"])
     unsigned = ROOT / "app/build/outputs/apk/release/app-release-unsigned.apk"
     badging = check(unsigned)
     version = re.search(r"versionName='([^']+)'", badging)[1]
