@@ -16,9 +16,10 @@ final class NativeSender {
       int volumeLimit,
       int bufferMs,
       int latencyMs,
-      boolean compressedAudio);
+      boolean compressedAudio,
+      boolean adaptiveBuffer);
 
-  static native boolean write(short[] pcm, int count);
+  static native boolean write(java.nio.ByteBuffer pcm, int byteCount);
 
   static native int state();
 

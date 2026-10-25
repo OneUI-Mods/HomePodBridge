@@ -467,6 +467,9 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     inBuf_.clear();
     inputPrimed_ = false;
     inputUnderrunFrames_ = bufferingFrames_ = rebufferCount_ = 0;
+    silentInputFrames_ = adaptiveBufferChanges_ = trimmedSilentFrames_ = 0;
+    rawAudioBytes_ = encodedAudioBytes_ = maximumEncodeMicros_ = 0;
+    if (adaptiveInputBuffer_) inputBufferFrames_ = kFramesPerPacket;
     inReadFrames_ = 0;
     backlogSeq_.assign(kBacklogSize, -1);
     pendingVolumeDb_ = kNoVolume;   // never carry volume between devices
@@ -2120,6 +2123,23 @@ size_t RaopSender::fillFrames_(int16_t* dst, size_t want) {
             if (inputBufferFrames_ > 0) {
                 inputPrimed_ = false;
                 ++rebufferCount_;
+                if (adaptiveInputBuffer_ && inputBufferFrames_ < size_t(kFramesPerPacket * 6)) {
+                    inputBufferFrames_ += kFramesPerPacket;
+                    ++adaptiveBufferChanges_;
+                }
+            }
+            silentInputFrames_ = 0;
+        } else if (adaptiveInputBuffer_) {
+            const bool silent = std::all_of(dst, dst + wantSamples, [](int16_t value) { return value == 0; });
+            silentInputFrames_ = silent ? silentInputFrames_ + take : 0;
+            if (silentInputFrames_ >= kRaopRate * 2 && inputBufferFrames_ > size_t(kFramesPerPacket)) {
+                const size_t queued = ring_->availableRead() / kChannels;
+                const size_t excess = queued > size_t(kFramesPerPacket) ? queued - kFramesPerPacket : 0;
+                if (ring_->tryDiscardZeros(excess * kChannels)) {
+                    trimmedSilentFrames_ += excess;
+                    inputBufferFrames_ = kFramesPerPacket;
+                    ++adaptiveBufferChanges_;
+                }
             }
         }
         return take;

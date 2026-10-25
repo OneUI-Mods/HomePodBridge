@@ -31,7 +31,10 @@ public final class StreamSettingsTest {
   @Test
   public void lowLatencyPreservesCustomSettingsForSwitchingBack() {
     var low = new StreamSettings(true, 150, 10, 1500, true);
-    assertEquals(0, low.effectiveBufferMs());
+    assertEquals(8, low.effectiveBufferMs());
+    assertTrue(low.effectiveAdaptiveBuffer());
+    assertEquals(0, low.withAdaptiveBuffer(false).effectiveBufferMs());
+    assertFalse(low.withAdaptiveBuffer(false).effectiveAdaptiveBuffer());
     assertEquals(5, low.effectiveBlockMs());
     assertEquals(50, low.effectiveLatencyMs());
     assertEquals(440, low.samplesPerRead());
@@ -45,6 +48,7 @@ public final class StreamSettingsTest {
     var custom = new StreamSettings(true, 70, 20, 320).withCompression(true);
     var quality = custom.withProfile(2);
     assertTrue(quality.highQuality());
+    assertFalse(quality.effectiveAdaptiveBuffer());
     assertFalse(quality.lowLatency());
     assertEquals(150, quality.effectiveBufferMs());
     assertEquals(10, quality.effectiveBlockMs());

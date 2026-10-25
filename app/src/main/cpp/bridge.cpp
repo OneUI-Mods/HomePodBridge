@@ -8,7 +8,6 @@
 #include <span>
 #include <string>
 #include <thread>
-#include <vector>
 #include <exception>
 #include <sys/resource.h>
 #include "raop_loop.h"
@@ -56,7 +55,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean compressedAudio) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean compressedAudio, jboolean adaptiveBuffer) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -66,7 +65,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, compressedAudio] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, compressedAudio, adaptiveBuffer] {
         try {
             if (setpriority(PRIO_PROCESS, 0, -16) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
@@ -99,6 +98,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             sender.attachRing(&engine->ring);
             sender.setInputFormat(44100);
             sender.setInputBufferFrames(static_cast<size_t>(std::clamp(static_cast<int>(bufferMs), 0, 300)) * 44100 / 1000);
+            sender.setAdaptiveInputBuffer(adaptiveBuffer == JNI_TRUE);
             sender.setPresentationLatencyMs(static_cast<uint32_t>(std::clamp(static_cast<int>(latencyMs), 20, 2000)));
             sender.setAuth(fxchain::RaopDeviceInfo::Auth::HapTransient, true, id, {}, {});
             sender.start(ip, static_cast<uint16_t>(port), label);
@@ -114,6 +114,9 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         + " underrunFrames=" + std::to_string(sender.inputUnderrunFrames())
                         + " bufferingFrames=" + std::to_string(sender.bufferingFrames())
                         + " rebuffers=" + std::to_string(sender.rebufferCount())
+                        + " adaptiveReserveFrames=" + std::to_string(sender.inputBufferFrames())
+                        + " adaptiveChanges=" + std::to_string(sender.adaptiveBufferChanges())
+                        + " trimmedSilentFrames=" + std::to_string(sender.trimmedSilentFrames())
                         + " backpressure=" + std::to_string(engine->backpressure.load())
                         + " rawAudioBytes=" + std::to_string(sender.rawAudioBytes())
                         + " encodedAudioBytes=" + std::to_string(sender.encodedAudioBytes())
@@ -133,13 +136,12 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_dev_ryuya_homepodbridge_NativeSender_write(JNIEnv* env, jclass, jshortArray pcm, jint count) {
+Java_dev_ryuya_homepodbridge_NativeSender_write(JNIEnv* env, jclass, jobject pcm, jint count) {
     auto engine = getEngine();
-    if (!engine || count <= 0 || count % 2 || count > env->GetArrayLength(pcm)) return JNI_FALSE;
-    std::vector<int16_t> samples(static_cast<size_t>(count));
-    env->GetShortArrayRegion(pcm, 0, count, samples.data());
-    if (env->ExceptionCheck()) return JNI_FALSE;
-    if (engine->ring.tryPush(std::span<const int16_t>(samples))) return JNI_TRUE;
+    if (!engine || !pcm || count <= 0 || count % 4 || count > env->GetDirectBufferCapacity(pcm)) return JNI_FALSE;
+    auto* samples = static_cast<const int16_t*>(env->GetDirectBufferAddress(pcm));
+    if (!samples || reinterpret_cast<uintptr_t>(samples) % alignof(int16_t)) return JNI_FALSE;
+    if (engine->ring.tryPush(std::span<const int16_t>(samples, static_cast<size_t>(count) / 2))) return JNI_TRUE;
     ++engine->backpressure;
     return JNI_FALSE;
 }

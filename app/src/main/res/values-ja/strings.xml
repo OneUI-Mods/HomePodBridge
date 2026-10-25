@@ -21,7 +21,10 @@
     <string name="compressed_audio">音声データを削減・ロスレスALAC</string>
     <string name="compressed_audio_description">ONは音声の値を変えずに圧縮し、OFFは従来の非圧縮ALACに戻します。音声モードとは独立しています。削減量は音の内容により異なり、遅延が減るとは限りません。変更時は音量0%で再接続します。</string>
     <string name="tuning_description">遅延とバッファを細かく調整します。適用時は両方の音声モードをOFFにし、圧縮の選択は保持します。</string>
-    <string name="low_latency_description">送信前0 ms・取り込み5 ms・受信目標50 ms。音切れが増える場合はOFFにしてください。詳細設定を適用するとカスタム設定に切り替わります。変更時は音量0%で再接続します。</string>
+    <string name="low_latency_description">取り込み5 ms・受信目標50 ms。自動バッファは約8 msから始め、OFFにすると送信前0 msになります。音切れが増える場合はこのモードをOFFにしてください。詳細設定を適用するとカスタム設定に切り替わります。変更時は音量0%で再接続します。</string>
+    <string name="adaptive_buffer">自動バッファ・低遅延のみ</string>
+    <string name="profile_values_adaptive">送信前 自動8〜48 ms・取り込み %1$d ms・受信目標 %2$d ms\nモード変更時は音量0%%で再接続します。</string>
+    <string name="adaptive_buffer_description">約8 msから始め、入力不足が出た時だけ最大48 msまで増やします。無音が続いた時に余剰のゼロ値だけを整理して減らし、音のあるサンプルは保持します。接続ごとに小さい値から再調整します。OFFは送信前0 msです。変更時は音量0%で再接続します。</string>
     <string name="buffer_amount">送信前バッファ：%1$d ms</string>
     <string name="capture_block">取り込み単位：%1$d ms</string>
     <string name="receiver_latency">受信側の目標待ち時間：%1$d ms</string>

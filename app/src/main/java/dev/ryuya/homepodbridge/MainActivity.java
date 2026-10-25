@@ -45,6 +45,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private MaterialSwitch lowLatencySwitch;
   private MaterialSwitch highQualitySwitch;
   private MaterialSwitch compressionSwitch;
+  private MaterialSwitch adaptiveBufferSwitch;
   private TextView profileSelection;
   private TextView profileDetails;
   private TabLayout tabs;
@@ -226,6 +227,17 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     latencyControls.addView(label(getString(R.string.high_quality_description), 14));
     profileDetails = label("", 14);
     latencyControls.addView(profileDetails);
+    adaptiveBufferSwitch = new MaterialSwitch(this);
+    adaptiveBufferSwitch.setText(R.string.adaptive_buffer);
+    adaptiveBufferSwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          StreamSettings.load(this).withAdaptiveBuffer(enabled).save(this);
+          syncSettings();
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    latencyControls.addView(adaptiveBufferSwitch);
+    latencyControls.addView(label(getString(R.string.adaptive_buffer_description), 14));
     body.addView(card(latencyControls));
     LinearLayout compressionControls = new LinearLayout(this);
     compressionControls.setOrientation(LinearLayout.VERTICAL);
@@ -278,6 +290,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     lowLatencySwitch.setChecked(settings.lowLatency());
     highQualitySwitch.setChecked(settings.highQuality());
     compressionSwitch.setChecked(settings.compressedAudio());
+    adaptiveBufferSwitch.setChecked(settings.adaptiveBuffer());
+    adaptiveBufferSwitch.setEnabled(settings.lowLatency());
     profileSelection.setText(
         getString(
             R.string.profile_selected,
@@ -287,12 +301,19 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                     : settings.highQuality()
                         ? R.string.high_quality_mode
                         : R.string.profile_custom)));
-    profileDetails.setText(
-        getString(
-            R.string.profile_values,
-            settings.effectiveBufferMs(),
-            settings.effectiveBlockMs(),
-            settings.effectiveLatencyMs()));
+    if (settings.effectiveAdaptiveBuffer()) {
+      profileDetails.setText(
+          getString(
+              R.string.profile_values_adaptive,
+              settings.effectiveBlockMs(),
+              settings.effectiveLatencyMs()));
+    } else
+      profileDetails.setText(
+          getString(
+              R.string.profile_values,
+              settings.effectiveBufferMs(),
+              settings.effectiveBlockMs(),
+              settings.effectiveLatencyMs()));
     updatingSettings = false;
   }
 
@@ -506,7 +527,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     content.setOrientation(LinearLayout.VERTICAL);
     content.setPadding(dp(20), 0, dp(20), 0);
     Slider buffering =
-        settingSlider(content, R.string.buffer_amount, 0, 300, 10, settings.effectiveBufferMs());
+        settingSlider(content, R.string.buffer_amount, 0, 300, 1, settings.effectiveBufferMs());
     Slider block =
         settingSlider(content, R.string.capture_block, 5, 40, 5, settings.effectiveBlockMs());
     Slider latency =

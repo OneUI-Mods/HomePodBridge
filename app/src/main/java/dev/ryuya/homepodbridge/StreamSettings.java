@@ -9,14 +9,15 @@ record StreamSettings(
     int latencyMs,
     boolean lowLatency,
     boolean highQuality,
-    boolean compressedAudio) {
+    boolean compressedAudio,
+    boolean adaptiveBuffer) {
   StreamSettings(boolean wholeDevice, int bufferMs, int blockMs, int latencyMs) {
-    this(wholeDevice, bufferMs, blockMs, latencyMs, false, false, false);
+    this(wholeDevice, bufferMs, blockMs, latencyMs, false, false, false, true);
   }
 
   StreamSettings(
       boolean wholeDevice, int bufferMs, int blockMs, int latencyMs, boolean lowLatency) {
-    this(wholeDevice, bufferMs, blockMs, latencyMs, lowLatency, false, false);
+    this(wholeDevice, bufferMs, blockMs, latencyMs, lowLatency, false, false, true);
   }
 
   StreamSettings {
@@ -35,7 +36,8 @@ record StreamSettings(
         preferences.getInt("latencyMs", 1500),
         preferences.getBoolean("lowLatency", false),
         preferences.getBoolean("highQuality", false),
-        preferences.getBoolean("compressedAudio", false));
+        preferences.getBoolean("compressedAudio", false),
+        preferences.getBoolean("adaptiveBuffer", true));
   }
 
   void save(Context context) {
@@ -49,26 +51,65 @@ record StreamSettings(
         .putBoolean("lowLatency", lowLatency)
         .putBoolean("highQuality", highQuality)
         .putBoolean("compressedAudio", compressedAudio)
+        .putBoolean("adaptiveBuffer", adaptiveBuffer)
         .apply();
   }
 
   StreamSettings withWholeDevice(boolean enabled) {
     return new StreamSettings(
-        enabled, bufferMs, blockMs, latencyMs, lowLatency, highQuality, compressedAudio);
+        enabled,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer);
   }
 
   StreamSettings withProfile(int profile) {
     return new StreamSettings(
-        wholeDevice, bufferMs, blockMs, latencyMs, profile == 1, profile == 2, compressedAudio);
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        profile == 1,
+        profile == 2,
+        compressedAudio,
+        adaptiveBuffer);
   }
 
   StreamSettings withCompression(boolean enabled) {
     return new StreamSettings(
-        wholeDevice, bufferMs, blockMs, latencyMs, lowLatency, highQuality, enabled);
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        enabled,
+        adaptiveBuffer);
   }
 
   StreamSettings withBuffers(int buffer, int block, int latency) {
-    return new StreamSettings(wholeDevice, buffer, block, latency, false, false, compressedAudio);
+    return new StreamSettings(
+        wholeDevice, buffer, block, latency, false, false, compressedAudio, adaptiveBuffer);
+  }
+
+  StreamSettings withAdaptiveBuffer(boolean enabled) {
+    return new StreamSettings(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        enabled);
+  }
+
+  boolean effectiveAdaptiveBuffer() {
+    return lowLatency && adaptiveBuffer;
   }
 
   int profile() {
@@ -80,7 +121,7 @@ record StreamSettings(
   }
 
   int effectiveBufferMs() {
-    return lowLatency ? 0 : highQuality ? 150 : bufferMs;
+    return lowLatency ? (adaptiveBuffer ? 8 : 0) : highQuality ? 150 : bufferMs;
   }
 
   int effectiveBlockMs() {

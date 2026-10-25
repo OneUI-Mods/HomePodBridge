@@ -25,7 +25,8 @@ import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
 import android.os.Process;
-import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -200,8 +201,8 @@ public final class CaptureService extends Service {
           closeSystemInput();
           return;
         }
-        InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(pipe);
-        rootInput = new PcmPipe(input, settings.samplesPerRead());
+        var input = new ParcelFileDescriptor.AutoCloseInputStream(pipe);
+        rootInput = new PcmPipe(input.getChannel());
       } else {
         AudioPlaybackCaptureConfiguration.Builder captureBuilder =
             new AudioPlaybackCaptureConfiguration.Builder(projection)
@@ -242,8 +243,10 @@ public final class CaptureService extends Service {
           BuildConfig.VOLUME_LIMIT,
           settings.effectiveBufferMs(),
           settings.effectiveLatencyMs(),
-          settings.compressedAudio());
-      short[] pcm = new short[settings.samplesPerRead()];
+          settings.compressedAudio(),
+          settings.effectiveAdaptiveBuffer());
+      ByteBuffer pcm =
+          ByteBuffer.allocateDirect(settings.samplesPerRead() * 2).order(ByteOrder.LITTLE_ENDIAN);
       long deadline = System.nanoTime() + 20_000_000_000L;
       while (generation.get() == token) {
         long now = android.os.SystemClock.elapsedRealtime();
@@ -270,24 +273,25 @@ public final class CaptureService extends Service {
         int read =
             rootInput != null
                 ? rootInput.read(pcm)
-                : recorder.read(pcm, 0, pcm.length, AudioRecord.READ_NON_BLOCKING);
+                : recorder.read(pcm, pcm.capacity(), AudioRecord.READ_NON_BLOCKING);
         if (read < 0) {
           failure = R.string.capture_failed;
           break;
         }
         if (read > 0 && state == 2) {
-          capturedFrames += read / 2;
-          for (int i = 0; i < read; i++) {
-            if (pcm[i] != 0) {
+          if (read % 4 != 0) throw new java.io.IOException("Truncated stereo frame");
+          capturedFrames += read / 4;
+          for (int i = 0; i < read; i += 2) {
+            if (pcm.getShort(i) != 0) {
               signalBlocks++;
               break;
             }
           }
-          while (!NativeSender.write(pcm, read - read % 2)
+          while (!NativeSender.write(pcm, read)
               && generation.get() == token
               && NativeSender.state() == 2) Thread.sleep(2);
         }
-        if (read == 0) Thread.sleep(5);
+        if (read == 0) Thread.sleep(settings.lowLatency() ? 1 : 5);
       }
     } catch (Exception e) {
       try (var error = openFileOutput("last-capture-error.txt", MODE_PRIVATE)) {
@@ -319,6 +323,8 @@ public final class CaptureService extends Service {
                       + settings.profile()
                       + " compressedAudio="
                       + settings.compressedAudio()
+                      + " adaptiveBuffer="
+                      + settings.effectiveAdaptiveBuffer()
                       + "\n")
                   .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (java.io.IOException ignored) {

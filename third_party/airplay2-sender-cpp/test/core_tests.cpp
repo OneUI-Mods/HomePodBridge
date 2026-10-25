@@ -1647,6 +1647,58 @@ void testFrameClockPacing() {
     r.sender->stop();
 }
 
+void testAdaptiveReserve() {
+    g_test = "adaptive reserve grows on shortages and shrinks only through silence";
+    Rig r;
+    r.sender->setAdaptiveInputBuffer(true);
+    r.sender->setAuth(RaopDeviceInfo::Auth::None, false, "box", "", "");
+    r.sender->start(r.peerIp, 5000, "FakeBox");
+    r.connectControl(); r.exchange(); r.io.takeUdp();
+    CHECK(r.sender->inputBufferFrames() == 352, "starts with one packet near eight ms");
+    for (int failure = 0; failure < 7; ++failure) {
+        const size_t reserve = r.sender->inputBufferFrames();
+        std::vector<int16_t> audible(reserve * 2, 1234);
+        REQUIRE(r.ring.tryPush(audible), "refill complete reserve");
+        while (r.ring.availableRead() > 0) {
+            r.advance(8);
+            for (const auto& packet : r.io.takeUdp()) if (packet.s == RaopUdp::Audio) {
+                auto pcm = r.rx.decodeAudio(packet.data);
+                CHECK(pcm && std::all_of(pcm->begin(), pcm->end(), [](int16_t v) { return v == 1234; }), "audible frames are retained exactly during recovery");
+            }
+        }
+        r.advance(8); r.io.takeUdp();
+        CHECK(r.sender->inputBufferFrames() == std::min<size_t>(reserve + 352, 2112), "raises by one packet and remains bounded near 48 ms");
+    }
+    CHECK(r.sender->adaptiveBufferChanges() == 5, "only actual increases counted");
+    std::vector<int16_t> initialSilence(2112 * 2, 0), silence(704, 0), tone(704, 2345);
+    REQUIRE(r.ring.tryPush(initialSilence), "silent reserve");
+    for (int i = 0; i < 250; ++i) {
+        REQUIRE(r.ring.tryPush(silence), "silent producer packet");
+        r.advance(8); r.io.takeUdp();
+    }
+    REQUIRE(r.ring.tryPush(tone), "onset queued behind silent excess");
+    r.advance(8); r.io.takeUdp();
+    CHECK(r.sender->inputBufferFrames() == 352, "returns to minimum after two seconds of silence");
+    CHECK(r.sender->trimmedSilentFrames() > 0, "only the excess silent backlog is released");
+    r.advance(8);
+    for (const auto& packet : r.io.takeUdp()) if (packet.s == RaopUdp::Audio) {
+        auto pcm = r.rx.decodeAudio(packet.data);
+        CHECK(pcm && *pcm == tone, "sound onset survives silence trimming exactly");
+    }
+    r.sender->stop();
+
+    RingBuffer<int16_t> ring(8);
+    const std::vector<int16_t> mixed{0, 0, 0, 1, 0, 0};
+    REQUIRE(ring.tryPush(mixed), "mixed PCM queued");
+    CHECK(!ring.tryDiscardZeros(4) && ring.availableRead() == 6, "never discard a range containing any nonzero sample");
+    CHECK(ring.tryDiscardZeros(2) && ring.availableRead() == 4, "whole silent frame can be released");
+    std::vector<int16_t> preserved(4);
+    REQUIRE(ring.tryPop(preserved), "remaining samples available");
+    CHECK((preserved == std::vector<int16_t>{0, 1, 0, 0}), "a one-channel onset is preserved");
+    REQUIRE(ring.tryPush(std::vector<int16_t>(6, 0)), "wraparound silent PCM queued");
+    CHECK(ring.tryDiscardZeros(6) && ring.availableRead() == 0, "silent discard works across ring wraparound");
+}
+
 void testCompressedAp2Audio() {
         g_test = "compressed encrypted ALAC and runtime opt-out";
         Rig r;
@@ -1694,6 +1746,7 @@ int main() {
     testLowLatencyTimeline();
     testCompressedAp2Audio();
     testFrameClockPacing();
+    testAdaptiveReserve();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);
     return g_failures == 0 ? 0 : 1;

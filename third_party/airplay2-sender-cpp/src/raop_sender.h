@@ -112,6 +112,15 @@ public:
     void setInputFormat(uint32_t sampleRate);
     // HomePod Bridge: optional input jitter reserve, preserving the RTP clock while priming.
     void setInputBufferFrames(size_t frames) { inputBufferFrames_ = frames; inputPrimed_ = false; }
+    void setAdaptiveInputBuffer(bool enabled) {
+        adaptiveInputBuffer_ = enabled;
+        if (enabled) inputBufferFrames_ = 352;
+        inputPrimed_ = false;
+        silentInputFrames_ = 0;
+    }
+    size_t inputBufferFrames() const { return inputBufferFrames_; }
+    uint64_t adaptiveBufferChanges() const { return adaptiveBufferChanges_; }
+    uint64_t trimmedSilentFrames() const { return trimmedSilentFrames_; }
     void setPresentationLatencyMs(uint32_t milliseconds) {
         latency_ = std::clamp(milliseconds, 20u, 2000u) * 44100u / 1000u;
     }
@@ -380,6 +389,8 @@ private:
     RingBuffer<int16_t>* ring_ = nullptr;
     uint32_t inputRate_ = 44100;
     size_t inputBufferFrames_ = 0;
+    bool adaptiveInputBuffer_ = false;
+    uint64_t silentInputFrames_ = 0, adaptiveBufferChanges_ = 0, trimmedSilentFrames_ = 0;
     bool inputPrimed_ = false;
     uint64_t inputUnderrunFrames_ = 0;
     uint64_t bufferingFrames_ = 0;

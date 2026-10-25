@@ -35,6 +35,7 @@
   #include <netinet/tcp.h>
   #include <poll.h>
   #include <sys/socket.h>
+  #include <time.h>
   #include <unistd.h>
 #endif
 
@@ -380,10 +381,9 @@ void RaopLoop::pump(RaopSender& sender, std::chrono::milliseconds maxWait) {
 
     // 3. snapshot the live sockets.
     struct Entry { bool tcp; size_t idx; sock_t fd; uint32_t gen; };
-    std::vector<pollfd_t> pfds;
-    std::vector<Entry>    entries;
-    pfds.reserve(5);
-    entries.reserve(5);
+    std::array<pollfd_t, 5> pfds{};
+    std::array<Entry, 5> entries{};
+    size_t count = 0;
     for (size_t i = 0; i < d.tcp.size(); ++i) {
         const TcpSlot& s = d.tcp[i];
         if (s.fd == kBadSock) continue;
@@ -391,8 +391,8 @@ void RaopLoop::pump(RaopSender& sender, std::chrono::milliseconds maxWait) {
         p.fd = s.fd;
         p.events = s.connecting ? kPollOut
                  : short(kPollIn | (s.outOff < s.out.size() ? kPollOut : 0));
-        pfds.push_back(p);
-        entries.push_back({true, i, s.fd, s.gen});
+        pfds[count] = p;
+        entries[count++] = {true, i, s.fd, s.gen};
     }
     for (size_t i = 0; i < d.udp.size(); ++i) {
         const UdpSlot& u = d.udp[i];
@@ -400,13 +400,13 @@ void RaopLoop::pump(RaopSender& sender, std::chrono::milliseconds maxWait) {
         pollfd_t p{};
         p.fd = u.fd;
         p.events = kPollIn;
-        pfds.push_back(p);
-        entries.push_back({false, i, u.fd, u.gen});
+        pfds[count] = p;
+        entries[count++] = {false, i, u.fd, u.gen};
     }
 
     // 4. wait.
     int ready = 0;
-    if (pfds.empty()) {
+    if (count == 0) {
         if (wait.count() > 0) std::this_thread::sleep_for(wait);
     } else {
 #if defined(__linux__)
@@ -414,15 +414,15 @@ void RaopLoop::pump(RaopSender& sender, std::chrono::milliseconds maxWait) {
         timespec timeout{};
         timeout.tv_sec = static_cast<time_t>(wait.count() / 1000000000LL);
         timeout.tv_nsec = static_cast<long>(wait.count() % 1000000000LL);
-        ready = ::ppoll(pfds.data(), pfds.size(), &timeout, nullptr);
+        ready = ::ppoll(pfds.data(), count, &timeout, nullptr);
 #else
-        ready = pollSockets(pfds.data(), pfds.size(), int(ceil<milliseconds>(wait).count()));
+        ready = pollSockets(pfds.data(), count, int(ceil<milliseconds>(wait).count()));
 #endif
     }
 
     // 5. deliver. every sender call may close/open slots: re-validate by
     //    (fd, generation) before touching a slot again.
-    for (size_t i = 0; ready > 0 && i < entries.size(); ++i) {
+    for (size_t i = 0; ready > 0 && i < count; ++i) {
         const short re = pfds[i].revents;
         if (!re) continue;
         const Entry& e = entries[i];

@@ -220,15 +220,17 @@ final class SystemAudioBridge extends Binder {
     private void pump() {
       android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
       try (OutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(writePipe)) {
-        short[] samples = new short[blockSamples];
-        ByteBuffer bytes = ByteBuffer.allocate(samples.length * 2).order(ByteOrder.LITTLE_ENDIAN);
+        var channel = ((java.io.FileOutputStream) output).getChannel();
+        ByteBuffer bytes =
+            ByteBuffer.allocateDirect(blockSamples * 2).order(ByteOrder.LITTLE_ENDIAN);
         while (!closed.get()) {
-          int count = record.read(samples, 0, samples.length, AudioRecord.READ_BLOCKING);
+          bytes.clear();
+          int count = record.read(bytes, bytes.capacity(), AudioRecord.READ_BLOCKING);
           if (count < 0) break;
           if (count == 0) continue;
-          bytes.clear();
-          for (int i = 0; i < count; i++) bytes.putShort(samples[i]);
-          output.write(bytes.array(), 0, count * 2);
+          if (count % 4 != 0) break;
+          bytes.position(0).limit(count);
+          while (bytes.hasRemaining() && !closed.get()) channel.write(bytes);
         }
       } catch (IOException | RuntimeException ignored) {
         // Pipe closure or process death ends this session without affecting SystemUI.

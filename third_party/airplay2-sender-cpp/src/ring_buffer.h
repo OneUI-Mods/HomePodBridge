@@ -58,6 +58,17 @@ public:
         return write_.load(std::memory_order_acquire) - read_.load(std::memory_order_relaxed);
     }
 
+    // Consumer only. Release a complete silent PCM range, never nonzero samples.
+    bool tryDiscardZeros(size_t count) requires(std::is_integral_v<T>) {
+        const auto rd = read_.load(std::memory_order_relaxed);
+        const auto wr = write_.load(std::memory_order_acquire);
+        if (count > wr - rd) return false;
+        for (size_t i = 0; i < count; ++i)
+            if (buffer_[(rd + i) & mask_] != T{}) return false;
+        read_.store(rd + count, std::memory_order_release);
+        return true;
+    }
+
     size_t availableWrite() const {
         return capacity() - availableRead();
     }
