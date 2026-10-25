@@ -71,7 +71,7 @@ def main():
     with zipfile.ZipFile(source) as archive:
         assert not any(".signing/" in path or ".research/" in path for path in archive.namelist())
     metadata = dist / "release-metadata.json"
-    metadata.write_text(json.dumps({"packageName": "dev.ryuya.homepodbridge", "versionCode": version_code,
+    metadata.write_text(json.dumps({"schema": 1, "packageName": "dev.ryuya.homepodbridge", "versionCode": version_code,
         "versionName": version, "commit": commit, "apk": apk.name, "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
         "certificateSha256": certificate, "volumeLimit": 100, "initialVolume": 0}, indent=2) + "\n")
     files = [apk, source, signature, metadata]
