@@ -11,13 +11,12 @@ import java.io.DataOutputStream;
 import java.io.FileDescriptor;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Native inspection runs in a child; the Java owner retains all original stream handles/FDs. */
-final class HalQueueMapping {
+public final class HalQueueMapping {
   private static native long[] inspect(int[] fds, long[] grants, int quantum, int flags);
 
   static JSONObject inspectInChild(List<FrozenHalParcel.Stream> streams, String nonce)
@@ -27,17 +26,7 @@ final class HalQueueMapping {
       throw new SecurityException();
     String name = "hpb-map-" + nonce;
     Process child = null;
-    var watchdog = Executors.newSingleThreadScheduledExecutor();
     try (var server = new LocalServerSocket(name)) {
-      watchdog.schedule(
-          () -> {
-            try {
-              server.close();
-            } catch (Exception ignored) {
-            }
-          },
-          4,
-          TimeUnit.SECONDS);
       child =
           new ProcessBuilder(
                   "app_process",
@@ -46,8 +35,24 @@ final class HalQueueMapping {
                   name,
                   nonce,
                   Integer.toString(android.os.Process.myPid()))
-              .redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")))
               .start();
+      var pending = new android.system.StructPollfd();
+      pending.fd = server.getFileDescriptor();
+      pending.events = (short) android.system.OsConstants.POLLIN;
+      long connectDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+      while (System.nanoTime() < connectDeadline && child.isAlive()) {
+        android.system.Os.poll(new android.system.StructPollfd[] {pending}, 100);
+        if ((pending.revents & android.system.OsConstants.POLLIN) != 0) break;
+      }
+      if ((pending.revents & android.system.OsConstants.POLLIN) == 0) {
+        String reason =
+            child.isAlive()
+                ? "connection timeout"
+                : new String(
+                    child.getErrorStream().readNBytes(1024),
+                    java.nio.charset.StandardCharsets.UTF_8);
+        throw new java.io.IOException("Mapping worker did not connect: " + reason);
+      }
       try (var socket = server.accept()) {
         socket.setSoTimeout(3000);
         var peer = socket.getPeerCredentials();
@@ -96,7 +101,6 @@ final class HalQueueMapping {
         return new JSONObject(result);
       }
     } finally {
-      watchdog.shutdownNow();
       if (child != null) child.destroyForcibly();
     }
   }
@@ -110,6 +114,7 @@ final class HalQueueMapping {
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException();
+    System.load(apk + "!/lib/arm64-v8a/libc++_shared.so");
     System.load(apk + "!/lib/arm64-v8a/libhomepod_fmq_probe.so");
     FileDescriptor[] incoming = null;
     var owned = new ArrayList<ParcelFileDescriptor>();

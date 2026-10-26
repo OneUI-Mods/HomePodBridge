@@ -476,6 +476,32 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   public static void main(String[] args) throws Exception {
     rootPreflight();
+    if (args.length == 3 && args[0].equals("stop")) {
+      String nonce = UUID.fromString(args[1]).toString();
+      if (!nonce.equals(args[1]) || !args[2].equals("44100")) throw new IllegalArgumentException();
+      var matches = new ArrayList<Path>();
+      try (var processes = Files.list(Path.of("/proc"))) {
+        for (Path proc :
+            processes.filter(p -> p.getFileName().toString().matches("[1-9][0-9]{0,6}")).toList()) {
+          try {
+            if (OwnedProbeProcess.matches(
+                readString(proc.resolve("cmdline")), readString(proc.resolve("status")), nonce))
+              matches.add(proc);
+          } catch (Exception exited) {
+            /* Unrelated process exited during inventory. */
+          }
+        }
+      }
+      if (matches.size() != 1)
+        throw new SecurityException("Expected exactly one owned prototype process");
+      Path proc = matches.get(0);
+      if (!OwnedProbeProcess.matches(
+          readString(proc.resolve("cmdline")), readString(proc.resolve("status")), nonce))
+        throw new SecurityException();
+      android.os.Process.sendSignal(Integer.parseInt(proc.getFileName().toString()), 15);
+      System.out.println("OWNED_PROBE_STOP_SENT");
+      return;
+    }
     if ((args.length != 2 && args.length != 3)
         || !(args[0].equals("create")
             || args[0].equals("recover")
