@@ -40,6 +40,21 @@ inline bool hp_stream_once(hp_mapped_queue& command,hp_mapped_queue& reply,uint8
     return false;
 }
 
+// Query without consuming PCM. Only an input with a sole, owned reader may use this as a gate.
+inline bool hp_input_position(hp_mapped_queue& command,hp_mapped_queue& reply,hp_status_reply* result) {
+    if(!hp_dispatch_status(command,reply)) return false;
+    auto begin=std::chrono::steady_clock::now();
+    while(std::chrono::steady_clock::now()-begin<std::chrono::milliseconds(100)) {
+        if(reply.view.transfer(result,56,false)) {
+            reply.notify(1);
+            return result->status==0 && result->bytes==0 && (result->state==2 || result->state==3)
+                && result->xrun_frames<=0 && result->observable.frames>=0;
+        }
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    return false;
+}
+
 inline hp_zero_result hp_zero_transfer(std::array<hp_mapped_queue,6>& q,int frames,bool exit_after_input,bool output_only=false) {
     hp_zero_result report{};report.frames=frames;
     if(frames!=22 && frames!=44 && frames!=88 && frames!=928) {report.error=1;return report;}

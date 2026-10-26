@@ -124,6 +124,16 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     std::array<uint8_t,176> input{};
     auto begin=std::chrono::steady_clock::now();
     while(error==0 && cycles<2048) {
+        // r_submix reports the requested byte count even after zero-padding a short read.
+        // Wait for a complete burst to exist before asking the sole consumer to read it.
+        auto available_begin=std::chrono::steady_clock::now();
+        while(true) {
+            if(!hp_input_position(queues[0],queues[1],&response)) {error=7;break;}
+            if(response.observable.frames-captured>=44) break;
+            if(std::chrono::steady_clock::now()-available_begin>=std::chrono::milliseconds(50)) {error=8;break;}
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+        if(error) break;
         if(!hp_empty(queues[2]) || !hp_stream_once(queues[0],queues[1],3,176,3,&response,&duration)) {error=2;break;}
         maximum=std::max(maximum,duration);
         if(!queues[2].view.transfer(input.data(),input.size(),false)) {error=3;break;}
@@ -132,7 +142,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
         int64_t pending=response.observable.frames-captured;
         if(pending<0) {error=5;break;}
         if(cycles>100) {max_pending=std::max(max_pending,pending);min_pending=std::min(min_pending,pending);sum_pending+=pending;}
-        if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(500)) break;
+        if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(1500)) break;
     }
     for(auto& queue:queues) if(!hp_empty(queue)) error=6;
     auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
