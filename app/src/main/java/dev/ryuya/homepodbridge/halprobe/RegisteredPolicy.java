@@ -14,6 +14,10 @@ final class RegisteredPolicy implements AutoCloseable {
   private final HandlerThread callbacks = new HandlerThread("HomePod-HAL-policy");
   private Object policy;
   private PolicyRouteLease route;
+  private final android.os.IBinder volumeToken = new android.os.Binder();
+  private Object audioService;
+  private Class<?> audioServiceType;
+  private boolean volumeRequested;
   final String address;
 
   RegisteredPolicy(Context context, CaptureScope scope) throws Exception {
@@ -78,6 +82,21 @@ final class RegisteredPolicy implements AutoCloseable {
       if (status != 0) throw new IllegalStateException("Playback policy refused");
       address = (String) mixType.getMethod("getRegistration").invoke(audioMix);
       route = PolicyRouteLease.open(context, address);
+      // Match AudioRecord's fixed-volume submix lease without changing the phone/receiver volume.
+      android.os.IBinder binder =
+          (android.os.IBinder)
+              Class.forName("android.os.ServiceManager")
+                  .getMethod("getService", String.class)
+                  .invoke(null, Context.AUDIO_SERVICE);
+      audioServiceType = Class.forName("android.media.IAudioService");
+      audioService =
+          Class.forName("android.media.IAudioService$Stub")
+              .getMethod("asInterface", android.os.IBinder.class)
+              .invoke(null, binder);
+      volumeRequested = true;
+      audioServiceType
+          .getMethod("forceRemoteSubmixFullVolume", boolean.class, android.os.IBinder.class)
+          .invoke(audioService, true, volumeToken);
     } catch (Exception failure) {
       close();
       throw failure;
@@ -87,7 +106,15 @@ final class RegisteredPolicy implements AutoCloseable {
   @Override
   public void close() throws Exception {
     try {
-      if (route != null) route.close();
+      try {
+        if (volumeRequested)
+          audioServiceType
+              .getMethod("forceRemoteSubmixFullVolume", boolean.class, android.os.IBinder.class)
+              .invoke(audioService, false, volumeToken);
+      } finally {
+        volumeRequested = false;
+        if (route != null) route.close();
+      }
     } finally {
       try {
         if (policy != null)

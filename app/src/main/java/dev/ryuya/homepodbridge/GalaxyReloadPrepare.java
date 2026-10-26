@@ -15,8 +15,18 @@ public final class GalaxyReloadPrepare {
           || app.uid < 1000
           || app.uid >= 100000) throw new SecurityException();
       java.io.File expected = new java.io.File("/data/user_de/0/com.android.systemui/files");
-      if (!expected.getParentFile().isDirectory()
+      java.io.File parent = expected.getParentFile();
+      if (!parent.getPath().equals(app.deviceProtectedDataDir)
+          || java.nio.file.Files.isSymbolicLink(parent.toPath())
           || java.nio.file.Files.isSymbolicLink(expected.toPath())) throw new SecurityException();
+      if (!parent.exists()) {
+        java.nio.file.Files.createDirectory(parent.toPath());
+        android.system.Os.chown(parent.getPath(), app.uid, app.uid);
+        android.system.Os.chmod(parent.getPath(), 0700);
+      }
+      if (!parent.isDirectory()
+          || ((Number) java.nio.file.Files.getAttribute(parent.toPath(), "unix:uid")).intValue()
+              != app.uid) throw new SecurityException();
       boolean existed = expected.exists();
       var target =
           context
@@ -35,6 +45,7 @@ public final class GalaxyReloadPrepare {
       System.out.flush();
       System.exit(0);
     } catch (Exception unavailable) {
+      android.util.Log.e("HomePodBridgeReload", "Private CLI directory unavailable", unavailable);
       System.out.println("UNAVAILABLE");
       System.out.flush();
       System.exit(2);
