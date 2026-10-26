@@ -19,6 +19,9 @@ import org.json.JSONObject;
 public final class HalQueueMapping {
   private static native long[] inspect(int[] fds, long[] grants, int quantum, int flags);
 
+  private static native long[] queryStandby(
+      int[] commandFds, long[] commandGrants, int[] replyFds, long[] replyGrants);
+
   static JSONObject inspectInChild(List<FrozenHalParcel.Stream> streams, String nonce)
       throws Exception {
     String apk = System.getenv("CLASSPATH");
@@ -153,6 +156,8 @@ public final class HalQueueMapping {
       if (!metadata.readUTF().equals(args[1]) || metadata.readInt() != 6)
         throw new SecurityException();
       JSONArray reports = new JSONArray();
+      var queueFds = new ArrayList<int[]>();
+      var queueGrants = new ArrayList<long[]>();
       int next = 0;
       for (int i = 0; i < 6; i++) {
         int quantum = metadata.readInt(),
@@ -178,6 +183,8 @@ public final class HalQueueMapping {
           grants[g * 3 + 2] = metadata.readLong();
         }
         long[] result = inspect(fds, grants, quantum, flags);
+        queueFds.add(fds);
+        queueGrants.add(grants);
         System.out.println("MAPPING_NATIVE=" + java.util.Arrays.toString(result));
         if (result == null || result[0] < 0) {
           for (var fd : owned) {
@@ -197,12 +204,31 @@ public final class HalQueueMapping {
                 .put("writtenBytes", result[2]));
       }
       if (next != incoming.length || metadata.available() != 0) throw new SecurityException();
+      var control = new JSONArray();
+      for (int base : new int[] {0, 3}) {
+        long[] result =
+            queryStandby(
+                queueFds.get(base),
+                queueGrants.get(base),
+                queueFds.get(base + 1),
+                queueGrants.get(base + 1));
+        if (result == null || result.length != 4)
+          throw new SecurityException("Standby status command failed");
+        control.put(
+            new JSONObject()
+                .put("input", base == 3)
+                .put("roundTripUs", result[0])
+                .put("state", result[1])
+                .put("audioBytes", result[2])
+                .put("xrunFrames", result[3]));
+      }
       new DataOutputStream(socket.getOutputStream())
           .writeUTF(
               new JSONObject()
                   .put("mappedQueues", 6)
                   .put("queues", reports)
                   .put("started", false)
+                  .put("statusCommands", control)
                   .toString());
     } finally {
       for (var fd : owned)

@@ -2,8 +2,9 @@
 #include "fmq_mapped_queue.h"
 #include <array>
 #include <cerrno>
+#include "fmq_control.h"
 
-// Only map and inspect queue counters. No command/data writes, index resets or notifications.
+// This entry point only maps/inspects counters. It never changes shared memory.
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_inspect(
     JNIEnv* env, jclass, jintArray fd_array, jlongArray grants_array, jint quantum, jint flags) {
@@ -32,4 +33,35 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_inspect(
     jlongArray output=env->NewLongArray(3);
     if(output) env->SetLongArrayRegion(output,0,3,result);
     return output;
+}
+
+static bool hp_attach_status_queue(JNIEnv* env,jintArray fd_array,jlongArray grants_array,
+                                   size_t quantum,hp_mapped_queue& queue) {
+    jsize count=env->GetArrayLength(fd_array);
+    if(count<1 || count>8 || env->GetArrayLength(grants_array)!=12) return false;
+    std::array<jint,8> raw{};std::array<jlong,12> fields{};
+    env->GetIntArrayRegion(fd_array,0,count,raw.data());
+    env->GetLongArrayRegion(grants_array,0,12,fields.data());
+    if(env->ExceptionCheck()) return false;
+    std::array<hp_grantor,4> grants{};
+    for(size_t i=0;i<4;i++) {
+        if(fields[i*3]<0 || fields[i*3]>=count || fields[i*3+1]<0 || fields[i*3+2]<=0) return false;
+        grants[i]={int32_t(fields[i*3]),uint64_t(fields[i*3+1]),uint64_t(fields[i*3+2])};
+    }
+    return queue.attach(raw.data(),size_t(count),grants.data(),4,quantum,1);
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_queryStandby(
+    JNIEnv* env,jclass,jintArray command_fds,jlongArray command_grants,
+    jintArray reply_fds,jlongArray reply_grants) {
+    hp_mapped_queue command,reply;
+    if(!hp_attach_status_queue(env,command_fds,command_grants,8,command)
+        || !hp_attach_status_queue(env,reply_fds,reply_grants,56,reply)) return nullptr;
+    hp_status_reply status{};int64_t duration=0;
+    if(!hp_query_standby(command,reply,&status,&duration)) return nullptr;
+    jlong values[]={duration,status.state,status.bytes,status.xrun_frames};
+    jlongArray result=env->NewLongArray(4);
+    if(result) env->SetLongArrayRegion(result,0,4,values);
+    return result;
 }
