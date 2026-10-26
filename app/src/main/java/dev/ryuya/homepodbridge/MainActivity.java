@@ -57,6 +57,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private MaterialSwitch compressionSwitch;
   private MaterialSwitch adaptiveBufferSwitch;
   private MaterialSwitch deviceBufferSwitch;
+  private MaterialSwitch minimumBufferSwitch;
   private TextView profileSelection;
   private TextView profileDetails;
   private TabLayout tabs;
@@ -328,6 +329,17 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         });
     deviceControls.addView(deviceBufferSwitch);
     deviceControls.addView(label(getString(R.string.device_buffer_description), 14));
+    minimumBufferSwitch = new MaterialSwitch(this);
+    minimumBufferSwitch.setText(R.string.device_buffer_faster);
+    minimumBufferSwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          StreamSettings.load(this).withDeviceBufferFrames(enabled ? 928 : 1856).save(this);
+          syncSettings();
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    deviceControls.addView(minimumBufferSwitch);
+    deviceControls.addView(label(getString(R.string.device_buffer_faster_description), 14));
     body.addView(card(deviceControls));
     body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
     body.addView(label(getString(R.string.notes), 14));
@@ -384,6 +396,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     adaptiveBufferSwitch.setEnabled(settings.lowLatency());
     deviceBufferSwitch.setChecked(settings.deviceBuffer());
     deviceBufferSwitch.setEnabled(settings.lowLatency());
+    minimumBufferSwitch.setChecked(settings.deviceBufferFrames() == 928);
+    minimumBufferSwitch.setEnabled(settings.effectiveDeviceBuffer());
     profileSelection.setText(
         getString(
             R.string.profile_selected,
@@ -606,7 +620,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
             ? getString(R.string.device_buffer_off)
             : switch (path.state()) {
               case CHECKING -> getString(R.string.device_buffer_checking);
-              case ACTIVE -> getString(R.string.device_buffer_active, framesTime(1856));
+              case ACTIVE ->
+                  getString(R.string.device_buffer_active, framesTime(path.targetFrames()));
               case STANDARD -> getString(R.string.device_buffer_standard);
               case RECOVERY_REQUIRED -> getString(R.string.device_buffer_recovering);
             });

@@ -13,7 +13,11 @@ final class OwnedAudioPath implements AutoCloseable {
     RECOVERY_REQUIRED
   }
 
-  record Update(State state, String report) {}
+  record Update(State state, String report, int targetFrames) {
+    Update(State state, String report) {
+      this(state, report, 1856);
+    }
+  }
 
   interface Backend {
     String operate(int operation) throws Exception;
@@ -22,6 +26,7 @@ final class OwnedAudioPath implements AutoCloseable {
   private final Backend backend;
   private final Executor executor;
   private final Consumer<Update> listener;
+  private final int targetFrames;
   private final AtomicBoolean closed = new AtomicBoolean();
   private final AtomicBoolean started = new AtomicBoolean();
   private boolean mutationPossible;
@@ -34,9 +39,16 @@ final class OwnedAudioPath implements AutoCloseable {
   }
 
   OwnedAudioPath(Backend backend, Executor executor, Consumer<Update> listener) {
+    this(backend, executor, listener, 1856);
+  }
+
+  OwnedAudioPath(Backend backend, Executor executor, Consumer<Update> listener, int targetFrames) {
+    if (targetFrames != 1856 && targetFrames != 928)
+      throw new IllegalArgumentException("Unsupported playback reserve");
     this.backend = backend;
     this.executor = executor;
     this.listener = listener;
+    this.targetFrames = targetFrames;
   }
 
   void start() {
@@ -47,7 +59,7 @@ final class OwnedAudioPath implements AutoCloseable {
           emit(State.CHECKING, "Checking the owned device path");
           String report;
           try {
-            report = backend.operate(2);
+            report = backend.operate(targetFrames == 928 ? 4 : 2);
             mutationPossible =
                 !report.contains("writeAttempts=0")
                     && (report.contains("Read-only owned route verified")
@@ -57,7 +69,7 @@ final class OwnedAudioPath implements AutoCloseable {
             report = "Device path command failed: " + failure.getClass().getSimpleName();
             mutationPossible = true; // A lost reply must not be treated as proof of no mutation.
           }
-          if (report.contains("Owned reserve changed: 2587 -> 1856")) {
+          if (report.contains("Owned reserve changed: 2587 -> " + targetFrames)) {
             if (!closed.get()) emit(State.ACTIVE, report);
             // close() has already queued restoration if the client stopped during this command.
           } else {
@@ -74,9 +86,9 @@ final class OwnedAudioPath implements AutoCloseable {
     if (restorationAttempted) return restorationReport;
     restorationAttempted = true;
     try {
-      String report = backend.operate(3);
+      String report = backend.operate(targetFrames == 928 ? 5 : 3);
       restored =
-          report.contains("Owned reserve changed: 1856 -> 2587")
+          report.contains("Owned reserve changed: " + targetFrames + " -> 2587")
               || report.contains("Original reserve already present")
               || report.contains("No matching live owned route")
               || report.contains("owned registration absent");
@@ -89,7 +101,7 @@ final class OwnedAudioPath implements AutoCloseable {
   }
 
   private void emit(State state, String report) {
-    if (!closed.get()) listener.accept(new Update(state, report));
+    if (!closed.get()) listener.accept(new Update(state, report, targetFrames));
   }
 
   @Override

@@ -1,4 +1,6 @@
 <resources>
+    <string name="device_buffer_faster">Further reduce phone buffering</string>
+    <string name="device_buffer_faster_description">Uses the smaller supported buffer in Low latency mode. More sensitive to processing stalls; turn this off first if audio breaks up. The displayed target fill is not total playback latency.</string>
     <string name="device_buffer">Reduce phone audio buffering (root)</string>
     <string name="device_buffer_description">Uses root on supported system builds to reduce internal waiting. Low latency only. Standard capture is kept if unavailable; turn off if audio breaks up under load.</string>
     <string name="device_buffer_off">Phone buffering\nReduction off</string>

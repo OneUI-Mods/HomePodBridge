@@ -76,6 +76,12 @@ public final class CommandService extends Service {
       commandStatus = "Phone buffer reduction preference: " + command.endsWith("on");
       return START_NOT_STICKY;
     }
+    if (command.equals("phone-buffer-balanced") || command.equals("phone-buffer-faster")) {
+      int frames = command.endsWith("faster") ? 928 : 1856;
+      StreamSettings.load(this).withDeviceBufferFrames(frames).save(this);
+      commandStatus = "Phone buffer target preference: " + frames;
+      return START_NOT_STICKY;
+    }
     if (!java.util.List.of("baseline", "guard", "tuned", "lease", "brief", "minimum")
         .contains(command)) {
       commandStatus = "Unknown diagnostic command";
@@ -121,6 +127,8 @@ public final class CommandService extends Service {
             + settings.deviceBuffer()
             + " effectiveDeviceBuffer="
             + settings.effectiveDeviceBuffer()
+            + " deviceBufferFrames="
+            + settings.deviceBufferFrames()
             + " receiverTargetMs="
             + settings.effectiveLatencyMs());
     CaptureProbe.dump(writer);

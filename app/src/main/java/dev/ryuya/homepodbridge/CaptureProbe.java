@@ -78,7 +78,8 @@ final class CaptureProbe {
             new OwnedAudioPath(
                 op -> HalInspection.operateRoute(context, input.registration(), op),
                 leaseExecutor,
-                leaseUpdate::set);
+                leaseUpdate::set,
+                settings.deviceBufferFrames());
         lease.start();
       }
       ParcelFileDescriptor owned = descriptor;

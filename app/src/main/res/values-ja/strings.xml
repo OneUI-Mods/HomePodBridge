@@ -1,4 +1,6 @@
 <resources>
+    <string name="device_buffer_faster">スマートフォンのバッファをさらに削減</string>
+    <string name="device_buffer_faster_description">低遅延モードで、より小さい対応バッファを使います。処理の遅れに弱くなるため、音が途切れる場合はまずこちらをオフにしてください。表示される目標の充填量は再生全体の遅延ではありません。</string>
     <string name="device_buffer">スマートフォンの音声バッファを削減（root）</string>
     <string name="device_buffer_description">対応するシステムでrootを使って内部の待ち時間を削減します。低遅延モード専用です。利用できない場合は通常の取り込みを維持します。負荷時に音が途切れる場合はオフにしてください。</string>
     <string name="device_buffer_off">スマートフォン側のバッファ\n削減はオフ</string>

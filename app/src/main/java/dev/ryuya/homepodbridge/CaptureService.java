@@ -253,7 +253,8 @@ public final class CaptureService extends Service {
                               deviceBufferSuppressed = true;
                               reconfigure();
                             }
-                          }));
+                          }),
+                  settings.deviceBufferFrames());
           activeDevicePath = devicePath;
           devicePath.start();
         } else if (settings.effectiveDeviceBuffer()) {

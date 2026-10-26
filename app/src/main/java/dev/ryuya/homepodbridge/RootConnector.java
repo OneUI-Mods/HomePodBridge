@@ -7,11 +7,13 @@ import android.os.RemoteException;
 
 final class RootConnector {
   private static volatile IBinder bridge;
+  private static final java.util.concurrent.ConcurrentHashMap<IBinder, IBinder> captureBridges =
+      new java.util.concurrent.ConcurrentHashMap<>();
   private static final java.util.concurrent.ExecutorService controls =
       java.util.concurrent.Executors.newSingleThreadExecutor();
 
   static void volumeEndpoint(IBinder lifetime, IBinder callback) {
-    IBinder target = bridge;
+    IBinder target = captureBridges.getOrDefault(lifetime, bridge);
     if (target == null) return;
     controls.execute(
         () -> {
@@ -38,6 +40,7 @@ final class RootConnector {
     value.linkToDeath(
         () -> {
           if (bridge == value) bridge = null;
+          captureBridges.entrySet().removeIf(entry -> entry.getValue().equals(value));
         },
         0);
     new android.os.Handler(android.os.Looper.getMainLooper()).post(BridgeState::publish);
@@ -57,7 +60,7 @@ final class RootConnector {
   record Input(ParcelFileDescriptor pipe, boolean timed, String registration) {}
 
   static long[] captureTiming(IBinder lifetime) {
-    IBinder target = bridge;
+    IBinder target = captureBridges.getOrDefault(lifetime, bridge);
     if (target == null) return null;
     Parcel input = Parcel.obtain();
     Parcel output = Parcel.obtain();
@@ -110,7 +113,9 @@ final class RootConnector {
       }
       output.readException();
       ParcelFileDescriptor pipe = ParcelFileDescriptor.CREATOR.createFromParcel(output);
-      return new Input(pipe, timed, output.dataAvail() > 0 ? output.readString() : null);
+      Input opened = new Input(pipe, timed, output.dataAvail() > 0 ? output.readString() : null);
+      captureBridges.put(lifetime, target);
+      return opened;
     } finally {
       input.recycle();
       output.recycle();
@@ -118,7 +123,8 @@ final class RootConnector {
   }
 
   static void close(IBinder lifetime) {
-    IBinder target = bridge;
+    IBinder target = captureBridges.remove(lifetime);
+    if (target == null) target = bridge;
     if (target == null) return;
     Parcel input = Parcel.obtain();
     Parcel output = Parcel.obtain();

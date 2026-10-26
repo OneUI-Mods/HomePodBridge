@@ -10,6 +10,34 @@ import org.junit.Test;
 
 public final class OwnedAudioPathTest {
   @Test
+  public void smallerPlaybackReserveUsesItsMatchingRestoreAndRejectsStarvingExperiment() {
+    Queue queue = new Queue();
+    List<Integer> calls = new ArrayList<>();
+    List<OwnedAudioPath.Update> states = new ArrayList<>();
+    var lease =
+        new OwnedAudioPath(
+            op -> {
+              calls.add(op);
+              return op == 4
+                  ? "Owned reserve changed: 2587 -> 928"
+                  : "Owned reserve changed: 928 -> 2587";
+            },
+            queue,
+            states::add,
+            928);
+    lease.start();
+    queue.drain();
+    assertEquals(OwnedAudioPath.State.ACTIVE, states.get(states.size() - 1).state());
+    assertEquals(928, states.get(states.size() - 1).targetFrames());
+    lease.close();
+    queue.drain();
+    assertEquals(List.of(4, 5), calls);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new OwnedAudioPath(op -> "", queue, states::add, 464));
+  }
+
+  @Test
   public void aRefusedWriteDoesNotRestoreAnIndependentExistingTarget() {
     Queue queue = new Queue();
     List<Integer> calls = new ArrayList<>();
@@ -18,7 +46,7 @@ public final class OwnedAudioPathTest {
             op -> {
               calls.add(op);
               return "Read-only owned route verified\n"
-                         + "Owned HAL operation refused: stale owned target; writeAttempts=0";
+                  + "Owned HAL operation refused: stale owned target; writeAttempts=0";
             },
             queue,
             value -> {});
