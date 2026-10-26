@@ -193,7 +193,7 @@ public final class HalQueueMapping {
       byte[] data = new byte[length];
       input.readFully(data);
       var metadata = new DataInputStream(new ByteArrayInputStream(data));
-      int queueCount = scenario == ProbeScenario.POLICY_INPUT ? 3 : 6;
+      int queueCount = scenario.policyInput() ? 3 : 6;
       if (!metadata.readUTF().equals(args[1]) || metadata.readInt() != queueCount)
         throw new SecurityException();
       if (scenario == ProbeScenario.EXIT_FDS) {
@@ -250,11 +250,11 @@ public final class HalQueueMapping {
                 .put("writtenBytes", result[2]));
       }
       if (next != incoming.length || metadata.available() != 0) throw new SecurityException();
-      if (scenario == ProbeScenario.POLICY_INPUT) {
+      if (scenario.policyInput()) {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
         long[] result =
             policyInputRead(queueFds.toArray(new int[0][]), queueGrants.toArray(new long[0][]));
-        if (result == null || result.length != 8)
+        if (result == null || result.length != 9)
           throw new SecurityException("Input read unavailable");
         new DataOutputStream(socket.getOutputStream())
             .writeUTF(
@@ -268,6 +268,7 @@ public final class HalQueueMapping {
                     .put("maximumInputCommandUs", result[4])
                     .put("maximumPendingFrames", result[5])
                     .put("minimumPendingFrames", result[6])
+                    .put("meanPendingFrames", result[8])
                     .put("errorCode", result[7])
                     .toString());
         return;

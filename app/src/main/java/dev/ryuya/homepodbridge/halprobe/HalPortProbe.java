@@ -62,7 +62,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   /** Borrow a policy-owned input port, owning only the newly returned config and patch IDs. */
-  static JSONObject policyCapture(String address, UUID nonce) throws Exception {
+  static JSONObject policyCapture(String address, UUID nonce, int target) throws Exception {
+    if (target != 2587 && target != 928 && target != 464) throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
     var baseline = probe.snapshot();
     int device = 0;
@@ -119,6 +120,21 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     var configs = new ArrayList<OwnedHalResources.Config>();
     OwnedHalResources.Patch patch = null;
     var report = new JSONObject();
+    boolean tuneAttempted = false;
+    var watchdog =
+        Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              Thread t = new Thread(r, "HomePod-policy-input-close");
+              t.setDaemon(true);
+              return t;
+            });
+    watchdog.schedule(
+        () -> {
+          probe.stopRequested.set(true);
+          probe.closeStreams();
+        },
+        15,
+        TimeUnit.SECONDS);
     try {
       int mix = probe.configure(4, true, true);
       configs.add(
@@ -132,6 +148,14 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       var connected = probe.patch(deviceConfig, mix);
       patch = new OwnedHalResources.Patch(connected.id, List.of(deviceConfig), List.of(mix));
       report.put("stream", probe.open(mix, true, connected.minimumFrames));
+      report.put("targetFillFrames", target);
+      if (target != 2587) {
+        tuneAttempted = true;
+        String tuning = changePolicyReserve(address, target == 928 ? "brief" : "minimum");
+        report.put("tuning", tuning);
+        if (!tuning.contains("Owned reserve changed: 2587 -> " + target + ";"))
+          throw new IllegalStateException("Reserve change not confirmed");
+      }
       try (var source = new dev.ryuya.homepodbridge.SilentProbeSource()) {
         source.start();
         report.put(
@@ -145,7 +169,17 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     } catch (Exception failure) {
       report.put("failure", failure.getClass().getSimpleName() + ": " + failure.getMessage());
     } finally {
+      if (tuneAttempted) {
+        try {
+          report.put(
+              "restore",
+              changePolicyReserve(address, target == 928 ? "restore-brief" : "restore-minimum"));
+        } catch (Exception failure) {
+          report.put("restoreFailure", failure.getClass().getSimpleName());
+        }
+      }
       probe.closeStreams();
+      watchdog.shutdownNow();
       if (probe.streamsClosed()) {
         if (patch != null && probe.snapshot().patches().contains(patch))
           probe.removePatch(patch.id());
@@ -165,6 +199,32 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           .put("resourcesRestoredExactly", probe.snapshot().equals(baseline));
     }
     return report;
+  }
+
+  private static String changePolicyReserve(String address, String operation) throws Exception {
+    Process child =
+        new ProcessBuilder(
+                "timeout",
+                "-k",
+                "1",
+                "5",
+                "app_process",
+                "/system/bin",
+                "dev.ryuya.homepodbridge.HalRootProbe",
+                address,
+                operation)
+            .start();
+    try {
+      if (!child.waitFor(7, TimeUnit.SECONDS))
+        throw new java.io.IOException("Reserve helper timed out");
+      String result =
+          new String(
+              child.getInputStream().readNBytes(4096), java.nio.charset.StandardCharsets.UTF_8);
+      if (child.exitValue() != 0) throw new java.io.IOException("Reserve helper failed");
+      return result.trim();
+    } finally {
+      if (child.isAlive()) child.destroyForcibly();
+    }
   }
 
   static String epoch() throws Exception {
@@ -602,14 +662,19 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     if (args.length == 3
         && (args[0].equals("policy-input")
             || args[0].equals("policy-route")
-            || args[0].equals("policy-capture"))) {
+            || args[0].equals("policy-capture")
+            || args[0].equals("policy-capture-fast")
+            || args[0].equals("policy-capture-minimum"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
       System.out.println(
           PolicyInputProbe.run(
               !args[0].equals("policy-input"),
               UUID.fromString(args[1]),
-              args[0].equals("policy-capture")));
+              args[0].startsWith("policy-capture"),
+              args[0].equals("policy-capture-fast")
+                  ? 928
+                  : args[0].equals("policy-capture-minimum") ? 464 : 2587));
       return;
     }
     if (args.length == 3 && args[0].equals("metrics")) {

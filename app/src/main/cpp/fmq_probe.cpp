@@ -119,7 +119,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
         if(!attached || env->ExceptionCheck() || !hp_empty(queues[size_t(i)])) return nullptr;
     }
     hp_status_reply response{};int64_t duration=0;
-    int error=0,cycles=0;int64_t captured=0,maximum=0,max_pending=0,min_pending=INT64_MAX;
+    int error=0,cycles=0;int64_t captured=0,maximum=0,max_pending=0,min_pending=INT64_MAX,sum_pending=0;
     if(!hp_stream_once(queues[0],queues[1],2,0,2,&response,&duration)) error=1;
     std::array<uint8_t,176> input{};
     auto begin=std::chrono::steady_clock::now();
@@ -131,14 +131,14 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
         captured+=44;++cycles;
         int64_t pending=response.observable.frames-captured;
         if(pending<0) {error=5;break;}
-        if(cycles>100) {max_pending=std::max(max_pending,pending);min_pending=std::min(min_pending,pending);}
+        if(cycles>100) {max_pending=std::max(max_pending,pending);min_pending=std::min(min_pending,pending);sum_pending+=pending;}
         if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(500)) break;
     }
     for(auto& queue:queues) if(!hp_empty(queue)) error=6;
     auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
     jlong values[]={error==0 && cycles>100 ? 1:0,captured,cycles,elapsed,maximum,max_pending,
-        min_pending==INT64_MAX ? -1:min_pending,error};
-    auto result=env->NewLongArray(8);
-    if(result) env->SetLongArrayRegion(result,0,8,values);
+        min_pending==INT64_MAX ? -1:min_pending,error,cycles>100 ? sum_pending/(cycles-100):-1};
+    auto result=env->NewLongArray(9);
+    if(result) env->SetLongArrayRegion(result,0,9,values);
     return result;
 }

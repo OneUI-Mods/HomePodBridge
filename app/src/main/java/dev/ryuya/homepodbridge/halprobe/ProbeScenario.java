@@ -14,7 +14,14 @@ public enum ProbeScenario {
   ZERO_INPUT_EXIT("probe-hal-zero-input-exit", "streams-zero-input-exit", "zero-input-exit", 928),
   ZERO_OUTPUT_BLOCK(
       "probe-hal-zero-output-block", "streams-zero-output-block", "zero-output-block", 928),
-  POLICY_INPUT("probe-policy-capture", "policy-capture", "policy-capture");
+  POLICY_INPUT("probe-policy-capture", "policy-capture", "policy-capture"),
+  POLICY_FAST("probe-policy-capture-fast", "policy-capture-fast", "policy-capture-fast"),
+  POLICY_MINIMUM(
+      "probe-policy-capture-minimum", "policy-capture-minimum", "policy-capture-minimum");
+
+  boolean policyInput() {
+    return this == POLICY_INPUT || this == POLICY_FAST || this == POLICY_MINIMUM;
+  }
 
   public final String command;
   public final String operation;

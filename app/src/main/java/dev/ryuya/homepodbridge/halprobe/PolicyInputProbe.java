@@ -8,9 +8,9 @@ import android.os.HandlerThread;
 import android.os.Looper;
 import org.json.JSONObject;
 
-/** Root self-UID policy only, no AudioTrack playback and no AudioRecord construction. */
+/** Root self-UID policy only; optional source contains fixed zeros. No AudioRecord construction. */
 final class PolicyInputProbe {
-  static JSONObject run(boolean routeOnly, java.util.UUID nonce, boolean directCapture)
+  static JSONObject run(boolean routeOnly, java.util.UUID nonce, boolean directCapture, int target)
       throws Exception {
     var state = new ReadOnlyHalState();
     String baseline = state.snapshot().toString();
@@ -83,9 +83,11 @@ final class PolicyInputProbe {
           .put("inputStarted", !routeOnly)
           .put("virtualOutputConnected", routeOnly)
           .put("recordCreated", false)
-          .put("playbackCreated", false)
+          .put("playbackCreated", directCapture)
+          .put("zeroSourceOnly", directCapture)
           .put("input", lease == null ? 0 : lease.input);
-      if (directCapture) result.put("directCapture", HalPortProbe.policyCapture(address, nonce));
+      if (directCapture)
+        result.put("directCapture", HalPortProbe.policyCapture(address, nonce, target));
     } catch (Exception error) {
       failure = error;
     } finally {
