@@ -29,7 +29,7 @@ final class HalTransportProbe {
                       "-c",
                       "CLASSPATH='"
                           + apk
-                          + "' exec timeout 20 app_process /system/bin"
+                          + "' exec timeout -k 2 20 app_process /system/bin"
                           + " dev.ryuya.homepodbridge.halprobe.HalPortProbe "
                           + operation
                           + " "
