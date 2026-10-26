@@ -23,6 +23,7 @@ final class SystemAudioBridge extends Binder {
   private final Context context;
   private final Signature[] moduleSignatures;
   private Stream stream;
+  private ExternalSession external;
 
   SystemAudioBridge(Context context, String modulePath) {
     this.context = context;
@@ -48,6 +49,7 @@ final class SystemAudioBridge extends Binder {
         && code != RootProtocol.OPEN_TIMED
         && code != RootProtocol.CAPTURE_TIMING
         && code != RootProtocol.OPEN_SILENT_PROBE
+        && code != RootProtocol.OPEN_EXTERNAL
         && code != RootProtocol.VOLUME_ENDPOINT
         && code != RootProtocol.CLOSE) return super.onTransact(code, data, reply, flags);
     data.enforceInterface(RootProtocol.DESCRIPTOR);
@@ -80,14 +82,31 @@ final class SystemAudioBridge extends Binder {
             && stream.client.equals(client)
             && stream.wholeDevice
             && callback != null) stream.volumeEndpoint(callback);
+        if (external != null && external.client.equals(client) && callback != null)
+          external.endpoint(callback);
         reply.writeNoException();
         return true;
       }
       if (code == RootProtocol.CLOSE) {
+        if (external != null && external.client.equals(client)) {
+          external.close();
+          external = null;
+        }
         if (stream != null && stream.client.equals(client)) {
           stream.close();
           stream = null;
         }
+        reply.writeNoException();
+        return true;
+      }
+      if (code == RootProtocol.OPEN_EXTERNAL) {
+        boolean whole = data.readBoolean();
+        if (stream != null) {
+          stream.close();
+          stream = null;
+        }
+        if (external != null) external.close();
+        external = new ExternalSession(client, whole);
         reply.writeNoException();
         return true;
       }
@@ -110,6 +129,10 @@ final class SystemAudioBridge extends Binder {
       if (stream != null) {
         stream.close();
         stream = null;
+      }
+      if (external != null) {
+        external.close();
+        external = null;
       }
       ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
       try {
@@ -141,6 +164,43 @@ final class SystemAudioBridge extends Binder {
 
   private int appUid() throws PackageManager.NameNotFoundException {
     return context.getPackageManager().getApplicationInfo(RootProtocol.PACKAGE, 0).uid;
+  }
+
+  private final class ExternalSession implements IBinder.DeathRecipient {
+    final IBinder client;
+    final boolean whole;
+    SystemVolumeEndpoint endpoint;
+    boolean closed;
+
+    ExternalSession(IBinder client, boolean whole) throws RemoteException {
+      this.client = client;
+      this.whole = whole;
+      client.linkToDeath(this, 0);
+    }
+
+    synchronized void endpoint(IBinder callback) {
+      if (closed || !whole || endpoint != null) return;
+      try {
+        endpoint = new SystemVolumeEndpoint(context, callback);
+      } catch (Throwable error) {
+        de.robv.android.xposed.XposedBridge.log("HomePod Bridge: external volume unavailable");
+      }
+    }
+
+    synchronized void close() {
+      if (closed) return;
+      closed = true;
+      if (endpoint != null) endpoint.close();
+      try {
+        client.unlinkToDeath(this, 0);
+      } catch (RuntimeException alreadyDead) {
+      }
+    }
+
+    @Override
+    public void binderDied() {
+      close();
+    }
   }
 
   private final class Stream implements IBinder.DeathRecipient {

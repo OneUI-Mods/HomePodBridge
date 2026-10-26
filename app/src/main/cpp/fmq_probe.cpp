@@ -7,6 +7,7 @@
 #include "zero_pcm_pipe.h"
 #include <fcntl.h>
 #include <signal.h>
+#include "live_capture.h"
 
 // This entry point only maps/inspects counters. It never changes shared memory.
 extern "C" JNIEXPORT jlongArray JNICALL
@@ -109,8 +110,9 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_zeroTransfer(
 // Read only the self-UID policy's dedicated virtual input. No output commands or caller PCM.
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
-    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jboolean forward_zero) {
-    const bool forward=forward_zero==JNI_TRUE;
+    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jboolean forward_zero,jboolean live_capture,jboolean sanitize) {
+    const bool live=live_capture==JNI_TRUE;
+    const bool forward=forward_zero==JNI_TRUE || live;
     if(forward) {
         int flags=fcntl(STDOUT_FILENO,F_GETFL);
         if(flags<0 || fcntl(STDOUT_FILENO,F_SETFL,flags|O_NONBLOCK)<0) return nullptr;
@@ -126,6 +128,12 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
         if(queue_fds) env->DeleteLocalRef(queue_fds);
         if(queue_grants) env->DeleteLocalRef(queue_grants);
         if(!attached || env->ExceptionCheck() || !hp_empty(queues[size_t(i)])) return nullptr;
+    }
+    if(live) {
+        auto r=hp_live_capture(queues,sanitize==JNI_TRUE);
+        jlong values[]={r.error==0?1:0,r.captured,r.cycles,r.elapsed,r.maximum,r.max_pending,
+            r.min_pending==INT64_MAX?-1:r.min_pending,r.error,r.observations?r.sum_pending/r.observations:-1,r.sent,r.idle};
+        auto result=env->NewLongArray(11);if(result) env->SetLongArrayRegion(result,0,11,values);return result;
     }
     hp_status_reply response{};int64_t duration=0;
     int error=0,cycles=0;int64_t captured=0,maximum=0,max_pending=0,min_pending=INT64_MAX,sum_pending=0;

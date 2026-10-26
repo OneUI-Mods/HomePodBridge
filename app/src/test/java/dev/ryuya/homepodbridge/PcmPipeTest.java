@@ -10,6 +10,19 @@ import java.nio.channels.Channels;
 import org.junit.Test;
 
 public final class PcmPipeTest {
+  @Test
+  public void liveIdleRecordsKeepTheConnectionOpenWithoutInventingCaptureDelay() throws Exception {
+    byte[] raw = halRecord(PcmPipe.HAL_MAGIC, 176, -1);
+    PcmPipe input =
+        new PcmPipe(
+            Channels.newChannel(new ByteArrayInputStream(raw)),
+            true,
+            () -> 2000000L,
+            PcmPipe.HAL_MAGIC);
+    assertEquals(176, input.read(ByteBuffer.allocateDirect(176)));
+    assertEquals(-1, input.pendingFrames());
+  }
+
   private static byte[] halRecord(int magic, int length, long pending) {
     return ByteBuffer.allocate(200)
         .putInt(magic)

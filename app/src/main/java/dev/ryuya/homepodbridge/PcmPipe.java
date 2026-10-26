@@ -9,8 +9,10 @@ final class PcmPipe {
   private final ReadableByteChannel input;
   static final int MAGIC = 0x48425031;
   static final int HAL_ZERO_MAGIC = 0x48425032;
+  static final int HAL_MAGIC = 0x48425033;
   private final boolean timed;
   private final boolean halZero;
+  private final int halMagic;
   private final ByteBuffer header;
   private final java.util.function.LongSupplier clock;
   private long transitMicros = -1;
@@ -33,11 +35,20 @@ final class PcmPipe {
       boolean timed,
       java.util.function.LongSupplier clock,
       boolean halZero) {
+    this(input, timed, clock, halZero ? HAL_ZERO_MAGIC : 0);
+  }
+
+  PcmPipe(
+      ReadableByteChannel input, boolean timed, java.util.function.LongSupplier clock, int magic) {
+    boolean halZero = magic != 0;
+    if (magic != 0 && magic != HAL_MAGIC && magic != HAL_ZERO_MAGIC)
+      throw new IllegalArgumentException();
     if (halZero && !timed) throw new IllegalArgumentException("HAL records require timing");
     this.input = input;
     this.timed = timed;
     this.clock = clock;
     this.halZero = halZero;
+    this.halMagic = magic;
     header = ByteBuffer.allocateDirect(halZero ? 24 : 16);
   }
 
@@ -57,13 +68,14 @@ final class PcmPipe {
       if (fill(header) == 0) return -1;
       if (header.position() != header.capacity()) throw new IOException("Truncated timing header");
       header.flip();
-      if (header.getInt() != (halZero ? HAL_ZERO_MAGIC : MAGIC))
+      if (header.getInt() != (halZero ? halMagic : MAGIC))
         throw new IOException("Invalid timing header");
       int length = header.getInt();
       capturedAt = header.getLong();
       if (halZero) {
         long pending = header.getLong();
-        if (pending < 0 || pending > 4096) throw new IOException("Invalid HAL queue depth");
+        if (pending < (halMagic == HAL_MAGIC ? -1 : 0) || pending > 4096)
+          throw new IOException("Invalid HAL queue depth");
         pendingFrames = pending;
       }
       if (length <= 0 || length > pcm.capacity() || length % 4 != 0)

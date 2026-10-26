@@ -86,14 +86,38 @@ public final class CommandService extends Service {
       commands.execute(() -> commandStatus = "GalaxyReload CLI: " + GalaxyReloadCli.check(this));
       return START_NOT_STICKY;
     }
-    if (command.equals("connect-zero") || command.equals("connect-zero-hal")) {
-      boolean dedicated = command.equals("connect-zero-hal");
+    if (command.equals("reload-systemui")) {
+      commandStatus = "Reloading through GalaxyReload CLI";
+      commands.execute(
+          () -> {
+            commandStatus = "GalaxyReload CLI: " + GalaxyReloadCli.reload(this);
+            main.post(() -> RootConnector.request(this));
+          });
+      return START_NOT_STICKY;
+    }
+    if (command.equals("hal-capture-on") || command.equals("hal-capture-off")) {
+      StreamSettings.load(this).withDedicatedCapture(command.endsWith("on")).save(this);
+      commandStatus = "Dedicated capture preference: " + command.endsWith("on");
+      return START_NOT_STICKY;
+    }
+    if (java.util.List.of(
+            "connect-zero",
+            "connect-zero-hal",
+            "connect-zero-hal-whole",
+            "connect-zero-hal-cycle",
+            "connect-idle-hal")
+        .contains(command)) {
+      boolean dedicated = command.startsWith("connect-zero-hal");
+      boolean whole = command.equals("connect-zero-hal-whole");
+      boolean pulse = command.equals("connect-zero-hal-cycle");
+      boolean normal = command.equals("connect-idle-hal");
       commands.execute(
           () -> {
             try {
               long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
               while (!RootConnector.available() && System.nanoTime() < deadline) Thread.sleep(25);
-              if (RootConnector.available()) main.post(() -> playback.start(dedicated));
+              if (RootConnector.available())
+                main.post(() -> playback.start(dedicated, whole, pulse, normal));
               else commandStatus = "System bridge unavailable";
             } catch (InterruptedException interrupted) {
               Thread.currentThread().interrupt();
@@ -156,6 +180,17 @@ public final class CommandService extends Service {
   protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
     writer.println("Command service: " + commandStatus);
     writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
+    writer.println(
+        "captureBackend="
+            + BridgeState.captureBackend
+            + " dedicatedPreference="
+            + StreamSettings.load(this).dedicatedCapture());
+    try (var report = openFileInput("last-hal-capture.txt")) {
+      writer.println(
+          "Last HAL capture: "
+              + new String(report.readNBytes(16384), java.nio.charset.StandardCharsets.UTF_8));
+    } catch (java.io.IOException absent) {
+    }
     try (var report = openFileInput("last-hal-zero.txt")) {
       writer.println(
           "Last zero HAL result: "

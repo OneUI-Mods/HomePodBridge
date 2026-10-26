@@ -15,6 +15,16 @@ final class GalaxyReloadCli {
       "52a22de1aed8b3c3d34c02f8fe0f0206eaee25081def64d8182ca5930cbf85fb";
 
   static String check(Context context) {
+    return execute(context, "check");
+  }
+
+  static String reload(Context context) {
+    if (BridgeState.connected || BridgeState.volume != 0 || BridgeState.capture != null)
+      return "BUSY";
+    return execute(context, "reload");
+  }
+
+  private static String execute(Context context, String action) {
     Process helper = null;
     try {
       var info =
@@ -39,24 +49,26 @@ final class GalaxyReloadCli {
                   "-c",
                   "CLASSPATH='"
                       + apk
-                      + "' exec app_process /system/bin dev.ryuya.galaxyreload.ReloadCommand check")
+                      + "' exec app_process /system/bin dev.ryuya.galaxyreload.ReloadCommand "
+                      + action)
               .redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")))
               .start();
       if (!helper.waitFor(15, TimeUnit.SECONDS)) return "RELOAD_CHECK_TIMEOUT";
       String status =
           new String(helper.getInputStream().readNBytes(256), StandardCharsets.US_ASCII).trim();
       return Set.of(
-                  "READY",
-                  "SETUP",
-                  "ROOT_REQUIRED",
-                  "UNSUPPORTED",
-                  "MODULE_REQUIRED",
-                  "LOCKED",
-                  "SCREEN_OFF",
-                  "NO_SYSTEMUI",
-                  "UNLOCK_NEEDED",
-                  "FAILED")
-              .contains(status)
+                      "READY",
+                      "SETUP",
+                      "ROOT_REQUIRED",
+                      "UNSUPPORTED",
+                      "MODULE_REQUIRED",
+                      "LOCKED",
+                      "SCREEN_OFF",
+                      "NO_SYSTEMUI",
+                      "UNLOCK_NEEDED",
+                      "FAILED")
+                  .contains(status)
+              || Set.of("RELOADED", "STATE_CHANGED", "BUSY").contains(status)
           ? status
           : "RELOAD_CHECK_UNAVAILABLE";
     } catch (InterruptedException interrupted) {

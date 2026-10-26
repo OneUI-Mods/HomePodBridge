@@ -6,6 +6,24 @@ import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 
 final class RootConnector {
+  static boolean openExternal(IBinder lifetime, boolean whole) throws RemoteException {
+    IBinder target = bridge;
+    if (target == null) return false;
+    Parcel input = Parcel.obtain(), output = Parcel.obtain();
+    try {
+      input.writeInterfaceToken(RootProtocol.DESCRIPTOR);
+      input.writeStrongBinder(lifetime);
+      input.writeBoolean(whole);
+      if (!target.transact(RootProtocol.OPEN_EXTERNAL, input, output, 0)) return false;
+      output.readException();
+      captureBridges.put(lifetime, target);
+      return true;
+    } finally {
+      input.recycle();
+      output.recycle();
+    }
+  }
+
   private static volatile IBinder bridge;
   private static final java.util.concurrent.ConcurrentHashMap<IBinder, IBinder> captureBridges =
       new java.util.concurrent.ConcurrentHashMap<>();

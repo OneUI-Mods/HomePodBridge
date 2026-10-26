@@ -7,6 +7,15 @@ import java.util.List;
 
 /** In-process state only. No exported commands, credentials, PCM files, or network logs. */
 final class BridgeState {
+  enum CaptureBackend {
+    STANDARD,
+    CHECKING,
+    DEDICATED,
+    DEDICATED_TEST,
+    FALLBACK
+  }
+
+  static CaptureBackend captureBackend = CaptureBackend.STANDARD;
   static final String MUSIC = "com.apple.android.music";
   static final String PACKAGE = "dev.ryuya.homepodbridge";
 

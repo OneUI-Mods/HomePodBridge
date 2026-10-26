@@ -12,7 +12,33 @@ record StreamSettings(
     boolean compressedAudio,
     boolean adaptiveBuffer,
     boolean deviceBuffer,
-    int deviceBufferFrames) {
+    int deviceBufferFrames,
+    boolean dedicatedCapture) {
+  StreamSettings(
+      boolean wholeDevice,
+      int bufferMs,
+      int blockMs,
+      int latencyMs,
+      boolean lowLatency,
+      boolean highQuality,
+      boolean compressedAudio,
+      boolean adaptiveBuffer,
+      boolean deviceBuffer,
+      int deviceBufferFrames) {
+    this(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        false);
+  }
+
   StreamSettings(
       boolean wholeDevice,
       int bufferMs,
@@ -86,7 +112,8 @@ record StreamSettings(
         preferences.getBoolean("compressedAudio", false),
         preferences.getBoolean("adaptiveBuffer", true),
         preferences.getBoolean("deviceBuffer", false),
-        preferences.getInt("deviceBufferFrames", 1856));
+        preferences.getInt("deviceBufferFrames", 1856),
+        preferences.getBoolean("dedicatedCapture", false));
   }
 
   void save(Context context) {
@@ -102,6 +129,7 @@ record StreamSettings(
         .putBoolean("compressedAudio", compressedAudio)
         .putBoolean("adaptiveBuffer", adaptiveBuffer)
         .putBoolean("deviceBuffer", deviceBuffer)
+        .putBoolean("dedicatedCapture", dedicatedCapture)
         .putInt("deviceBufferFrames", deviceBufferFrames)
         .apply();
   }
@@ -117,7 +145,8 @@ record StreamSettings(
         compressedAudio,
         adaptiveBuffer,
         deviceBuffer,
-        deviceBufferFrames);
+        deviceBufferFrames,
+        dedicatedCapture);
   }
 
   StreamSettings withProfile(int profile) {
@@ -131,7 +160,8 @@ record StreamSettings(
         compressedAudio,
         adaptiveBuffer,
         deviceBuffer,
-        deviceBufferFrames);
+        deviceBufferFrames,
+        dedicatedCapture);
   }
 
   StreamSettings withCompression(boolean enabled) {
@@ -145,7 +175,8 @@ record StreamSettings(
         enabled,
         adaptiveBuffer,
         deviceBuffer,
-        deviceBufferFrames);
+        deviceBufferFrames,
+        dedicatedCapture);
   }
 
   StreamSettings withBuffers(int buffer, int block, int latency) {
@@ -159,7 +190,8 @@ record StreamSettings(
         compressedAudio,
         adaptiveBuffer,
         deviceBuffer,
-        deviceBufferFrames);
+        deviceBufferFrames,
+        dedicatedCapture);
   }
 
   StreamSettings withAdaptiveBuffer(boolean enabled) {
@@ -173,7 +205,8 @@ record StreamSettings(
         compressedAudio,
         enabled,
         deviceBuffer,
-        deviceBufferFrames);
+        deviceBufferFrames,
+        dedicatedCapture);
   }
 
   StreamSettings withDeviceBuffer(boolean enabled) {
@@ -187,7 +220,8 @@ record StreamSettings(
         compressedAudio,
         adaptiveBuffer,
         enabled,
-        deviceBufferFrames);
+        deviceBufferFrames,
+        dedicatedCapture);
   }
 
   StreamSettings withDeviceBufferFrames(int frames) {
@@ -201,7 +235,27 @@ record StreamSettings(
         compressedAudio,
         adaptiveBuffer,
         deviceBuffer,
-        frames);
+        frames,
+        dedicatedCapture);
+  }
+
+  StreamSettings withDedicatedCapture(boolean enabled) {
+    return new StreamSettings(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        enabled);
+  }
+
+  boolean effectiveDedicatedCapture() {
+    return lowLatency && dedicatedCapture;
   }
 
   boolean effectiveDeviceBuffer() {

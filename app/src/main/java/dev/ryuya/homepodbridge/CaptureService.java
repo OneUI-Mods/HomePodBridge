@@ -52,7 +52,7 @@ public final class CaptureService extends Service {
   private volatile boolean zeroProbeActive;
   private volatile long zeroProbeFrames;
   private volatile boolean dedicatedHalProbe;
-  private volatile RootZeroInput activeZeroHal;
+  private volatile RootHalInput activeZeroHal;
   private volatile long halPendingFrames = -1;
   private volatile String halNonce;
   private ConnectionCallback pendingCallback;
@@ -148,12 +148,17 @@ public final class CaptureService extends Service {
   }
 
   void selectZeroHalProbe(Receiver receiver, ConnectionCallback callback) {
-    select(receiver, BridgeState.MUSIC, callback, true, true);
+    selectZeroHalProbe(receiver, callback, StreamSettings.load(this).wholeDevice(), false);
+  }
+
+  void selectZeroHalProbe(
+      Receiver receiver, ConnectionCallback callback, boolean whole, boolean pulse) {
+    select(receiver, BridgeState.MUSIC, callback, true, true, whole, pulse);
   }
 
   private void select(
       Receiver receiver, String sourcePackage, ConnectionCallback callback, boolean zeroProbe) {
-    select(receiver, sourcePackage, callback, zeroProbe, false);
+    select(receiver, sourcePackage, callback, zeroProbe, false, false, false);
   }
 
   private void select(
@@ -161,7 +166,9 @@ public final class CaptureService extends Service {
       String sourcePackage,
       ConnectionCallback callback,
       boolean zeroProbe,
-      boolean dedicatedHal) {
+      boolean dedicatedHal,
+      boolean testWhole,
+      boolean pulse) {
     if (dedicatedHal && (!zeroProbe || !systemMode)) {
       callback.finished(false);
       return;
@@ -198,7 +205,16 @@ public final class CaptureService extends Service {
     BridgeState.publish();
     IBinder connectionLifetime = lifetime;
     worker.execute(
-        () -> stream(receiver, sourcePackage, token, connectionLifetime, zeroProbe, dedicatedHal));
+        () ->
+            stream(
+                receiver,
+                sourcePackage,
+                token,
+                connectionLifetime,
+                zeroProbe,
+                dedicatedHal,
+                testWhole,
+                pulse));
   }
 
   private void stream(
@@ -207,9 +223,11 @@ public final class CaptureService extends Service {
       int token,
       IBinder connectionLifetime,
       boolean zeroProbe,
-      boolean dedicatedHal) {
+      boolean forceDedicated,
+      boolean testWhole,
+      boolean pulse) {
     AudioRecord recorder = null;
-    RootZeroInput zeroHal = null;
+    RootHalInput zeroHal = null;
     ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
     Network previousNetwork = connectivity.getBoundNetworkForProcess();
     boolean networkBound = false;
@@ -219,7 +237,15 @@ public final class CaptureService extends Service {
     long capturedFrames = 0;
     long signalBlocks = 0;
     StreamSettings savedSettings = StreamSettings.load(this);
-    StreamSettings settings = zeroProbe ? savedSettings.withWholeDevice(true) : savedSettings;
+    StreamSettings settings =
+        forceDedicated
+            ? savedSettings.withWholeDevice(testWhole)
+            : zeroProbe ? savedSettings.withWholeDevice(true) : savedSettings;
+    boolean dedicatedHal =
+        systemMode && (forceDedicated || (!zeroProbe && settings.effectiveDedicatedCapture()));
+    setBackend(
+        token,
+        dedicatedHal ? BridgeState.CaptureBackend.CHECKING : BridgeState.CaptureBackend.STANDARD);
     PowerManager.WakeLock wake =
         getSystemService(PowerManager.class)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HomePodBridge:stream");
@@ -251,18 +277,41 @@ public final class CaptureService extends Service {
       }
       if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
       PcmPipe rootInput = null;
+      if (dedicatedHal && settings.wholeDevice()) {
+        try {
+          if (!RootConnector.openExternal(connectionLifetime, true)) dedicatedHal = false;
+        } catch (android.os.RemoteException | RuntimeException unavailable) {
+          RootConnector.close(connectionLifetime);
+          dedicatedHal = false;
+        }
+        if (!dedicatedHal) setBackend(token, BridgeState.CaptureBackend.FALLBACK);
+      }
       if (dedicatedHal) {
-        zeroHal = new RootZeroInput(this);
-        activeZeroHal = zeroHal;
-        halNonce = zeroHal.nonce;
-        rootInput =
-            new PcmPipe(
-                java.nio.channels.Channels.newChannel(zeroHal.input()),
-                true,
-                System::nanoTime,
-                true);
-        if (generation.get() != token) return;
-      } else if (systemMode) {
+        try {
+          zeroHal = new RootHalInput(this, sourcePackage, settings.wholeDevice(), zeroProbe, pulse);
+          activeZeroHal = zeroHal;
+          halNonce = zeroHal.nonce;
+          rootInput =
+              new PcmPipe(
+                  java.nio.channels.Channels.newChannel(zeroHal.input()),
+                  true,
+                  System::nanoTime,
+                  PcmPipe.HAL_MAGIC);
+          BridgeState.captureRegistration = zeroHal.registration;
+          setBackend(
+              token,
+              zeroProbe
+                  ? BridgeState.CaptureBackend.DEDICATED_TEST
+                  : BridgeState.CaptureBackend.DEDICATED);
+          if (generation.get() != token) return;
+        } catch (RootHalInput.StartupException unavailable) {
+          if (!unavailable.safeFallback) throw unavailable;
+          RootConnector.close(connectionLifetime);
+          dedicatedHal = false;
+          setBackend(token, BridgeState.CaptureBackend.FALLBACK);
+        }
+      }
+      if (systemMode && !dedicatedHal) {
         RootConnector.Input opened =
             RootConnector.open(sourcePackage, connectionLifetime, settings, zeroProbe);
         ParcelFileDescriptor pipe = opened.pipe();
@@ -308,7 +357,7 @@ public final class CaptureService extends Service {
                 }
               });
         }
-      } else {
+      } else if (!systemMode) {
         AudioPlaybackCaptureConfiguration.Builder captureBuilder =
             new AudioPlaybackCaptureConfiguration.Builder(projection)
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA);
@@ -437,6 +486,7 @@ public final class CaptureService extends Service {
     } finally {
       if (zeroHal != null) {
         zeroHal.close();
+        zeroHal.awaitCleanup(5000);
         if (activeZeroHal == zeroHal) activeZeroHal = null;
       }
       try {
@@ -508,7 +558,7 @@ public final class CaptureService extends Service {
   }
 
   private void closeSystemInput() {
-    RootZeroInput zeroHal = activeZeroHal;
+    RootHalInput zeroHal = activeZeroHal;
     activeZeroHal = null;
     if (zeroHal != null) zeroHal.close();
     BridgeState.captureRegistration = null;
@@ -518,12 +568,25 @@ public final class CaptureService extends Service {
     if (devicePath != null) devicePath.close();
     ParcelFileDescriptor pipe = systemPipe;
     systemPipe = null;
-    if (pipe == null) return;
+    if (pipe == null) {
+      RootConnector.close(lifetime);
+      return;
+    }
     try {
       pipe.close();
     } catch (java.io.IOException ignored) {
     }
     RootConnector.close(lifetime);
+  }
+
+  private void setBackend(int token, BridgeState.CaptureBackend backend) {
+    main.post(
+        () -> {
+          if (!destroyed && generation.get() == token) {
+            BridgeState.captureBackend = backend;
+            BridgeState.publishTiming();
+          }
+        });
   }
 
   private void complete(int token, boolean success) {
@@ -623,6 +686,11 @@ public final class CaptureService extends Service {
             + " wholeDevice="
             + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
+    writer.println(
+        "captureBackend="
+            + BridgeState.captureBackend
+            + " dedicatedRequested="
+            + StreamSettings.load(this).effectiveDedicatedCapture());
     writer.println(
         "dedicatedHalProbe="
             + dedicatedHalProbe

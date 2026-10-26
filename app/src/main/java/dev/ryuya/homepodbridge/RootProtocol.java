@@ -12,6 +12,7 @@ final class RootProtocol {
   static final int OPEN_TIMED = VOLUME_ENDPOINT + 1;
   static final int CAPTURE_TIMING = OPEN_TIMED + 1;
   static final int OPEN_SILENT_PROBE = CAPTURE_TIMING + 1;
+  static final int OPEN_EXTERNAL = OPEN_SILENT_PROBE + 1;
   static final String VOLUME_CALLBACK = PACKAGE + ".VolumeCallback";
   static final int ADJUST_VOLUME = android.os.IBinder.FIRST_CALL_TRANSACTION;
   static final int SET_VOLUME = ADJUST_VOLUME + 1;

@@ -1,0 +1,41 @@
+package dev.ryuya.homepodbridge.halprobe;
+
+import dev.ryuya.homepodbridge.SilentProbeSource;
+import java.util.ArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+/** Diagnostic-only source, optionally stopping and recreating fixed-zero playback. */
+final class ZeroPlayback implements AutoCloseable {
+  private final java.util.List<SilentProbeSource> sources = new ArrayList<>();
+  private final java.util.concurrent.ScheduledExecutorService timer =
+      Executors.newSingleThreadScheduledExecutor();
+  private SilentProbeSource current;
+
+  ZeroPlayback(boolean pulse) {
+    toggle();
+    if (pulse) timer.scheduleAtFixedRate(this::toggle, 3, 3, TimeUnit.SECONDS);
+  }
+
+  private synchronized void toggle() {
+    if (current != null) {
+      current.close();
+      current = null;
+    } else {
+      current = new SilentProbeSource();
+      sources.add(current);
+      current.start();
+    }
+  }
+
+  synchronized long writtenFrames() {
+    return sources.stream().mapToLong(SilentProbeSource::writtenFrames).sum();
+  }
+
+  @Override
+  public synchronized void close() {
+    timer.shutdownNow();
+    if (current != null) current.close();
+    current = null;
+  }
+}

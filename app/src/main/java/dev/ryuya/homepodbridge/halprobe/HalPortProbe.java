@@ -28,6 +28,12 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   private final java.util.concurrent.atomic.AtomicBoolean stopRequested =
       new java.util.concurrent.atomic.AtomicBoolean();
 
+  private java.util.function.BooleanSupplier externalStopped = () -> false;
+
+  private boolean isStopping() {
+    return stopRequested.get() || externalStopped.getAsBoolean();
+  }
+
   private static final class OpenStream {
     final android.os.IBinder binder;
     final boolean input;
@@ -62,11 +68,32 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   /** Borrow a policy-owned input port, owning only the newly returned config and patch IDs. */
+  interface Ready {
+    void run() throws Exception;
+  }
+
   static JSONObject policyCapture(String address, UUID nonce, int target, boolean forwardZero)
+      throws Exception {
+    return inputSession(
+        address, nonce, target, forwardZero, false, true, false, null, () -> false, () -> {});
+  }
+
+  static JSONObject inputSession(
+      String address,
+      UUID nonce,
+      int target,
+      boolean forwardZero,
+      boolean live,
+      boolean zeroOnly,
+      boolean pulse,
+      java.io.OutputStream sink,
+      java.util.function.BooleanSupplier stopped,
+      Ready ready)
       throws Exception {
     if (target != 2587 && target != 928 && target != 464 && target != 800)
       throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
+    probe.externalStopped = stopped;
     var baseline = probe.snapshot();
     int device = 0;
     for (var port : baseline.ports())
@@ -130,15 +157,16 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
               t.setDaemon(true);
               return t;
             });
-    watchdog.schedule(
-        () -> {
-          probe.stopRequested.set(true);
-          probe.closeStreams();
-        },
-        forwardZero ? 22 : 15,
-        TimeUnit.SECONDS);
-    if (forwardZero) {
-      Thread stopped =
+    var startupTimeout =
+        watchdog.schedule(
+            () -> {
+              probe.stopRequested.set(true);
+              probe.closeStreams();
+            },
+            live ? 20 : forwardZero ? 22 : 15,
+            TimeUnit.SECONDS);
+    if (forwardZero && !live) {
+      Thread stdinWatcher =
           new Thread(
               () -> {
                 try (var control = new java.io.FileInputStream(java.io.FileDescriptor.in)) {
@@ -152,8 +180,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                 }
               },
               "HomePod-zero-client-death");
-      stopped.setDaemon(true);
-      stopped.start();
+      stdinWatcher.setDaemon(true);
+      stdinWatcher.start();
     }
     try {
       int mix = probe.configure(4, true, true);
@@ -176,15 +204,20 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         if (!tuning.contains("Owned reserve changed: 2587 -> " + target + ";"))
           throw new IllegalStateException("Reserve change not confirmed");
       }
-      try (var source = new dev.ryuya.homepodbridge.SilentProbeSource()) {
-        source.start();
+      ready.run();
+      if (live) startupTimeout.cancel(false);
+      try (var source = !live || zeroOnly ? new ZeroPlayback(pulse) : null) {
         report.put(
             "mapping",
             HalQueueMapping.inspectInChild(
                 probe.streams.stream().map(stream -> stream.descriptor).toList(),
                 nonce.toString(),
-                forwardZero ? ProbeScenario.POLICY_FORWARD : ProbeScenario.POLICY_INPUT));
-        report.put("sourceWrittenFrames", source.writtenFrames());
+                live
+                    ? (zeroOnly ? ProbeScenario.LIVE_ZERO : ProbeScenario.LIVE)
+                    : forwardZero ? ProbeScenario.POLICY_FORWARD : ProbeScenario.POLICY_INPUT,
+                sink,
+                stopped));
+        report.put("sourceWrittenFrames", source == null ? 0 : source.writtenFrames());
       }
     } catch (Exception failure) {
       report.put("failure", failure.getClass().getSimpleName() + ": " + failure.getMessage());
@@ -382,7 +415,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   JSONObject open(int config, boolean input, int frames) throws Exception {
-    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    if (isStopping()) throw new IllegalStateException("Probe stopping");
     if (frames <= 0 || frames > 262144) throw new IllegalArgumentException();
     Parcel data = Parcel.obtain(), reply = Parcel.obtain();
     final OpenStream[] holder = {null};
@@ -405,7 +438,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                 } catch (Exception error) {
                   throw new IllegalStateException("Stream journal unavailable", error);
                 }
-                if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+                if (isStopping()) throw new IllegalStateException("Probe stopping");
                 try {
                   common(stream);
                 } catch (Exception failure) {
@@ -463,7 +496,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   @SuppressWarnings({"rawtypes", "unchecked"})
   int configure(int portId, boolean input, boolean mix) throws Exception {
-    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    if (isStopping()) throw new IllegalStateException("Probe stopping");
     Object port = null;
     for (Object candidate : state.objects(11, "android.media.audio.common.AudioPort"))
       if (ReadOnlyHalState.integer(candidate, "id") == portId) port = candidate;
@@ -564,7 +597,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   FrozenHalParcel.Patch patch(int source, int sink) throws Exception {
-    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    if (isStopping()) throw new IllegalStateException("Probe stopping");
     var before = snapshot();
     Parcel data = Parcel.obtain(), reply = Parcel.obtain();
     try {
@@ -588,7 +621,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   @SuppressWarnings({"rawtypes", "unchecked"})
   int createVirtualPort(int type) throws Exception {
-    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    if (isStopping()) throw new IllegalStateException("Probe stopping");
     Object requested = null;
     for (Object port : state.objects(11, "android.media.audio.common.AudioPort")) {
       Object ext = ReadOnlyHalState.field(port, "ext");
@@ -642,7 +675,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     return new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
   }
 
-  private static void rootPreflight() throws Exception {
+  static void rootPreflight() throws Exception {
     if (android.os.Process.myUid() != 0)
       throw new SecurityException("Root-owned transport required");
     String[][] pins = {

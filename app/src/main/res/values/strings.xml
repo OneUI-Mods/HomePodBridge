@@ -4,6 +4,16 @@
     <string name="device_buffer">Reduce phone audio buffering (root)</string>
     <string name="device_buffer_description">Uses root on supported system builds to reduce internal waiting. Low latency only. Standard capture is kept if unavailable; turn off if audio breaks up under load.</string>
     <string name="device_buffer_off">Phone buffering\nReduction off</string>
+    <string name="dedicated_capture">Faster capture</string>
+    <string name="dedicated_capture_description">Use the dedicated capture path in Low latency mode. Requires root. Turn off to use standard capture. Unsupported devices use standard capture automatically.</string>
+    <string name="capture_backend_standard">Capture: standard</string>
+    <string name="capture_backend_checking">Capture: checking faster path…</string>
+    <string name="capture_backend_active">Capture: faster path active</string>
+    <string name="capture_backend_test">Capture: faster path · silent test</string>
+    <string name="capture_backend_fallback">Capture: standard (faster path unavailable)</string>
+    <string name="device_buffer_fast_capture">Phone buffering\nDedicated capture active</string>
+    <string name="diagnostics_hal_capture_live">Faster capture\nQueued audio at last read: %1$s\nRead size: about 1 ms\nSource mixing, networking and receiver processing are measured separately or remain unknown.</string>
+    <string name="diagnostics_hal_idle">Faster capture\nWaiting for capturable playback. The connection remains active.</string>
     <string name="device_buffer_hal_test">Phone buffering\nDedicated HAL · silent test</string>
     <string name="diagnostics_hal_capture">Dedicated HAL · silent test\nQueued audio at last read: %1$s\nRead size: 44 frames (about 1 ms)\nThis queue excludes source mixing, networking and receiver processing.</string>
     <string name="device_buffer_checking">Phone buffering\nChecking device support…</string>

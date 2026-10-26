@@ -4,6 +4,16 @@
     <string name="device_buffer">スマートフォンの音声バッファを削減（root）</string>
     <string name="device_buffer_description">対応するシステムでrootを使って内部の待ち時間を削減します。低遅延モード専用です。利用できない場合は通常の取り込みを維持します。負荷時に音が途切れる場合はオフにしてください。</string>
     <string name="device_buffer_off">スマートフォン側のバッファ\n削減はオフ</string>
+    <string name="dedicated_capture">高速な取り込み</string>
+    <string name="dedicated_capture_description">低遅延モードで専用の取り込み経路を使用します。rootが必要です。オフにすると標準の取り込みに戻ります。非対応の端末では自動的に標準経路を使用します。</string>
+    <string name="capture_backend_standard">取り込み：標準</string>
+    <string name="capture_backend_checking">取り込み：高速経路を確認中…</string>
+    <string name="capture_backend_active">取り込み：高速経路を使用中</string>
+    <string name="capture_backend_test">取り込み：高速経路・無音テスト</string>
+    <string name="capture_backend_fallback">取り込み：標準（高速経路は使用できません）</string>
+    <string name="device_buffer_fast_capture">スマートフォン側のバッファ\n専用の取り込み経路を使用中</string>
+    <string name="diagnostics_hal_capture_live">高速な取り込み\n直近の読み取り時に残っていた音声：%1$s\n読み取り単位：約1 ms\n音源のミキシング、ネットワーク、受信機の処理時間は別に測定するか、未測定として表示します。</string>
+    <string name="diagnostics_hal_idle">高速な取り込み\n取り込める音声を待機中です。接続は維持しています。</string>
     <string name="device_buffer_hal_test">スマートフォン側のバッファ\n専用HAL・無音テスト</string>
     <string name="diagnostics_hal_capture">専用HAL・無音テスト\n直近の読み取り時に残っていた音声：%1$s\n読み取り単位：44フレーム（約1 ms）\n音源のミキシング、ネットワーク、受信機の処理時間は含みません。</string>
     <string name="device_buffer_checking">スマートフォン側のバッファ\n対応状況を確認中…</string>

@@ -5,6 +5,23 @@ import static org.junit.Assert.*;
 import org.junit.Test;
 
 public final class StreamSettingsTest {
+  @org.junit.Test
+  public void dedicatedPreferenceSurvivesProfileAndSourceChanges() {
+    var value = new StreamSettings(false, 0, 2, 50, true).withDedicatedCapture(true);
+    org.junit.Assert.assertTrue(value.effectiveDedicatedCapture());
+    org.junit.Assert.assertTrue(
+        value
+            .withWholeDevice(true)
+            .withCompression(true)
+            .withDeviceBuffer(true)
+            .withDeviceBufferFrames(928)
+            .withAdaptiveBuffer(false)
+            .dedicatedCapture());
+    org.junit.Assert.assertTrue(value.withProfile(2).dedicatedCapture());
+    org.junit.Assert.assertFalse(value.withProfile(2).effectiveDedicatedCapture());
+    org.junit.Assert.assertTrue(value.withBuffers(0, 2, 50).dedicatedCapture());
+  }
+
   @Test
   public void smallerReserveRemainsOptionalAndSurvivesOtherSettings() {
     var balanced = new StreamSettings(true, 0, 2, 50, true).withDeviceBuffer(true);

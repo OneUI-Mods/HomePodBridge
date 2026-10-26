@@ -11,6 +11,14 @@ int main() {
     assert(packet[0]==0x48 && packet[1]==0x42 && packet[2]==0x50 && packet[3]==0x32);
     assert(packet[7]==176 && packet[22]==3 && packet[23]==32);
     for(size_t i=24;i<packet.size();i++) assert(packet[i]==0);
+    std::array<uint8_t,176> signal{};for(size_t i=0;i<signal.size();i++)signal[i]=uint8_t(i+1);
+    assert(hp_write_pcm_packet(packet_pipe[1],1000000,800,signal.data(),true,false));
+    assert(read(packet_pipe[0],packet.data(),packet.size())==200 && packet[3]==0x33);
+    assert(std::equal(signal.begin(),signal.end(),packet.begin()+24));
+    assert(hp_write_pcm_packet(packet_pipe[1],1000000,-1,signal.data(),true,true));
+    assert(read(packet_pipe[0],packet.data(),packet.size())==200);
+    for(size_t i=24;i<packet.size();i++)assert(packet[i]==0);
+    assert(!hp_write_pcm_packet(packet_pipe[1],1000000,-2,signal.data(),true,false));
     assert(!hp_write_zero_packet(packet_pipe[1],0,0));
     assert(!hp_write_zero_packet(packet_pipe[1],1000000,4097));
     int written=0;auto blocked_begin=std::chrono::steady_clock::now();

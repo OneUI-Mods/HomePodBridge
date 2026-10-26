@@ -30,16 +30,28 @@ public final class HalQueueMapping {
   private static native long[] zeroTransfer(
       int[][] fds, long[][] grants, int frames, boolean exitAfterInput, boolean outputOnly);
 
-  private static native long[] policyInputRead(int[][] fds, long[][] grants, boolean forwardZero);
+  private static native long[] policyInputRead(
+      int[][] fds, long[][] grants, boolean forwardZero, boolean live, boolean sanitize);
 
   static JSONObject inspectInChild(
       List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
+    return inspectInChild(streams, nonce, scenario, null, () -> false);
+  }
+
+  static JSONObject inspectInChild(
+      List<FrozenHalParcel.Stream> streams,
+      String nonce,
+      ProbeScenario scenario,
+      java.io.OutputStream sink,
+      java.util.function.BooleanSupplier stopped)
+      throws Exception {
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException();
     String name = "hpb-map-" + nonce;
     Process child = null;
     Thread forwarder = null;
+    Thread stopper = null;
     try (var server = new LocalServerSocket(name)) {
       var command =
           new ProcessBuilder(
@@ -50,13 +62,13 @@ public final class HalQueueMapping {
               nonce,
               Integer.toString(android.os.Process.myPid()),
               scenario.workerMode);
-      if (scenario == ProbeScenario.POLICY_FORWARD)
+      if (scenario == ProbeScenario.POLICY_FORWARD || scenario.live())
         command.redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")));
       child = command.start();
-      if (scenario == ProbeScenario.POLICY_FORWARD) {
+      if (scenario == ProbeScenario.POLICY_FORWARD || scenario.live()) {
         Process producer = child;
         // Keep stdout open until the resource owner's final cleanup and exit.
-        forwardedOutput = new java.io.FileOutputStream(FileDescriptor.out);
+        forwardedOutput = sink != null ? sink : new java.io.FileOutputStream(FileDescriptor.out);
         forwarder =
             new Thread(
                 () -> {
@@ -93,7 +105,8 @@ public final class HalQueueMapping {
         throw new java.io.IOException("Mapping worker did not connect: " + reason);
       }
       try (var socket = server.accept()) {
-        socket.setSoTimeout(scenario == ProbeScenario.POLICY_FORWARD ? 15000 : 3000);
+        socket.setSoTimeout(
+            scenario.live() ? 0 : scenario == ProbeScenario.POLICY_FORWARD ? 15000 : 3000);
         var peer = socket.getPeerCredentials();
         String peerStat =
             new String(
@@ -110,6 +123,22 @@ public final class HalQueueMapping {
                 procString(peer.getPid(), "cmdline"),
                 nonce,
                 scenario);
+        if (scenario.live()) {
+          Process worker = child;
+          stopper =
+              new Thread(
+                  () -> {
+                    try {
+                      while (worker.isAlive() && !stopped.getAsBoolean()) Thread.sleep(100);
+                      if (worker.isAlive() && !worker.waitFor(2, TimeUnit.SECONDS))
+                        killWorker(identity);
+                    } catch (Exception ignored) {
+                    }
+                  },
+                  "HomePod-capture-client-death");
+          stopper.setDaemon(true);
+          stopper.start();
+        }
         var descriptors = new ArrayList<FileDescriptor>();
         var bytes = new ByteArrayOutputStream();
         var metadata = new DataOutputStream(bytes);
@@ -142,7 +171,7 @@ public final class HalQueueMapping {
         try {
           result = new DataInputStream(socket.getInputStream()).readUTF();
         } catch (java.io.IOException unavailable) {
-          if (scenario == ProbeScenario.POLICY_FORWARD)
+          if (scenario == ProbeScenario.POLICY_FORWARD || scenario.live())
             throw new java.io.IOException("Zero forwarding worker unavailable", unavailable);
           long readWaitNanos = System.nanoTime() - readStarted;
           var outcome = WorkerTermination.collect(child, readWaitNanos, () -> killWorker(identity));
@@ -166,6 +195,7 @@ public final class HalQueueMapping {
       }
     } finally {
       if (child != null) child.destroyForcibly();
+      if (stopper != null) stopper.interrupt();
       if (forwarder != null) forwarder.join(500);
     }
   }
@@ -198,7 +228,7 @@ public final class HalQueueMapping {
         || !args[2].matches("[1-9][0-9]{0,6}")
         || ProbeScenario.forWorker(args[3]) == null) throw new SecurityException();
     ProbeScenario scenario = ProbeScenario.forWorker(args[3]);
-    if (scenario == ProbeScenario.POLICY_FORWARD) System.setOut(System.err);
+    if (scenario == ProbeScenario.POLICY_FORWARD || scenario.live()) System.setOut(System.err);
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException();
@@ -287,8 +317,10 @@ public final class HalQueueMapping {
             policyInputRead(
                 queueFds.toArray(new int[0][]),
                 queueGrants.toArray(new long[0][]),
-                scenario == ProbeScenario.POLICY_FORWARD);
-        if (result == null || result.length != 9)
+                scenario == ProbeScenario.POLICY_FORWARD,
+                scenario.live(),
+                scenario == ProbeScenario.LIVE_ZERO);
+        if (result == null || result.length != (scenario.live() ? 11 : 9))
           throw new SecurityException("Input read unavailable");
         new DataOutputStream(socket.getOutputStream())
             .writeUTF(
@@ -307,6 +339,8 @@ public final class HalQueueMapping {
                     .put("maximumPendingFrames", result[5])
                     .put("minimumPendingFrames", result[6])
                     .put("meanPendingFrames", result[8])
+                    .put("sentFrames", scenario.live() ? result[9] : result[1])
+                    .put("idleFrames", scenario.live() ? result[10] : 0)
                     .put("errorCode", result[7])
                     .toString());
         return;

@@ -58,6 +58,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private MaterialSwitch adaptiveBufferSwitch;
   private MaterialSwitch deviceBufferSwitch;
   private MaterialSwitch minimumBufferSwitch;
+  private MaterialSwitch dedicatedCaptureSwitch;
+  private TextView captureBackendStatus;
   private TextView profileSelection;
   private TextView profileDetails;
   private TabLayout tabs;
@@ -279,6 +281,19 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         });
     latencyControls.addView(lowLatencySwitch);
     latencyControls.addView(label(getString(R.string.low_latency_description), 14));
+    dedicatedCaptureSwitch = new MaterialSwitch(this);
+    dedicatedCaptureSwitch.setText(R.string.dedicated_capture);
+    dedicatedCaptureSwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          StreamSettings.load(this).withDedicatedCapture(enabled).save(this);
+          syncSettings();
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    latencyControls.addView(dedicatedCaptureSwitch);
+    latencyControls.addView(label(getString(R.string.dedicated_capture_description), 14));
+    captureBackendStatus = label("", 14);
+    latencyControls.addView(captureBackendStatus);
     highQualitySwitch = new MaterialSwitch(this);
     highQualitySwitch.setText(R.string.high_quality_mode);
     highQualitySwitch.setOnCheckedChangeListener(
@@ -390,14 +405,17 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     StreamSettings settings = StreamSettings.load(this);
     updatingSettings = true;
     lowLatencySwitch.setChecked(settings.lowLatency());
+    dedicatedCaptureSwitch.setChecked(settings.dedicatedCapture());
+    dedicatedCaptureSwitch.setEnabled(settings.lowLatency() && RootConnector.available());
     highQualitySwitch.setChecked(settings.highQuality());
     compressionSwitch.setChecked(settings.compressedAudio());
     adaptiveBufferSwitch.setChecked(settings.adaptiveBuffer());
     adaptiveBufferSwitch.setEnabled(settings.lowLatency());
     deviceBufferSwitch.setChecked(settings.deviceBuffer());
-    deviceBufferSwitch.setEnabled(settings.lowLatency());
+    deviceBufferSwitch.setEnabled(settings.lowLatency() && !settings.effectiveDedicatedCapture());
     minimumBufferSwitch.setChecked(settings.deviceBufferFrames() == 928);
-    minimumBufferSwitch.setEnabled(settings.effectiveDeviceBuffer());
+    minimumBufferSwitch.setEnabled(
+        settings.effectiveDeviceBuffer() && !settings.effectiveDedicatedCapture());
     profileSelection.setText(
         getString(
             R.string.profile_selected,
@@ -599,6 +617,16 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   }
 
   private void updatePipeline() {
+    if (captureBackendStatus != null)
+      captureBackendStatus.setText(
+          switch (BridgeState.captureBackend) {
+            case STANDARD -> R.string.capture_backend_standard;
+            case CHECKING -> R.string.capture_backend_checking;
+            case DEDICATED -> R.string.capture_backend_active;
+            case DEDICATED_TEST -> R.string.capture_backend_test;
+            case FALLBACK -> R.string.capture_backend_fallback;
+          });
+    boolean live = BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED;
     PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
     if (t == null) {
       for (TextView label :
@@ -616,28 +644,34 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                     : t.capture(9) == 0 ? R.string.capture_standard : R.string.diagnostics_unknown);
     OwnedAudioPath.Update path = BridgeState.phonePath;
     phoneBufferTiming.setText(
-        t.halQueuedFrames() >= 0
-            ? getString(R.string.device_buffer_hal_test)
-            : path == null
-                ? getString(R.string.device_buffer_off)
-                : switch (path.state()) {
-                  case CHECKING -> getString(R.string.device_buffer_checking);
-                  case ACTIVE ->
-                      getString(R.string.device_buffer_active, framesTime(path.targetFrames()));
-                  case STANDARD -> getString(R.string.device_buffer_standard);
-                  case RECOVERY_REQUIRED -> getString(R.string.device_buffer_recovering);
-                });
+        live
+            ? getString(R.string.device_buffer_fast_capture)
+            : t.halQueuedFrames() >= 0
+                ? getString(R.string.device_buffer_hal_test)
+                : path == null
+                    ? getString(R.string.device_buffer_off)
+                    : switch (path.state()) {
+                      case CHECKING -> getString(R.string.device_buffer_checking);
+                      case ACTIVE ->
+                          getString(R.string.device_buffer_active, framesTime(path.targetFrames()));
+                      case STANDARD -> getString(R.string.device_buffer_standard);
+                      case RECOVERY_REQUIRED -> getString(R.string.device_buffer_recovering);
+                    });
     captureTiming.setText(
-        t.halQueuedFrames() >= 0
-            ? getString(R.string.diagnostics_hal_capture, framesTime(t.halQueuedFrames()))
-            : getString(
-                R.string.diagnostics_capture,
-                millis(t.captureAgeFresh() ? t.capture(1) : -1),
-                millis(t.capture(3)),
-                millis(t.capture(4)),
-                framesTime(t.capture(8)),
-                framesTime(t.capture(7)),
-                request));
+        live
+            ? (t.halQueuedFrames() < 0
+                ? getString(R.string.diagnostics_hal_idle)
+                : getString(R.string.diagnostics_hal_capture_live, framesTime(t.halQueuedFrames())))
+            : t.halQueuedFrames() >= 0
+                ? getString(R.string.diagnostics_hal_capture, framesTime(t.halQueuedFrames()))
+                : getString(
+                    R.string.diagnostics_capture,
+                    millis(t.captureAgeFresh() ? t.capture(1) : -1),
+                    millis(t.capture(3)),
+                    millis(t.capture(4)),
+                    framesTime(t.capture(8)),
+                    framesTime(t.capture(7)),
+                    request));
     pipeTiming.setText(
         getString(
             R.string.diagnostics_pipe,

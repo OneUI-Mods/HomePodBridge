@@ -20,14 +20,21 @@ public enum ProbeScenario {
       "probe-policy-capture-minimum", "policy-capture-minimum", "policy-capture-minimum"),
   POLICY_SMALLER(
       "probe-policy-capture-smaller", "policy-capture-smaller", "policy-capture-smaller"),
-  POLICY_FORWARD("probe-policy-forward", "policy-forward", "policy-forward");
+  POLICY_FORWARD("probe-policy-forward", "policy-forward", "policy-forward"),
+  LIVE("internal-live", "live", "live"),
+  LIVE_ZERO("internal-live-zero", "live-zero", "live-zero");
+
+  boolean live() {
+    return this == LIVE || this == LIVE_ZERO;
+  }
 
   boolean policyInput() {
     return this == POLICY_INPUT
         || this == POLICY_FAST
         || this == POLICY_MINIMUM
         || this == POLICY_SMALLER
-        || this == POLICY_FORWARD;
+        || this == POLICY_FORWARD
+        || live();
   }
 
   public final String command;
@@ -48,7 +55,8 @@ public enum ProbeScenario {
 
   public static ProbeScenario forCommand(String value) {
     for (var scenario : values())
-      if (scenario != POLICY_FORWARD && scenario.command.equals(value)) return scenario;
+      if (scenario != POLICY_FORWARD && !scenario.live() && scenario.command.equals(value))
+        return scenario;
     return null;
   }
 
