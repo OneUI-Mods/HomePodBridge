@@ -37,4 +37,23 @@ public final class AudioServiceRecoveryTest {
     assertFalse(AudioServiceRecovery.validNonce("1-1-1-1-1"));
     assertFalse(AudioServiceRecovery.validNonce(""));
   }
+
+  @Test
+  public void startedZeroRouteStillRequiresOneExactOwnedAddress() {
+    String active =
+        DUMP.replace(
+                "Input closed, standby, refcount: 0, framesRead: 0",
+                "Input open, active, refcount: 1, framesRead: 88")
+            .replace(
+                "Output open, standby, framesWritten: 0", "Output open, active, framesWritten: 88");
+    assertTrue(AudioServiceRecovery.onlyOwnedZeroRoute(active, NONCE));
+    assertFalse(AudioServiceRecovery.onlyUnstartedOwnedRoute(active, NONCE));
+    assertFalse(AudioServiceRecovery.onlyOwnedZeroRoute(active + active, NONCE));
+    assertFalse(
+        AudioServiceRecovery.onlyOwnedZeroRoute(
+            active.replace("refcount: 1", "refcount: 2"), NONCE));
+    assertFalse(
+        AudioServiceRecovery.onlyOwnedZeroRoute(
+            active.replace("HomePodBridgeDirect:", "AnotherApp:"), NONCE));
+  }
 }

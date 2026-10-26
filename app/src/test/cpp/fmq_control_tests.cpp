@@ -1,4 +1,5 @@
 #include "../../main/cpp/fmq_control.h"
+#include "../../main/cpp/fmq_zero_transfer.h"
 #include <cassert>
 #include <cstdio>
 
@@ -46,6 +47,12 @@ int main() {
     before=command.view.write->load();
     assert(!hp_dispatch_status(no_event,reply));
     assert(command.view.write->load()==before); // Refuse before enqueuing an unwakeable command.
+    for(auto invalid:std::array<std::pair<uint8_t,int>,7>{{{0,0},{4,0},{7,0},{2,4},{3,0},{3,3},{3,3716}}}) {
+        assert(!hp_stream_dispatch(command,reply,invalid.first,invalid.second));
+        assert(command.view.write->load()==before);
+    }
+    std::array<hp_mapped_queue,6> unopened{};
+    for(int frames:{0,1,31,1024}) assert(hp_zero_transfer(unopened,frames,false).error==1);
     assert(!::close(cmd_fd) && !::close(reply_fd));
     std::puts("FMQ standby control, origins, pending-reply and timeout guards passed");
 }

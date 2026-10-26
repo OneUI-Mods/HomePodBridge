@@ -23,6 +23,14 @@ public final class ProbeScenarioTest {
     assertFalse(
         ProbeScenario.EXIT_FDS.acceptsFailure(73, true, true, "FAULT_CHECKPOINT=after-fds\n"));
     assertFalse(ProbeScenario.CONTROL.acceptsFailure(73, false, false, "FAULT_CHECKPOINT=none\n"));
+    assertTrue(
+        ProbeScenario.ZERO_INPUT_EXIT.acceptsFailure(
+            75, false, false, "FAULT_CHECKPOINT=zero-input-exit\n"));
+    assertFalse(
+        ProbeScenario.ZERO_INPUT_EXIT.acceptsFailure(
+            73, false, false, "FAULT_CHECKPOINT=zero-input-exit\n"));
+    assertFalse(
+        ProbeScenario.ZERO_1MS.acceptsFailure(73, false, false, "FAULT_CHECKPOINT=zero-1ms\n"));
   }
 
   @Test

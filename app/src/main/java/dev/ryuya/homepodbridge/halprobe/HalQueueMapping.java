@@ -25,6 +25,9 @@ public final class HalQueueMapping {
   private static native boolean exitAfterStatus(
       int[] commandFds, long[] commandGrants, int[] replyFds, long[] replyGrants);
 
+  private static native long[] zeroTransfer(
+      int[][] fds, long[][] grants, int frames, boolean exitAfterInput);
+
   static JSONObject inspectInChild(
       List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
     String apk = System.getenv("CLASSPATH");
@@ -121,7 +124,7 @@ public final class HalQueueMapping {
                 .put("forcedTermination", outcome.forced())
                 .put("timedOut", outcome.timedOut())
                 .put("readWaitMs", readWaitNanos / 1000000)
-                .put("started", false);
+                .put("started", scenario.zeroFrames > 0);
           throw new java.io.IOException(
               "Mapping child failed: " + outcome.diagnostics(), unavailable);
         }
@@ -260,6 +263,47 @@ public final class HalQueueMapping {
         System.out.flush();
         exitAfterStatus(queueFds.get(0), queueGrants.get(0), queueFds.get(1), queueGrants.get(1));
         throw new SecurityException("Status dispatch fault failed");
+      }
+      if (scenario.zeroFrames > 0) {
+        try {
+          android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+        } catch (RuntimeException unavailable) {
+        }
+        if (scenario == ProbeScenario.ZERO_INPUT_EXIT) {
+          System.out.println("FAULT_CHECKPOINT=zero-input-exit");
+          System.out.flush();
+        }
+        long[] flow =
+            zeroTransfer(
+                queueFds.toArray(new int[0][]),
+                queueGrants.toArray(new long[0][]),
+                scenario.zeroFrames,
+                scenario == ProbeScenario.ZERO_INPUT_EXIT);
+        if (flow == null || flow.length != 13)
+          throw new SecurityException("Zero transfer unavailable");
+        var transfer =
+            new JSONObject()
+                .put("passed", flow[0] == 1)
+                .put("framesPerBurst", flow[1])
+                .put("cycles", flow[2])
+                .put("sentFrames", flow[3])
+                .put("capturedFrames", flow[4])
+                .put("elapsedUs", flow[5])
+                .put("maximumOutputCommandUs", flow[6])
+                .put("maximumInputCommandUs", flow[7])
+                .put("maximumPendingFrames", flow[8])
+                .put("errorCode", flow[9])
+                .put("startFlags", flow[10])
+                .put("inputObservableFrames", flow[11])
+                .put("expectedInputFrames", flow[12]);
+        new DataOutputStream(socket.getOutputStream())
+            .writeUTF(
+                new JSONObject()
+                    .put("mappedQueues", 6)
+                    .put("started", flow[10] != 0)
+                    .put("zeroTransfer", transfer)
+                    .toString());
+        return;
       }
       var control = new JSONArray();
       for (int base : new int[] {0, 3}) {

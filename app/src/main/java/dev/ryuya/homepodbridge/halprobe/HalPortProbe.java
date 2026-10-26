@@ -217,7 +217,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           .put("commandQuantum", desc.command.quantum)
           .put("replyQuantum", desc.reply.quantum)
           .put("dataBytes", desc.data.grants[2].extent)
-          .put("started", false);
+          .put("openedUnstarted", true);
     } finally {
       data.recycle();
       reply.recycle();
@@ -550,7 +550,13 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             args[0].equals("configs-fast"));
     JSONObject saved;
     if (!args[0].equals("recover")) {
-      saved = probe.state.snapshot().put("epoch", probe.epoch).put("streamLedger", new JSONArray());
+      saved =
+          probe
+              .state
+              .snapshot()
+              .put("epoch", probe.epoch)
+              .put("streamLedger", new JSONArray())
+              .put("zeroOnly", scenario != null && scenario.zeroFrames > 0);
       Files.write(
           journal,
           saved.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),

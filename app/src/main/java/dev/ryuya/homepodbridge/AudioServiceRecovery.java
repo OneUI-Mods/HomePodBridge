@@ -29,6 +29,35 @@ final class AudioServiceRecovery {
     return dump.replace("\r", "").trim().equals(expected);
   }
 
+  static boolean onlyOwnedZeroRoute(String dump, String nonce) {
+    if (!validNonce(nonce)) return false;
+    String prefix =
+        java.util.regex.Pattern.quote(
+            "SubmixRoutes:\n - AudioDeviceAddress{id: HomePodBridgeDirect:" + nonce + "}: Input ");
+    return dump.replace("\r", "")
+        .trim()
+        .matches(
+            prefix
+                + "(?:closed, (?:standby|active), refcount: 0|open, (?:standby|active), refcount:"
+                + " 1), framesRead: [0-9]+; Output (?:open|closed), (?:standby|active),"
+                + " framesWritten: [0-9]+");
+  }
+
+  private static boolean ownsZeroJournal(String nonce, String pid, String stat) throws Exception {
+    Path journal = Path.of("/data/local/tmp/homepod-direct-" + nonce + ".json");
+    if (Files.isSymbolicLink(journal)
+        || Files.size(journal) > 65536
+        || ((Number)
+                    Files.getAttribute(
+                        journal, "unix:uid", java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                .intValue()
+            != 0) return false;
+    var saved = new org.json.JSONObject(readProc(journal));
+    String start = stat.substring(stat.lastIndexOf(')') + 2).split("\\s+")[19];
+    return saved.optBoolean("zeroOnly", false)
+        && (pid + ":" + start).equals(saved.getString("epoch"));
+  }
+
   static String restart(Context context, String nonce) {
     if (!validNonce(nonce) || BridgeState.connected || BridgeState.volume != 0)
       return "RECOVERY_REFUSED";
@@ -104,9 +133,11 @@ final class AudioServiceRecovery {
       String mode = run(List.of("dumpsys", "audio"), 1048576, 4);
       if (!mode.contains("mAudioModeOwner: AudioDeviceBroker$AudioModeInfo[mMode=0,"))
         throw new SecurityException();
-      if (!onlyUnstartedOwnedRoute(
-          run(List.of("dumpsys", "android.hardware.audio.core.IModule/r_submix"), 8192, 3),
-          args[0])) throw new SecurityException();
+      String routes =
+          run(List.of("dumpsys", "android.hardware.audio.core.IModule/r_submix"), 8192, 3);
+      if (!onlyUnstartedOwnedRoute(routes, args[0])
+          && !(onlyOwnedZeroRoute(routes, args[0]) && ownsZeroJournal(args[0], pid, epoch)))
+        throw new SecurityException();
       if (!"running"
               .equals(run(List.of("getprop", "init.svc.vendor.audio-hal-aidl"), 128, 2).trim())
           || !pid.equals(modulePid())) throw new SecurityException();
