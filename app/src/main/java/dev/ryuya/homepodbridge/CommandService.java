@@ -52,6 +52,11 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("reload-status")) {
+      commandStatus = "Checking GalaxyReload CLI";
+      commands.execute(() -> commandStatus = "GalaxyReload CLI: " + GalaxyReloadCli.check(this));
+      return START_NOT_STICKY;
+    }
     if (command.equals("connect-zero")) {
       commands.execute(
           () -> {
