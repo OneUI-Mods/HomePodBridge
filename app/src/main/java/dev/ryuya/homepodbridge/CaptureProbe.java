@@ -194,7 +194,22 @@ final class CaptureProbe {
       }
     } catch (Exception error) {
       synchronized (CaptureProbe.class) {
-        status = "Capture-only unavailable: " + error.getClass().getSimpleName();
+        status =
+            "Capture-only unavailable: "
+                + error.getClass().getSimpleName()
+                + (error instanceof IllegalStateException ? " " + error.getMessage() : "")
+                + "; HALoperation="
+                + operation
+                + " frames="
+                + frames
+                + " zeroSourceFrames="
+                + zeroSourceFrames
+                + " timestampSamples="
+                + ages.size()
+                + " tuning="
+                + tuningReport
+                + " restoration="
+                + restoreReport;
       }
     } finally {
       if (descriptor != null) {
