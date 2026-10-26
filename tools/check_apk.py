@@ -45,11 +45,27 @@ def check(apk):
         assert "Apache License" in archive.read("assets/licenses.txt").decode()
         for abi in ("arm64-v8a", "x86_64"):
             assert f"lib/{abi}/libhomepod_bridge.so" in archive.namelist()
+            assert f"lib/{abi}/libhomepod_hal.so" in archive.namelist()
         for name in archive.namelist():
             assert ".signing" not in name and not name.endswith((".keystore", ".p12"))
             if name.endswith(".dex"):
                 for cls in defined_classes(archive.read(name)):
                     assert not cls.startswith("Lde/robv/android/xposed/"), "Xposed framework must remain compileOnly"
+    manifest = subprocess.check_output([str(tool("aapt2")), "dump", "xmltree", str(apk),
+        "--file", "AndroidManifest.xml"], text=True, encoding="utf-8")
+    lines = manifest.splitlines()
+    protected_command_service = False
+    for index, line in enumerate(lines):
+        if not line.strip().startswith("E: service"): continue
+        indent = len(line) - len(line.lstrip())
+        block = []
+        for next_line in lines[index + 1:]:
+            if next_line.strip().startswith("E:") and len(next_line) - len(next_line.lstrip()) <= indent: break
+            block.append(next_line)
+        if any(".CommandService" in item for item in block):
+            assert any("android:permission" in item and '"android.permission.DUMP"' in item for item in block), "Command service must stay DUMP-protected"
+            protected_command_service = True
+    assert protected_command_service, "Missing protected command diagnostics service"
     print("Release APK: package, module, ABIs, licenses and non-debuggable manifest verified")
     return badging
 
