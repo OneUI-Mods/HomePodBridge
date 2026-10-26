@@ -678,7 +678,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             || args[0].equals("policy-capture-smaller"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
-      System.out.println(
+      JSONObject report =
           PolicyInputProbe.run(
               !args[0].equals("policy-input"),
               UUID.fromString(args[1]),
@@ -687,7 +687,17 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                   ? 928
                   : args[0].equals("policy-capture-minimum")
                       ? 464
-                      : args[0].equals("policy-capture-smaller") ? 800 : 2587));
+                      : args[0].equals("policy-capture-smaller") ? 800 : 2587);
+      System.out.println(report);
+      System.out.flush();
+      JSONObject direct = report.optJSONObject("directCapture");
+      // ActivityThread's platform helpers can outlive main. Exit only after confirmed cleanup,
+      // never while the stream owner might still hold a live or uncertain HAL allocation.
+      if (report.optBoolean("resourcesRestoredExactly")
+          && (direct == null
+              || (direct.optBoolean("streamsClosed")
+                  && !direct.optBoolean("openReplyUncertain")
+                  && direct.optBoolean("resourcesRestoredExactly")))) System.exit(0);
       return;
     }
     if (args.length == 3 && args[0].equals("metrics")) {
