@@ -429,14 +429,14 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       profileDetails.setText(
           getString(
               R.string.profile_values_adaptive,
-              settings.effectiveBlockMs(),
+              settings.effectiveDedicatedCapture() ? 1 : settings.effectiveBlockMs(),
               settings.effectiveLatencyMs()));
     } else
       profileDetails.setText(
           getString(
               R.string.profile_values,
               settings.effectiveBufferMs(),
-              settings.effectiveBlockMs(),
+              settings.effectiveDedicatedCapture() ? 1 : settings.effectiveBlockMs(),
               settings.effectiveLatencyMs()));
     updatingSettings = false;
   }
@@ -619,13 +619,15 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private void updatePipeline() {
     if (captureBackendStatus != null)
       captureBackendStatus.setText(
-          switch (BridgeState.captureBackend) {
-            case STANDARD -> R.string.capture_backend_standard;
-            case CHECKING -> R.string.capture_backend_checking;
-            case DEDICATED -> R.string.capture_backend_active;
-            case DEDICATED_TEST -> R.string.capture_backend_test;
-            case FALLBACK -> R.string.capture_backend_fallback;
-          });
+          BridgeState.selected == null
+              ? R.string.diagnostics_idle
+              : switch (BridgeState.captureBackend) {
+                case STANDARD -> R.string.capture_backend_standard;
+                case CHECKING -> R.string.capture_backend_checking;
+                case DEDICATED -> R.string.capture_backend_active;
+                case DEDICATED_TEST -> R.string.capture_backend_test;
+                case FALLBACK -> R.string.capture_backend_fallback;
+              });
     boolean live = BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED;
     PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
     if (t == null) {

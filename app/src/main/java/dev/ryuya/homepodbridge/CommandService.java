@@ -197,6 +197,15 @@ public final class CommandService extends Service {
               + new String(report.readNBytes(8192), java.nio.charset.StandardCharsets.UTF_8));
     } catch (java.io.IOException absent) {
     }
+    for (String name : java.util.List.of("last-capture-error.txt", "last-connection.txt")) {
+      try (var report = openFileInput(name)) {
+        writer.println(
+            name
+                + ": "
+                + new String(report.readNBytes(8192), java.nio.charset.StandardCharsets.UTF_8));
+      } catch (java.io.IOException absent) {
+      }
+    }
     StreamSettings settings = StreamSettings.load(this);
     writer.println(
         "deviceBuffer="
