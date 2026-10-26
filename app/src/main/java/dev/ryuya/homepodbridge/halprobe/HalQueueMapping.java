@@ -94,7 +94,21 @@ public final class HalQueueMapping {
         output.writeInt(bytes.size());
         output.write(bytes.toByteArray());
         output.flush();
-        var result = new DataInputStream(socket.getInputStream()).readUTF();
+        String result;
+        try {
+          result = new DataInputStream(socket.getInputStream()).readUTF();
+        } catch (java.io.IOException unavailable) {
+          if (!child.waitFor(1, TimeUnit.SECONDS)) child.destroyForcibly();
+          child.waitFor(1, TimeUnit.SECONDS);
+          String diagnostics =
+              new String(
+                      child.getInputStream().readNBytes(1024),
+                      java.nio.charset.StandardCharsets.UTF_8)
+                  + new String(
+                      child.getErrorStream().readNBytes(1024),
+                      java.nio.charset.StandardCharsets.UTF_8);
+          throw new java.io.IOException("Mapping child failed: " + diagnostics, unavailable);
+        }
         if (result.length() > 2048) throw new SecurityException();
         if (!child.waitFor(2, TimeUnit.SECONDS) || child.exitValue() != 0)
           throw new java.io.IOException("Mapping worker failed");
@@ -116,6 +130,7 @@ public final class HalQueueMapping {
       throw new SecurityException();
     System.load(apk + "!/lib/arm64-v8a/libc++_shared.so");
     System.load(apk + "!/lib/arm64-v8a/libhomepod_fmq_probe.so");
+    System.out.println("MAPPING_LIBRARY_READY");
     FileDescriptor[] incoming = null;
     var owned = new ArrayList<ParcelFileDescriptor>();
     try (var socket = new LocalSocket()) {
@@ -127,6 +142,7 @@ public final class HalQueueMapping {
       var input = new DataInputStream(socket.getInputStream());
       if (input.readUnsignedByte() != 0x51) throw new SecurityException();
       incoming = socket.getAncillaryFileDescriptors();
+      System.out.println("MAPPING_FDS=" + (incoming == null ? -1 : incoming.length));
       if (incoming == null || incoming.length == 0 || incoming.length > 48)
         throw new SecurityException();
       int length = input.readInt();
@@ -162,6 +178,7 @@ public final class HalQueueMapping {
           grants[g * 3 + 2] = metadata.readLong();
         }
         long[] result = inspect(fds, grants, quantum, flags);
+        System.out.println("MAPPING_QUEUE=" + i + " accepted=" + (result != null));
         if (result == null || result.length != 3)
           throw new SecurityException("Queue mapping rejected");
         reports.put(

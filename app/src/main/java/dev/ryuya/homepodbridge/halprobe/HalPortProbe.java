@@ -474,7 +474,16 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       throw new SecurityException("Existing submix route; no allocation allowed");
   }
 
-  public static void main(String[] args) throws Exception {
+  public static void main(String[] args) {
+    try {
+      runMain(args);
+    } catch (Throwable failure) {
+      System.out.println(
+          "{\"probeFailed\":true,\"errorType\":\"" + failure.getClass().getSimpleName() + "\"}");
+    }
+  }
+
+  private static void runMain(String[] args) throws Exception {
     rootPreflight();
     if (args.length == 3 && args[0].equals("stop")) {
       String nonce = UUID.fromString(args[1]).toString();
