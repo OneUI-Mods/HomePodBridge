@@ -33,7 +33,7 @@ final class CaptureProbe {
   }
 
   static synchronized void request(Context context, int operation) {
-    if (operation < 0 || operation > 2) return;
+    if (operation < 0 || operation > 3) return;
     if (running) return;
     if (BridgeState.capture != null || !RootConnector.available()) {
       status = "Probe requires idle sharing and an available system bridge";
@@ -49,6 +49,9 @@ final class CaptureProbe {
     Binder lifetime = new Binder();
     ParcelFileDescriptor descriptor = null;
     var timer = Executors.newSingleThreadScheduledExecutor();
+    var leaseExecutor = Executors.newSingleThreadExecutor();
+    OwnedAudioPath lease = null;
+    var leaseUpdate = new java.util.concurrent.atomic.AtomicReference<OwnedAudioPath.Update>();
     ArrayList<Long> ages = new ArrayList<>();
     long frames = 0;
     long zeroSourceFrames = 0;
@@ -59,8 +62,19 @@ final class CaptureProbe {
       if (!settings.wholeDevice()) throw new IllegalStateException("Whole-device mode required");
       if (!settings.lowLatency() || settings.effectiveLatencyMs() != 50)
         throw new IllegalStateException("The 50 ms low-latency preset is required for comparison");
+      if (operation == 3 && !settings.effectiveDeviceBuffer())
+        throw new IllegalStateException(
+            "Device buffer reduction must be enabled for the lease test");
       RootConnector.Input input = RootConnector.open(BridgeState.MUSIC, lifetime, settings, true);
       descriptor = input.pipe();
+      if (operation == 3) {
+        lease =
+            new OwnedAudioPath(
+                op -> HalInspection.operateRoute(context, input.registration(), op),
+                leaseExecutor,
+                leaseUpdate::set);
+        lease.start();
+      }
       ParcelFileDescriptor owned = descriptor;
       Runnable close =
           () -> {
@@ -78,7 +92,7 @@ final class CaptureProbe {
       long lastObservation = 0;
       long sampleAfter = begin + TimeUnit.SECONDS.toNanos(4);
       boolean tuned = false;
-      boolean inspected = false;
+      boolean inspected = operation == 3;
       try (var stream = new ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {
         try {
           PcmPipe pipe = new PcmPipe(stream.getChannel(), input.timed());
@@ -102,6 +116,15 @@ final class CaptureProbe {
                 sampleAfter = now + TimeUnit.SECONDS.toNanos(2);
               }
             }
+            if (operation == 3 && !tuned) {
+              OwnedAudioPath.Update update = leaseUpdate.get();
+              if (update != null && update.state() == OwnedAudioPath.State.ACTIVE) {
+                tuned = true;
+                tuningReport = update.report();
+                sampleAfter = now + TimeUnit.SECONDS.toNanos(2);
+              } else if (update != null && update.state() != OwnedAudioPath.State.CHECKING)
+                throw new IllegalStateException("Production lease did not activate");
+            }
             if (timing != null
                 && timing.length >= 3
                 && timing[0] == 1
@@ -118,8 +141,14 @@ final class CaptureProbe {
               HalInspection.requestRoute(context, input.registration(), operation);
             }
           }
-          if (operation == 2 && !tuned) throw new IllegalStateException("Tuning not confirmed");
+          if (operation >= 2 && !tuned) throw new IllegalStateException("Tuning not confirmed");
         } finally {
+          if (lease != null) {
+            lease.close();
+            leaseExecutor.shutdown();
+            leaseExecutor.awaitTermination(2, TimeUnit.SECONDS);
+            restoreReport = lease.restorationReport();
+          }
           if (operation == 2 && input.registration() != null) {
             long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
             while (HalInspection.result() == null && System.nanoTime() < end) Thread.sleep(10);
@@ -151,7 +180,7 @@ final class CaptureProbe {
                 + ages
                 + "; zero-only input; no sender or music playback; HALoperation="
                 + operation
-                + (operation == 2
+                + (operation >= 2
                     ? " tuning=" + tuningReport + " restoration=" + restoreReport
                     : "");
       }
@@ -168,6 +197,7 @@ final class CaptureProbe {
       }
       RootConnector.close(lifetime);
       timer.shutdownNow();
+      leaseExecutor.shutdownNow();
       synchronized (CaptureProbe.class) {
         cancellation = null;
         running = false;

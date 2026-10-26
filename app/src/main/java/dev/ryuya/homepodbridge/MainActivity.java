@@ -42,6 +42,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView senderTiming;
   private TextView handoffTiming;
   private TextView networkTiming;
+  private TextView phoneBufferTiming;
   private LinearLayout speakers;
   private Button share;
   private int textColor;
@@ -55,6 +56,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private MaterialSwitch highQualitySwitch;
   private MaterialSwitch compressionSwitch;
   private MaterialSwitch adaptiveBufferSwitch;
+  private MaterialSwitch deviceBufferSwitch;
   private TextView profileSelection;
   private TextView profileDetails;
   private TabLayout tabs;
@@ -313,6 +315,20 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(card(compressionControls));
     body = tuningBody;
     body.addView(label(getString(R.string.tuning_description), 16));
+    LinearLayout deviceControls = new LinearLayout(this);
+    deviceControls.setOrientation(LinearLayout.VERTICAL);
+    deviceBufferSwitch = new MaterialSwitch(this);
+    deviceBufferSwitch.setText(R.string.device_buffer);
+    deviceBufferSwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          StreamSettings.load(this).withDeviceBuffer(enabled).save(this);
+          syncSettings();
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    deviceControls.addView(deviceBufferSwitch);
+    deviceControls.addView(label(getString(R.string.device_buffer_description), 14));
+    body.addView(card(deviceControls));
     body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
     body.addView(label(getString(R.string.notes), 14));
     body.addView(button(getString(R.string.licenses), view -> licenses()));
@@ -320,6 +336,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(label(getString(R.string.diagnostics_intro), 14));
     captureTiming = label("", 16);
     body.addView(card(captureTiming));
+    phoneBufferTiming = label("", 16);
+    body.addView(card(phoneBufferTiming));
     pipeTiming = label("", 16);
     body.addView(card(pipeTiming));
     senderTiming = label("", 16);
@@ -364,6 +382,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     compressionSwitch.setChecked(settings.compressedAudio());
     adaptiveBufferSwitch.setChecked(settings.adaptiveBuffer());
     adaptiveBufferSwitch.setEnabled(settings.lowLatency());
+    deviceBufferSwitch.setChecked(settings.deviceBuffer());
+    deviceBufferSwitch.setEnabled(settings.lowLatency());
     profileSelection.setText(
         getString(
             R.string.profile_selected,
@@ -568,8 +588,9 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
     if (t == null) {
       for (TextView label :
-          new TextView[] {captureTiming, pipeTiming, senderTiming, handoffTiming, networkTiming})
-        label.setText(R.string.diagnostics_idle);
+          new TextView[] {
+            captureTiming, phoneBufferTiming, pipeTiming, senderTiming, handoffTiming, networkTiming
+          }) label.setText(R.string.diagnostics_idle);
       return;
     }
     String request =
@@ -579,6 +600,16 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                 : t.capture(9) == 2
                     ? R.string.capture_fast_fallback
                     : t.capture(9) == 0 ? R.string.capture_standard : R.string.diagnostics_unknown);
+    OwnedAudioPath.Update path = BridgeState.phonePath;
+    phoneBufferTiming.setText(
+        path == null
+            ? getString(R.string.device_buffer_off)
+            : switch (path.state()) {
+              case CHECKING -> getString(R.string.device_buffer_checking);
+              case ACTIVE -> getString(R.string.device_buffer_active, framesTime(1856));
+              case STANDARD -> getString(R.string.device_buffer_standard);
+              case RECOVERY_REQUIRED -> getString(R.string.device_buffer_recovering);
+            });
     captureTiming.setText(
         getString(
             R.string.diagnostics_capture,

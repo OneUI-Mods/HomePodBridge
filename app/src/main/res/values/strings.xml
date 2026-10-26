@@ -1,4 +1,11 @@
 <resources>
+    <string name="device_buffer">Reduce phone audio buffering (root)</string>
+    <string name="device_buffer_description">Uses root on supported system builds to reduce internal waiting. Low latency only. Standard capture is kept if unavailable; turn off if audio breaks up under load.</string>
+    <string name="device_buffer_off">Phone buffering\nReduction off</string>
+    <string name="device_buffer_checking">Phone buffering\nChecking device support…</string>
+    <string name="device_buffer_active">Phone buffering\nReduced buffer active\nTarget fill: %1$s\nThis amount is included in the capture timestamp estimate. Do not add them together.</string>
+    <string name="device_buffer_standard">Phone buffering\nStandard capture retained</string>
+    <string name="device_buffer_recovering">Phone buffering\nRestoring the capture path…</string>
     <string name="diagnostics_command_running">Audio timing diagnostics · no sound</string>
     <string name="app_name">HomePod Bridge</string>
     <string name="module_description">Add HomePod to the system media output picker.</string>

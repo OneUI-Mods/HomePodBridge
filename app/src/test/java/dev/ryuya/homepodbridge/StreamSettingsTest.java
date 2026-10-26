@@ -6,6 +6,26 @@ import org.junit.Test;
 
 public final class StreamSettingsTest {
   @Test
+  public void deviceBufferIsOptInAndOnlyEffectiveInLowLatency() {
+    var custom = new StreamSettings(true, 70, 20, 320);
+    assertFalse(custom.deviceBuffer());
+    var enabled = custom.withDeviceBuffer(true);
+    assertFalse(enabled.effectiveDeviceBuffer());
+    assertTrue(enabled.withProfile(1).effectiveDeviceBuffer());
+    assertFalse(enabled.withProfile(2).effectiveDeviceBuffer());
+    var changed =
+        enabled
+            .withProfile(1)
+            .withAdaptiveBuffer(false)
+            .withCompression(true)
+            .withWholeDevice(false);
+    assertTrue(changed.deviceBuffer());
+    assertFalse(changed.withDeviceBuffer(false).effectiveDeviceBuffer());
+    assertTrue(changed.withBuffers(0, 2, 50).deviceBuffer());
+    assertEquals(enabled, enabled.withProfile(1).withProfile(0));
+  }
+
+  @Test
   public void unsafePreferencesAreBounded() {
     var low = new StreamSettings(false, -1, -1, -1);
     assertEquals(0, low.bufferMs());

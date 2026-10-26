@@ -20,6 +20,29 @@ final class HalInspection {
   private static int selected = -1;
   private static boolean running;
 
+  static String operateRoute(android.content.Context context, String address, int operation)
+      throws IOException, InterruptedException {
+    if (address == null
+        || !address.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")
+        || operation < 0
+        || operation > 3) return "Owned registration unavailable";
+    if (operation != 0
+        && context.getSystemService(android.media.AudioManager.class).getMode()
+            != android.media.AudioManager.MODE_NORMAL)
+      return "Device buffer operation skipped during communication";
+    String apk = context.getApplicationInfo().sourceDir;
+    if (!apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk")) return "Module path unavailable";
+    String action = new String[] {"", " freeze", " tune", " restore"}[operation];
+    String command =
+        "CLASSPATH='"
+            + apk
+            + "' exec app_process /system/bin dev.ryuya.homepodbridge.HalRootProbe '"
+            + address
+            + "'"
+            + action;
+    return new String(readCommand(command, true), java.nio.charset.StandardCharsets.UTF_8);
+  }
+
   static synchronized void requestRoute(android.content.Context context, String registration) {
     requestRoute(context, registration, 0);
   }
@@ -63,7 +86,8 @@ final class HalInspection {
                             + " '"
                             + address
                             + "'"
-                            + action);
+                            + action,
+                        true);
                 synchronized (HalInspection.class) {
                   image = report;
                   status = new String(report, java.nio.charset.StandardCharsets.UTF_8);
@@ -124,6 +148,11 @@ final class HalInspection {
   }
 
   private static byte[] readCommand(String command) throws IOException, InterruptedException {
+    return readCommand(command, false);
+  }
+
+  private static byte[] readCommand(String command, boolean partial)
+      throws IOException, InterruptedException {
     java.lang.Process helper = new ProcessBuilder("su", "-c", command).start();
     try (var output = helper.getInputStream();
         var errors = helper.getErrorStream();
@@ -143,8 +172,12 @@ final class HalInspection {
         while (errors.available() > 0)
           errors.read(block, 0, Math.min(block.length, errors.available()));
       }
-      if (!helper.waitFor(1, TimeUnit.SECONDS) || helper.exitValue() != 0)
-        throw new IOException("Read unavailable");
+      if (!helper.waitFor(1, TimeUnit.SECONDS) || helper.exitValue() != 0) {
+        if (!partial) throw new IOException("Read unavailable");
+        bytes.write(
+            "\nRoot helper exited without confirming the operation"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      }
       return bytes.toByteArray();
     } finally {
       helper.destroy();

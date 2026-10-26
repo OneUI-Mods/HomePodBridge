@@ -6,6 +6,17 @@ import org.junit.Test;
 
 public final class PipelineTimingTest {
   @Test
+  public void appendedProbeMetricsKeepTheExistingTimingPrefix() {
+    long[] capture = {1, 61000, 1_000_000_000L, 2000, 21000, 20, 50, 2784, 88, 1, 44100};
+    var timing = new PipelineTiming(capture, null, 100, 2_000_000_000L);
+    assertEquals(61000, timing.capture(1));
+    assertEquals(1, timing.capture(9));
+    assertTrue(timing.captureAgeFresh());
+    assertEquals(-1, timing.capture(-1));
+    assertEquals(-1, timing.capture(11));
+  }
+
+  @Test
   public void missingOrOldSchemaNeverBecomesZeroDelay() {
     var empty = new PipelineTiming(null, null, -1, 1);
     assertEquals(-1, empty.capture(1));

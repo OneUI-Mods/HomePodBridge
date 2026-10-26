@@ -27,6 +27,7 @@ final class BridgeState {
   static int[] timing;
   static PipelineTiming pipeline;
   static volatile String captureRegistration;
+  static volatile OwnedAudioPath.Update phonePath;
   static int status = R.string.idle;
 
   static void observe(Observer observer) {

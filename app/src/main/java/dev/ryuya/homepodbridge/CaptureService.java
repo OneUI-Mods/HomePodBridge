@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
@@ -38,12 +39,15 @@ public final class CaptureService extends Service {
   private final Handler main = new Handler(Looper.getMainLooper());
   // Service recreation must wait for the previous native sender and route lease.
   private static final ExecutorService worker = Executors.newSingleThreadExecutor();
+  private static final ExecutorService devicePaths = Executors.newSingleThreadExecutor();
   private final AtomicInteger generation = new AtomicInteger();
   private MediaProjection projection;
   private int musicUid;
   private boolean systemMode;
   private IBinder lifetime = new Binder();
   private volatile ParcelFileDescriptor systemPipe;
+  private volatile OwnedAudioPath activeDevicePath;
+  private volatile boolean deviceBufferSuppressed;
   private boolean destroyed;
   private ConnectionCallback pendingCallback;
   private int callbackGeneration;
@@ -130,6 +134,19 @@ public final class CaptureService extends Service {
   }
 
   void select(Receiver receiver, String sourcePackage, ConnectionCallback callback) {
+    select(receiver, sourcePackage, callback, false);
+  }
+
+  void selectZeroProbe(Receiver receiver, ConnectionCallback callback) {
+    if (!StreamSettings.load(this).wholeDevice()) {
+      callback.finished(false);
+      return;
+    }
+    select(receiver, BridgeState.MUSIC, callback, true);
+  }
+
+  private void select(
+      Receiver receiver, String sourcePackage, ConnectionCallback callback, boolean zeroProbe) {
     if (destroyed || (projection == null && !systemMode)) {
       callback.finished(false);
       return;
@@ -152,19 +169,25 @@ public final class CaptureService extends Service {
     BridgeState.volume = 0;
     BridgeState.timing = null;
     BridgeState.pipeline = null;
+    BridgeState.phonePath = null;
     BridgeState.status = R.string.connecting;
     BridgeState.publish();
     IBinder connectionLifetime = lifetime;
-    worker.execute(() -> stream(receiver, sourcePackage, token, connectionLifetime));
+    worker.execute(() -> stream(receiver, sourcePackage, token, connectionLifetime, zeroProbe));
   }
 
   private void stream(
-      Receiver receiver, String sourcePackage, int token, IBinder connectionLifetime) {
+      Receiver receiver,
+      String sourcePackage,
+      int token,
+      IBinder connectionLifetime,
+      boolean zeroProbe) {
     AudioRecord recorder = null;
     ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
     Network previousNetwork = connectivity.getBoundNetworkForProcess();
     boolean networkBound = false;
     LocalRoute localRoute = null;
+    OwnedAudioPath devicePath = null;
     boolean started = false;
     long capturedFrames = 0;
     long signalBlocks = 0;
@@ -202,7 +225,7 @@ public final class CaptureService extends Service {
       PcmPipe rootInput = null;
       if (systemMode) {
         RootConnector.Input opened =
-            RootConnector.open(sourcePackage, connectionLifetime, settings);
+            RootConnector.open(sourcePackage, connectionLifetime, settings, zeroProbe);
         ParcelFileDescriptor pipe = opened.pipe();
         systemPipe = pipe;
         BridgeState.captureRegistration = opened.registration();
@@ -212,6 +235,39 @@ public final class CaptureService extends Service {
         }
         var input = new ParcelFileDescriptor.AutoCloseInputStream(pipe);
         rootInput = new PcmPipe(input.getChannel(), opened.timed());
+        if (settings.effectiveDeviceBuffer()
+            && !deviceBufferSuppressed
+            && opened.registration() != null) {
+          Context app = getApplicationContext();
+          devicePath =
+              new OwnedAudioPath(
+                  operation -> HalInspection.operateRoute(app, opened.registration(), operation),
+                  devicePaths,
+                  update ->
+                      main.post(
+                          () -> {
+                            if (destroyed || generation.get() != token) return;
+                            BridgeState.phonePath = update;
+                            BridgeState.publishTiming();
+                            if (update.state() == OwnedAudioPath.State.RECOVERY_REQUIRED) {
+                              deviceBufferSuppressed = true;
+                              reconfigure();
+                            }
+                          }));
+          activeDevicePath = devicePath;
+          devicePath.start();
+        } else if (settings.effectiveDeviceBuffer()) {
+          main.post(
+              () -> {
+                if (!destroyed && generation.get() == token) {
+                  BridgeState.phonePath =
+                      new OwnedAudioPath.Update(
+                          OwnedAudioPath.State.STANDARD,
+                          "Optional device buffering unavailable; existing capture retained");
+                  BridgeState.publishTiming();
+                }
+              });
+        }
       } else {
         AudioPlaybackCaptureConfiguration.Builder captureBuilder =
             new AudioPlaybackCaptureConfiguration.Builder(projection)
@@ -358,6 +414,7 @@ public final class CaptureService extends Service {
                   .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (java.io.IOException ignored) {
         }
+        if (devicePath != null) devicePath.close();
         closeSystemInput();
         if (recorder != null) {
           try {
@@ -400,6 +457,10 @@ public final class CaptureService extends Service {
 
   private void closeSystemInput() {
     BridgeState.captureRegistration = null;
+    BridgeState.phonePath = null;
+    OwnedAudioPath devicePath = activeDevicePath;
+    activeDevicePath = null;
+    if (devicePath != null) devicePath.close();
     ParcelFileDescriptor pipe = systemPipe;
     systemPipe = null;
     if (pipe == null) return;
@@ -507,6 +568,15 @@ public final class CaptureService extends Service {
             + " wholeDevice="
             + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
+    OwnedAudioPath.Update path = BridgeState.phonePath;
+    writer.println(
+        "deviceBufferRequested="
+            + StreamSettings.load(this).effectiveDeviceBuffer()
+            + " deviceBufferSuppressed="
+            + deviceBufferSuppressed
+            + " phonePath="
+            + (path == null ? "OFF" : path.state()));
+    if (path != null) writer.println(path.report());
     PipelineTiming pipeline = BridgeState.pipeline;
     if (pipeline != null) {
       writer.println("captureTiming=" + java.util.Arrays.toString(pipeline.capture()));

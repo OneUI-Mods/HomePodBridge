@@ -16,7 +16,7 @@
 
 typedef struct { pid_t tid; int stopped, deliver_signal; } task;
 typedef struct { uint64_t begin,end; int writable; } region;
-typedef struct { int fd; region maps[4096]; size_t count; } memory;
+typedef struct { int fd; region maps[4096]; size_t count; unsigned writes; } memory;
 static uint64_t monotonic_ns(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
     return (uint64_t)ts.tv_sec*1000000000u+(uint64_t)ts.tv_nsec;
@@ -32,7 +32,10 @@ static int write_memory(void* opaque,uint64_t address,const void* input,size_t l
     memory* mem=opaque;
     if (length!=8 || address%8) return 0;
     for (size_t i=0;i<mem->count;++i) if (mem->maps[i].writable && address>=mem->maps[i].begin
-        && address+length<=mem->maps[i].end) return pwrite(mem->fd,input,length,(off_t)address)==(ssize_t)length;
+        && address+length<=mem->maps[i].end) {
+            ++mem->writes;
+            return pwrite(mem->fd,input,length,(off_t)address)==(ssize_t)length;
+        }
     return 0;
 }
 static int load_maps(memory* mem,pid_t pid) {
@@ -132,8 +135,8 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     alarm(0);if (mem.fd>=0) close(mem.fd);
     uint64_t elapsed=(monotonic_ns()-begin)/1000;
     if (!detached) error="detach incomplete";
-    if (error) snprintf(report,sizeof(report),"Owned HAL operation refused: %s; maps=%zu tasks=%zu elapsedUs=%llu",error,mem.count,count,(unsigned long long)elapsed);
-    else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu; exact field verified",operation==1?2587:1856,operation==1?1856:2587,count,(unsigned long long)elapsed);
+    if (error) snprintf(report,sizeof(report),"Owned HAL operation refused: %s; maps=%zu tasks=%zu elapsedUs=%llu writeAttempts=%u",error,mem.count,count,(unsigned long long)elapsed,mem.writes);
+    else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu writeAttempts=%u; exact field verified",operation==1?2587:1856,operation==1?1856:2587,count,(unsigned long long)elapsed,mem.writes);
     else snprintf(report,sizeof(report),"Read-only freeze check passed: tasks=%zu elapsedUs=%llu targetFillFrames=%llu; no memory writes",count,(unsigned long long)elapsed,(unsigned long long)owned.target);
     (*env)->ReleaseStringUTFChars(env,registration,address);
     return (*env)->NewStringUTF(env,report);

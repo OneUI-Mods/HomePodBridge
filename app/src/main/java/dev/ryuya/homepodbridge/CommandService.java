@@ -17,10 +17,13 @@ import java.util.concurrent.TimeUnit;
 public final class CommandService extends Service {
   private final ExecutorService commands = Executors.newSingleThreadExecutor();
   private volatile String commandStatus = "Ready";
+  private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+  private CommandPlayback playback;
 
   @Override
   public void onCreate() {
     super.onCreate();
+    playback = new CommandPlayback(this, value -> commandStatus = value);
     NotificationManager manager = getSystemService(NotificationManager.class);
     NotificationChannel channel =
         new NotificationChannel(
@@ -49,7 +52,31 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
-    if (!java.util.List.of("baseline", "guard", "tuned").contains(command)) {
+    if (command.equals("connect-zero")) {
+      commands.execute(
+          () -> {
+            try {
+              long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+              while (!RootConnector.available() && System.nanoTime() < deadline) Thread.sleep(25);
+              if (RootConnector.available()) main.post(playback::start);
+              else commandStatus = "System bridge unavailable";
+            } catch (InterruptedException interrupted) {
+              Thread.currentThread().interrupt();
+            }
+          });
+      return START_NOT_STICKY;
+    }
+    if (command.equals("stop-transfer")) {
+      playback.close();
+      commandStatus = "Command-owned transfer stopped";
+      return START_NOT_STICKY;
+    }
+    if (command.equals("phone-buffer-on") || command.equals("phone-buffer-off")) {
+      StreamSettings.load(this).withDeviceBuffer(command.endsWith("on")).save(this);
+      commandStatus = "Phone buffer reduction preference: " + command.endsWith("on");
+      return START_NOT_STICKY;
+    }
+    if (!java.util.List.of("baseline", "guard", "tuned", "lease").contains(command)) {
       commandStatus = "Unknown diagnostic command";
       return START_NOT_STICKY;
     }
@@ -65,7 +92,10 @@ public final class CommandService extends Service {
               return;
             }
             CaptureProbe.request(
-                this, requested.equals("tuned") ? 2 : requested.equals("guard") ? 1 : 0);
+                this,
+                requested.equals("lease")
+                    ? 3
+                    : requested.equals("tuned") ? 2 : requested.equals("guard") ? 1 : 0);
             commandStatus = "Dispatched " + requested;
           } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -78,6 +108,15 @@ public final class CommandService extends Service {
   @Override
   protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
     writer.println("Command service: " + commandStatus);
+    writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
+    StreamSettings settings = StreamSettings.load(this);
+    writer.println(
+        "deviceBuffer="
+            + settings.deviceBuffer()
+            + " effectiveDeviceBuffer="
+            + settings.effectiveDeviceBuffer()
+            + " receiverTargetMs="
+            + settings.effectiveLatencyMs());
     CaptureProbe.dump(writer);
     HalInspection.dump(writer, false);
   }
@@ -90,6 +129,7 @@ public final class CommandService extends Service {
   @Override
   public void onDestroy() {
     commands.shutdownNow();
+    playback.close();
     CaptureProbe.cancel();
     stopForeground(STOP_FOREGROUND_REMOVE);
     super.onDestroy();

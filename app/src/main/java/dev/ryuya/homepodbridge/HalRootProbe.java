@@ -68,6 +68,7 @@ public final class HalRootProbe {
         HashSet<Long> seen = new HashSet<>();
         pending.add(number(before, 8));
         String report = null;
+        long observedTarget = -1;
         while (!pending.isEmpty()) {
           long node = pointer(pending.remove(pending.size() - 1));
           if (node == 0) continue;
@@ -87,6 +88,7 @@ public final class HalRootProbe {
           long sink = pointer(config.getLong(0x80));
           byte[] pipeData = memory.read(sink, 256);
           long capacity = number(pipeData, 0x40), target = number(pipeData, 0xe8);
+          observedTarget = target;
           if (pointer(number(pipeData, 0)) != pipeBase + 0x8018
               || number(pipeData, 0x30) != 4
               || capacity != 4096
@@ -109,6 +111,10 @@ public final class HalRootProbe {
           throw new IOException("Route set changed during observation");
         System.out.println(report == null ? "No matching live owned route" : report);
         if (report != null && args.length == 2) {
+          if (args[1].equals("restore") && observedTarget == 2587) {
+            System.out.println("Original reserve already present");
+            return;
+          }
           String apk = System.getenv("CLASSPATH");
           if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
             throw new IOException("Invalid native helper path");
