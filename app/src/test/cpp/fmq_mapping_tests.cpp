@@ -69,5 +69,22 @@ int main() {
         assert(fcntl(fd,F_GETFD)>=0); // Rejecting a descriptor never consumes a caller FD.
     }
     assert(!::close(fd));
+#ifdef __ANDROID__
+    int shared=ASharedMemory_create("homepod-fmq-shared-test",4096);assert(shared>=0);
+    struct stat shared_stat{};assert(!fstat(shared,&shared_stat));
+    void* initial_memory=mmap(nullptr,4096,PROT_READ|PROT_WRITE,MAP_SHARED,shared,0);
+    assert(initial_memory!=MAP_FAILED);std::memset(initial_memory,0,4096);
+    {
+        hp_mapped_queue mapped;
+        assert(mapped.attach(&shared,1,grants,4,8,1));
+        assert(mapped.view.transfer(&value,8,true));
+        assert(mapped.view.transfer(&result,8,false) && result==value);
+    }
+    assert(!munmap(initial_memory,4096));assert(!::close(shared));
+    int non_shared=open("/dev/null",O_RDWR|O_CLOEXEC);assert(non_shared>=0);
+    {hp_mapped_queue bad;assert(!bad.attach(&non_shared,1,grants,4,8,1));}
+    assert(fcntl(non_shared,F_GETFD)>=0);assert(!::close(non_shared));
+    std::printf("Android shared memory mapping passed (fstat size %lld)\n",(long long)shared_stat.st_size);
+#endif
     std::puts("FMQ mapping, ownership and 100000 ordered messages passed");
 }

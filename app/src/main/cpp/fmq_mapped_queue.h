@@ -9,6 +9,9 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <android/sharedmem.h>
+#endif
 
 struct hp_grantor { int32_t fd_index; uint64_t offset, extent; };
 class hp_mapped_queue {
@@ -57,7 +60,13 @@ public:
         }
         for(size_t i=0;i<count;++i) {
             const auto& g=grants[i];struct stat st{};int fd=fds_[g.fd_index];
-            if(fstat(fd,&st) || st.st_size<0 || g.offset+g.extent>uint64_t(st.st_size)) {close();return false;}
+            if(fstat(fd,&st) || st.st_size<0) {close();return false;}
+            uint64_t region_size=uint64_t(st.st_size);
+#ifdef __ANDROID__
+            // Legacy ashmem FDs can report st_size=0. Query the NDK's validated region size.
+            if(!region_size) region_size=ASharedMemory_getSize(fd);
+#endif
+            if(!region_size || g.offset+g.extent>region_size) {close();return false;}
             uint64_t base=g.offset-g.offset%uint64_t(page);size_t delta=g.offset-base;
             size_t bytes=delta+size_t(g.extent);
             void* memory=mmap(nullptr,bytes,PROT_READ|PROT_WRITE,MAP_SHARED,fd,off_t(base));
