@@ -36,7 +36,7 @@ public enum ProbeScenario {
   boolean acceptsFailure(int exitCode, boolean timedOut, boolean forced, String diagnostics) {
     if (this == CONTROL
         || !("\n" + diagnostics).contains("\nFAULT_CHECKPOINT=" + workerMode + "\n")) return false;
-    if (this == HANG) return timedOut && forced;
+    if (this == HANG) return timedOut && forced && exitCode == 137;
     return !timedOut && !forced && exitCode == (this == EXIT_STATUS ? 74 : 73);
   }
 }

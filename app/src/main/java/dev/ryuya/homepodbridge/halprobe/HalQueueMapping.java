@@ -102,30 +102,24 @@ public final class HalQueueMapping {
         output.write(bytes.toByteArray());
         output.flush();
         String result;
+        long readStarted = System.nanoTime();
         try {
           result = new DataInputStream(socket.getInputStream()).readUTF();
         } catch (java.io.IOException unavailable) {
-          boolean forced = !child.waitFor(1, TimeUnit.SECONDS);
-          if (forced) child.destroyForcibly();
-          if (!child.waitFor(1, TimeUnit.SECONDS))
-            throw new java.io.IOException("Worker termination unconfirmed");
-          String diagnostics =
-              new String(
-                      child.getInputStream().readNBytes(1024),
-                      java.nio.charset.StandardCharsets.UTF_8)
-                  + new String(
-                      child.getErrorStream().readNBytes(1024),
-                      java.nio.charset.StandardCharsets.UTF_8);
-          boolean timedOut = unavailable instanceof java.net.SocketTimeoutException;
-          if (scenario.acceptsFailure(child.exitValue(), timedOut, forced, diagnostics))
+          long readWaitNanos = System.nanoTime() - readStarted;
+          var outcome = WorkerTermination.collect(child, readWaitNanos);
+          if (scenario.acceptsFailure(
+              outcome.exitCode(), outcome.timedOut(), outcome.forced(), outcome.diagnostics()))
             return new JSONObject()
                 .put("faultObserved", true)
                 .put("fault", scenario.workerMode)
-                .put("workerExit", child.exitValue())
-                .put("forcedTermination", forced)
-                .put("timedOut", timedOut)
+                .put("workerExit", outcome.exitCode())
+                .put("forcedTermination", outcome.forced())
+                .put("timedOut", outcome.timedOut())
+                .put("readWaitMs", readWaitNanos / 1000000)
                 .put("started", false);
-          throw new java.io.IOException("Mapping child failed: " + diagnostics, unavailable);
+          throw new java.io.IOException(
+              "Mapping child failed: " + outcome.diagnostics(), unavailable);
         }
         if (result.length() > 2048) throw new SecurityException();
         if (!child.waitFor(2, TimeUnit.SECONDS) || child.exitValue() != 0)
