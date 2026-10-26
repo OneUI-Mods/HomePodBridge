@@ -1,0 +1,632 @@
+package dev.ryuya.homepodbridge.halprobe;
+
+import android.os.Parcel;
+import android.os.Parcelable;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/** One-shot virtual-port lifecycle probe. No stream, patch, source or capture is started. */
+public final class HalPortProbe implements OwnedHalResources.Backend {
+  private final ReadOnlyHalState state = new ReadOnlyHalState();
+  private final String epoch = epoch();
+  private final String address;
+  private final OwnedHalResources.Tag tag;
+  private final int rate;
+  private final boolean fast;
+  private StreamOpenLedger ledger;
+  private final List<OpenStream> streams = new java.util.concurrent.CopyOnWriteArrayList<>();
+  private final java.util.concurrent.atomic.AtomicBoolean stopRequested =
+      new java.util.concurrent.atomic.AtomicBoolean();
+
+  private static final class OpenStream {
+    final android.os.IBinder binder;
+    final boolean input;
+    final int config;
+    volatile android.os.IBinder common;
+    volatile FrozenHalParcel.Stream descriptor;
+    volatile boolean closed;
+
+    OpenStream(android.os.IBinder binder, boolean input, int config) {
+      this.binder = binder;
+      this.input = input;
+      this.config = config;
+    }
+  }
+
+  HalPortProbe(UUID nonce, int rate, boolean fast) throws Exception {
+    if (rate != 44100 && rate != 32000 && rate != 16000 && rate != 8000)
+      throw new IllegalArgumentException();
+    this.rate = rate;
+    this.fast = fast;
+    address = "HomePodBridgeDirect:" + nonce;
+    int marker = (nonce.hashCode() & 0x07ffffff) | 0x40000000;
+    tag = new OwnedHalResources.Tag(address, 3, 4, marker, marker ^ 0x20000000);
+  }
+
+  static String epoch() throws Exception {
+    Process query =
+        new ProcessBuilder("dumpsys", "--pid", "android.hardware.audio.core.IModule/r_submix")
+            .start();
+    String pid =
+        new String(
+                query.getInputStream().readNBytes(128), java.nio.charset.StandardCharsets.US_ASCII)
+            .trim();
+    if (!query.waitFor(2, TimeUnit.SECONDS) || !pid.matches("[0-9]{1,7}"))
+      throw new IllegalStateException("Module PID unavailable");
+    Path proc = Path.of("/proc", pid);
+    if (!readString(proc.resolve("cmdline"))
+            .split("\u0000")[0]
+            .equals("/vendor/bin/hw/audiohalservice.qti")
+        || !readString(proc.resolve("status"))
+            .matches("(?s).*\\nUid:\\s+1041\\s+1041\\s+1041\\s+1041\\s*\\n.*"))
+      throw new SecurityException("Unexpected module process");
+    String stat = readString(proc.resolve("stat"));
+    String[] fields = stat.substring(stat.lastIndexOf(')') + 2).split("\\s+");
+    if (fields.length < 20 || !fields[19].matches("[0-9]+"))
+      throw new IllegalStateException("Module start time unavailable");
+    return pid + ":" + fields[19];
+  }
+
+  static OwnedHalResources.Snapshot decode(JSONObject value, String epoch) throws Exception {
+    var ports = new ArrayList<OwnedHalResources.Port>();
+    var configs = new ArrayList<OwnedHalResources.Config>();
+    var patches = new ArrayList<OwnedHalResources.Patch>();
+    JSONArray array = value.getJSONArray("ports");
+    for (int i = 0; i < array.length(); i++) {
+      var p = array.getJSONObject(i);
+      ports.add(
+          new OwnedHalResources.Port(
+              p.getInt("id"), p.optInt("deviceType", 0), p.optString("address", "")));
+    }
+    array = value.getJSONArray("configs");
+    for (int i = 0; i < array.length(); i++) {
+      var c = array.getJSONObject(i);
+      configs.add(
+          new OwnedHalResources.Config(c.getInt("id"), c.getInt("portId"), c.optInt("handle", 0)));
+    }
+    array = value.getJSONArray("patches");
+    for (int i = 0; i < array.length(); i++) {
+      var p = array.getJSONObject(i);
+      patches.add(
+          new OwnedHalResources.Patch(
+              p.getInt("id"),
+              integers(p.getJSONArray("sources")),
+              integers(p.getJSONArray("sinks"))));
+    }
+    return new OwnedHalResources.Snapshot(epoch, ports, configs, patches);
+  }
+
+  static List<Integer> integers(JSONArray array) throws Exception {
+    var result = new ArrayList<Integer>();
+    for (int i = 0; i < array.length(); i++) result.add(array.getInt(i));
+    return result;
+  }
+
+  public OwnedHalResources.Snapshot snapshot() throws Exception {
+    if (!state.module.isBinderAlive()) {
+      String current = epoch();
+      if (epoch.equals(current))
+        throw new java.io.IOException("Binder unavailable but original module still exists");
+      return new OwnedHalResources.Snapshot(current, List.of(), List.of(), List.of());
+    }
+    return decode(state.snapshot(), epoch);
+  }
+
+  public boolean streamsClosed() {
+    return ledger != null && ledger.allClosed() && streams.stream().allMatch(s -> s.closed);
+  }
+
+  private static Parcel call(android.os.IBinder binder, String descriptor, int method)
+      throws Exception {
+    if (!descriptor.equals(binder.getInterfaceDescriptor()))
+      throw new SecurityException("Unexpected stream interface");
+    Parcel in = Parcel.obtain(), out = Parcel.obtain();
+    try {
+      in.writeInterfaceToken(descriptor);
+      if (!binder.transact(method, in, out, 0))
+        throw new IllegalStateException("Stream method unavailable");
+      out.readException();
+      return out;
+    } catch (Exception failure) {
+      out.recycle();
+      throw failure;
+    } finally {
+      in.recycle();
+    }
+  }
+
+  private static void common(OpenStream stream) throws Exception {
+    if (stream.common != null) return;
+    String type = "android.hardware.audio.core." + (stream.input ? "IStreamIn" : "IStreamOut");
+    Parcel reply = call(stream.binder, type, 1);
+    try {
+      stream.common = reply.readStrongBinder();
+      if (stream.common == null
+          || !"android.hardware.audio.core.IStreamCommon"
+              .equals(stream.common.getInterfaceDescriptor()))
+        throw new SecurityException("Unexpected common interface");
+    } finally {
+      reply.recycle();
+    }
+  }
+
+  synchronized void closeStreams() {
+    for (int i = streams.size() - 1; i >= 0; i--) {
+      OpenStream s = streams.get(i);
+      if (s.closed) continue;
+      try {
+        common(s);
+        call(s.common, "android.hardware.audio.core.IStreamCommon", 2).recycle();
+        call(s.common, "android.hardware.audio.core.IStreamCommon", 1).recycle();
+        ledger.closed(s.config);
+        s.closed = true;
+      } catch (Exception ignored) {
+        // Binder failure does not prove that the module or stream has gone away.
+      } finally {
+        if (s.descriptor != null) s.descriptor.close();
+      }
+    }
+  }
+
+  JSONObject open(int config, boolean input, int frames) throws Exception {
+    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    if (frames <= 0 || frames > 262144) throw new IllegalArgumentException();
+    Parcel data = Parcel.obtain(), reply = Parcel.obtain();
+    final OpenStream[] holder = {null};
+    try {
+      data.writeInterfaceToken(ReadOnlyHalState.DESCRIPTOR);
+      FrozenHalParcel.writeOpenArgs(data, config, frames, input);
+      ledger.begin(config, input);
+      if (!state.module.transact(input ? 14 : 15, data, reply, 0))
+        throw new IllegalStateException("Open unavailable");
+      reply.readException();
+      FrozenHalParcel.Stream desc =
+          FrozenHalParcel.stream(
+              reply,
+              binder -> {
+                OpenStream stream = new OpenStream(binder, input, config);
+                streams.add(stream);
+                holder[0] = stream;
+                try {
+                  ledger.received(config);
+                } catch (Exception error) {
+                  throw new IllegalStateException("Stream journal unavailable", error);
+                }
+                if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+                try {
+                  common(stream);
+                } catch (Exception failure) {
+                  throw new IllegalStateException(failure);
+                }
+              });
+      holder[0].descriptor = desc;
+      return new JSONObject()
+          .put("input", input)
+          .put("frameBytes", desc.frameBytes)
+          .put("bufferFrames", desc.bufferFrames)
+          .put("commandQuantum", desc.command.quantum)
+          .put("replyQuantum", desc.reply.quantum)
+          .put("dataBytes", desc.data.grants[2].extent)
+          .put("started", false);
+    } finally {
+      data.recycle();
+      reply.recycle();
+    }
+  }
+
+  private void remove(int transaction, int id) throws Exception {
+    if (transaction != 7 && transaction != 19 && transaction != 20) throw new SecurityException();
+    Parcel input = Parcel.obtain(), reply = Parcel.obtain();
+    try {
+      input.writeInterfaceToken(ReadOnlyHalState.DESCRIPTOR);
+      input.writeInt(id);
+      if (!state.module.transact(transaction, input, reply, 0))
+        throw new IllegalStateException("Cleanup unavailable");
+      reply.readException();
+    } finally {
+      input.recycle();
+      reply.recycle();
+    }
+  }
+
+  public void removePatch(int id) throws Exception {
+    remove(19, id);
+  }
+
+  public void removeConfig(int id) throws Exception {
+    remove(20, id);
+  }
+
+  public void disconnectPort(int id) throws Exception {
+    remove(7, id);
+  }
+
+  private static void number(Object object, String field, int value) throws Exception {
+    var f = object.getClass().getField(field);
+    if (f.getType() == byte.class) f.setByte(object, (byte) value);
+    else if (f.getType() == short.class) f.setShort(object, (short) value);
+    else f.setInt(object, value);
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  int configure(int portId, boolean input, boolean mix) throws Exception {
+    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    Object port = null;
+    for (Object candidate : state.objects(11, "android.media.audio.common.AudioPort"))
+      if (ReadOnlyHalState.integer(candidate, "id") == portId) port = candidate;
+    if (port == null) throw new IllegalStateException("Owned port unavailable");
+    Object requested =
+        Class.forName("android.media.audio.common.AudioPortConfig").getConstructor().newInstance();
+    number(requested, "portId", portId);
+    var sampleField = requested.getClass().getField("sampleRate");
+    Object sample = sampleField.getType().getConstructor().newInstance();
+    number(sample, "value", rate);
+    sampleField.set(requested, sample);
+    var maskField = requested.getClass().getField("channelMask");
+    maskField.set(
+        requested, maskField.getType().getMethod("layoutMask", int.class).invoke(null, 3));
+    var formatField = requested.getClass().getField("format");
+    Object format = formatField.getType().getConstructor().newInstance();
+    number(format, "type", 1);
+    number(format, "pcm", 1);
+    format.getClass().getField("encoding").set(format, "");
+    formatField.set(requested, format);
+    requested.getClass().getField("flags").set(requested, ReadOnlyHalState.field(port, "flags"));
+    int requestedFlags = 0;
+    if (fast && mix) {
+      int bit =
+          Class.forName(
+                  "android.media.audio.common." + (input ? "AudioInputFlags" : "AudioOutputFlags"))
+              .getField("FAST")
+              .getInt(null);
+      requestedFlags = 1 << bit;
+      var field = requested.getClass().getField("flags");
+      field.set(
+          requested,
+          field
+              .getType()
+              .getMethod(input ? "input" : "output", int.class)
+              .invoke(null, requestedFlags));
+    }
+    Object ext = ReadOnlyHalState.field(port, "ext");
+    if (mix) {
+      if ((input && portId != tag.inputMix()) || (!input && portId != tag.outputMix()))
+        throw new SecurityException();
+      Object detail =
+          ReadOnlyHalState.call(ext, "getMix").getClass().getConstructor().newInstance();
+      number(detail, "handle", input ? tag.inputHandle() : tag.outputHandle());
+      var use = detail.getClass().getField("usecase");
+      use.set(
+          detail,
+          use.getType()
+              .getMethod(input ? "source" : "stream", int.class)
+              .invoke(null, input ? 8 : 3));
+      ext = ext.getClass().getMethod("mix", detail.getClass()).invoke(null, detail);
+    } else if (snapshot().ports().stream()
+        .noneMatch(
+            p -> p.id() == portId && address.equals(p.address()) && p.type() == (input ? 11 : 143)))
+      throw new SecurityException("Not an owned virtual device");
+    requested.getClass().getField("ext").set(requested, ext);
+    var before = snapshot();
+    Parcel data = Parcel.obtain(), reply = Parcel.obtain();
+    try {
+      data.writeInterfaceToken(ReadOnlyHalState.DESCRIPTOR);
+      data.writeTypedObject((Parcelable) requested, 0);
+      if (!state.module.transact(18, data, reply, 0))
+        throw new IllegalStateException("Configure unavailable");
+      reply.readException();
+      boolean accepted = reply.readBoolean();
+      Object suggested =
+          reply.readTypedObject(
+              (Parcelable.Creator) requested.getClass().getField("CREATOR").get(null));
+      int id = suggested == null ? 0 : ReadOnlyHalState.integer(suggested, "id");
+      if (!accepted
+          || id <= 0
+          || before.configs().stream().anyMatch(c -> c.id() == id)
+          || ReadOnlyHalState.integer(suggested, "portId") != portId)
+        throw new IllegalStateException("Port format rejected: " + suggested);
+      var actual = ReadOnlyHalState.format(suggested);
+      if (actual.getInt("rate") != rate
+          || !actual.getBoolean("pcm16")
+          || !actual.getBoolean("stereo"))
+        throw new SecurityException("Unexpected configured format");
+      if (mix
+          && ((Number)
+                      ReadOnlyHalState.call(
+                          ReadOnlyHalState.field(suggested, "flags"),
+                          input ? "getInput" : "getOutput"))
+                  .intValue()
+              != requestedFlags) throw new SecurityException("Requested flags not honored");
+      if (mix
+          && ReadOnlyHalState.integer(
+                  ReadOnlyHalState.call(ReadOnlyHalState.field(suggested, "ext"), "getMix"),
+                  "handle")
+              != (input ? tag.inputHandle() : tag.outputHandle()))
+        throw new SecurityException("Mix handle changed");
+      return id;
+    } finally {
+      data.recycle();
+      reply.recycle();
+    }
+  }
+
+  FrozenHalParcel.Patch patch(int source, int sink) throws Exception {
+    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    var before = snapshot();
+    Parcel data = Parcel.obtain(), reply = Parcel.obtain();
+    try {
+      data.writeInterfaceToken(ReadOnlyHalState.DESCRIPTOR);
+      FrozenHalParcel.writePatch(data, 0, new int[] {source}, new int[] {sink});
+      if (!state.module.transact(17, data, reply, 0))
+        throw new IllegalStateException("Patch unavailable");
+      reply.readException();
+      var value = FrozenHalParcel.patch(reply);
+      if (value.id <= 0
+          || before.patches().stream().anyMatch(p -> p.id() == value.id)
+          || !java.util.Arrays.equals(value.sources, new int[] {source})
+          || !java.util.Arrays.equals(value.sinks, new int[] {sink}))
+        throw new SecurityException("Unexpected patch identity");
+      return value;
+    } finally {
+      data.recycle();
+      reply.recycle();
+    }
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  int createVirtualPort(int type) throws Exception {
+    if (stopRequested.get()) throw new IllegalStateException("Probe stopping");
+    Object requested = null;
+    for (Object port : state.objects(11, "android.media.audio.common.AudioPort")) {
+      Object ext = ReadOnlyHalState.field(port, "ext");
+      if (!ReadOnlyHalState.tag(ext, "device")) continue;
+      Object device = ReadOnlyHalState.field(ReadOnlyHalState.call(ext, "getDevice"), "device");
+      Object description = ReadOnlyHalState.field(device, "type"),
+          address = ReadOnlyHalState.field(device, "address");
+      if (ReadOnlyHalState.integer(description, "type") == type
+          && "virtual".equals(ReadOnlyHalState.field(description, "connection"))
+          && ReadOnlyHalState.tag(address, "id")
+          && "".equals(ReadOnlyHalState.call(address, "getId"))) {
+        if (requested != null) throw new IllegalStateException("Ambiguous template");
+        requested = port;
+      }
+    }
+    if (requested == null) throw new IllegalStateException("Virtual template unavailable");
+    Object device =
+        ReadOnlyHalState.field(
+            ReadOnlyHalState.call(ReadOnlyHalState.field(requested, "ext"), "getDevice"), "device");
+    Object value =
+        Class.forName("android.media.audio.common.AudioDeviceAddress")
+            .getMethod("id", String.class)
+            .invoke(null, address);
+    device.getClass().getField("address").set(device, value);
+    Parcel input = Parcel.obtain(), reply = Parcel.obtain();
+    try {
+      input.writeInterfaceToken(ReadOnlyHalState.DESCRIPTOR);
+      input.writeTypedObject((Parcelable) requested, 0);
+      if (!state.module.transact(6, input, reply, 0))
+        throw new IllegalStateException("Connect unavailable");
+      reply.readException();
+      Object returned =
+          reply.readTypedObject(
+              (Parcelable.Creator)
+                  Class.forName("android.media.audio.common.AudioPort")
+                      .getField("CREATOR")
+                      .get(null));
+      int id = ReadOnlyHalState.integer(returned, "id");
+      var current = snapshot();
+      if (current.ports().stream()
+          .noneMatch(p -> p.id() == id && p.type() == type && address.equals(p.address())))
+        throw new SecurityException("Created port identity changed");
+      return id;
+    } finally {
+      input.recycle();
+      reply.recycle();
+    }
+  }
+
+  private static String readString(Path path) throws Exception {
+    return new String(Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+  }
+
+  private static void rootPreflight() throws Exception {
+    if (android.os.Process.myUid() != 0)
+      throw new SecurityException("Root-owned transport required");
+    String[][] pins = {
+      {
+        "/vendor/lib64/libaudioserviceexampleimpl.so",
+        "ef1bad7d1ae1d66a6ac6b39a009fba43e00031bb9a3316e435965d4e91564d61"
+      },
+      {
+        "/vendor/lib64/libnbaio_mono.so",
+        "c363ecab034babaa344163bc4aaf67dfe42945055c433e0640ba555b86d159aa"
+      }
+    };
+    for (var pin : pins) {
+      Path file = Path.of(pin[0]);
+      if (Files.size(file) > 4194304
+          || !java.util.HexFormat.of()
+              .formatHex(
+                  java.security.MessageDigest.getInstance("SHA-256")
+                      .digest(Files.readAllBytes(file)))
+              .equals(pin[1])) throw new SecurityException("Unsupported vendor build");
+    }
+    Process query =
+        new ProcessBuilder("dumpsys", "android.hardware.audio.core.IModule/r_submix").start();
+    byte[] output = query.getInputStream().readNBytes(8193);
+    if (!query.waitFor(2, TimeUnit.SECONDS)
+        || query.exitValue() != 0
+        || output.length > 8192
+        || !new String(output, java.nio.charset.StandardCharsets.UTF_8)
+            .replace("\r", "")
+            .trim()
+            .equals("SubmixRoutes:\n <Empty>"))
+      throw new SecurityException("Existing submix route; no allocation allowed");
+  }
+
+  public static void main(String[] args) throws Exception {
+    rootPreflight();
+    if ((args.length != 2 && args.length != 3)
+        || !(args[0].equals("create")
+            || args[0].equals("recover")
+            || args[0].equals("configs")
+            || args[0].equals("configs-fast")
+            || args[0].equals("streams"))) throw new IllegalArgumentException();
+    UUID nonce = UUID.fromString(args[1]);
+    if (!nonce.toString().equals(args[1])) throw new IllegalArgumentException();
+    Path journal = Path.of("/data/local/tmp/homepod-direct-" + nonce + ".json");
+    HalPortProbe probe =
+        new HalPortProbe(
+            nonce,
+            args.length == 3 ? Integer.parseInt(args[2]) : 44100,
+            args[0].equals("configs-fast"));
+    JSONObject saved;
+    if (!args[0].equals("recover")) {
+      saved = probe.state.snapshot().put("epoch", probe.epoch).put("streamLedger", new JSONArray());
+      Files.write(
+          journal,
+          saved.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          StandardOpenOption.CREATE_NEW,
+          StandardOpenOption.WRITE);
+      Files.setPosixFilePermissions(journal, PosixFilePermissions.fromString("rw-------"));
+    } else {
+      if (Files.isSymbolicLink(journal)
+          || Files.size(journal) > 65536
+          || ((Number) Files.getAttribute(journal, "unix:uid", LinkOption.NOFOLLOW_LINKS))
+                  .intValue()
+              != android.os.Process.myUid())
+        throw new SecurityException("Invalid ownership journal");
+      saved = new JSONObject(readString(journal));
+    }
+    if (!probe.epoch.equals(saved.getString("epoch"))) {
+      System.out.println("{\"oldModuleGone\":true,\"mutations\":0}");
+      return;
+    }
+    // Legacy journals cannot prove that an open reply was delivered. Never reuse them
+    // to infer an empty stream list (the original open-only failure did exactly that).
+    if (args[0].equals("recover") && !saved.has("streamLedger"))
+      throw new IllegalStateException(
+          "Legacy journal has unknown stream state; automatic cleanup refused");
+    var recovered = new ArrayList<StreamOpenLedger.Entry>();
+    var entries = saved.optJSONArray("streamLedger");
+    if (entries != null)
+      for (int i = 0; i < entries.length(); i++) {
+        var e = entries.getJSONObject(i);
+        recovered.add(
+            new StreamOpenLedger.Entry(
+                e.getInt("config"),
+                e.getBoolean("input"),
+                StreamOpenLedger.Phase.valueOf(e.getString("phase"))));
+      }
+    final JSONObject document = saved;
+    probe.ledger =
+        new StreamOpenLedger(
+            values -> {
+              var array = new JSONArray();
+              for (var e : values)
+                array.put(
+                    new JSONObject()
+                        .put("config", e.configId())
+                        .put("input", e.input())
+                        .put("phase", e.phase().name()));
+              document.put("streamLedger", array);
+              Path next = journal.resolveSibling(journal.getFileName() + ".next");
+              Files.write(
+                  next,
+                  document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                  StandardOpenOption.CREATE_NEW,
+                  StandardOpenOption.WRITE);
+              Files.setPosixFilePermissions(next, PosixFilePermissions.fromString("rw-------"));
+              try (var channel =
+                  java.nio.channels.FileChannel.open(next, StandardOpenOption.WRITE)) {
+                channel.force(true);
+              }
+              Files.move(
+                  next,
+                  journal,
+                  java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                  java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            },
+            recovered);
+    var baseline = decode(saved, probe.epoch);
+    var owner = new OwnedHalResources(probe, baseline, probe.tag);
+    var watchdog =
+        Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              Thread t = new Thread(r);
+              t.setDaemon(true);
+              return t;
+            });
+    watchdog.schedule(
+        () -> {
+          probe.stopRequested.set(true);
+          probe.closeStreams();
+          owner.cleanup();
+        },
+        15,
+        TimeUnit.SECONDS);
+    var created = new JSONArray();
+    var minimumFrames = new JSONArray();
+    var opened = new JSONArray();
+    Exception failure = null;
+    OwnedHalResources.Result result;
+    try {
+      if (!args[0].equals("recover")) {
+        int output = probe.createVirtualPort(143), input = probe.createVirtualPort(11);
+        created.put(output);
+        created.put(input);
+        if (args[0].startsWith("configs") || args[0].equals("streams")) {
+          int outMix = probe.configure(3, false, true), inMix = probe.configure(4, true, true);
+          int outDevice = probe.configure(output, false, false),
+              inDevice = probe.configure(input, true, false);
+          var outPatch = probe.patch(outMix, outDevice);
+          var inPatch = probe.patch(inDevice, inMix);
+          minimumFrames.put(outPatch.minimumFrames);
+          minimumFrames.put(inPatch.minimumFrames);
+          if (args[0].equals("streams")) {
+            opened.put(probe.open(outMix, false, outPatch.minimumFrames));
+            opened.put(probe.open(inMix, true, inPatch.minimumFrames));
+          }
+        }
+      }
+    } catch (Exception error) {
+      failure = error;
+    } finally {
+      probe.closeStreams();
+      result = owner.cleanup();
+      watchdog.shutdownNow();
+    }
+    var report =
+        new JSONObject()
+            .put("created", created)
+            .put("cleanupComplete", result.complete())
+            .put("oldInstanceGone", result.oldInstanceGone())
+            .put("noStreamOpenAttempted", !probe.ledger.attempted())
+            .put("openReplyUncertain", probe.ledger.replyUncertain())
+            .put("streams", opened)
+            .put("streamsClosed", probe.streamsClosed())
+            .put("sampleRate", probe.rate)
+            .put("minimumFrames", minimumFrames)
+            .put("fastRequested", probe.fast)
+            .put("cleanupErrors", new JSONArray(result.errors()));
+    if (failure != null)
+      report.put("failure", failure.getClass().getSimpleName() + ": " + failure.getMessage());
+    System.out.println(report);
+    if (!result.complete()) throw new IllegalStateException("Owned port cleanup incomplete");
+    if (failure != null) throw failure;
+  }
+
+  private static int streamsCount(HalPortProbe probe) {
+    return probe.streams.size();
+  }
+}

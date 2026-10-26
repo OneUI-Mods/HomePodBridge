@@ -52,7 +52,12 @@ final class AudioServiceRecovery {
     }
   }
 
-  private static String run(List<String> args, int maximum, int seconds) throws Exception {
+  static String run(List<String> args, int maximum, int seconds) throws Exception {
+    return run(args, maximum, seconds, false);
+  }
+
+  static String run(List<String> args, int maximum, int seconds, boolean retainFailure)
+      throws Exception {
     Process process =
         new ProcessBuilder(args)
             .redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")))
@@ -63,7 +68,7 @@ final class AudioServiceRecovery {
       byte[] output = process.getInputStream().readNBytes(maximum + 1);
       if (output.length > maximum
           || !process.waitFor(seconds, TimeUnit.SECONDS)
-          || process.exitValue() != 0)
+          || (!retainFailure && process.exitValue() != 0))
         throw new java.io.IOException("Recovery command unavailable");
       return new String(output, StandardCharsets.UTF_8);
     } finally {

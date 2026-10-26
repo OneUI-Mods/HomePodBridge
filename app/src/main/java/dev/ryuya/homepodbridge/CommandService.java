@@ -52,6 +52,11 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("probe-hal-streams")) {
+      commandStatus = "Preparing open-only HAL transport probe";
+      commands.execute(() -> commandStatus = HalTransportProbe.run(this));
+      return START_NOT_STICKY;
+    }
     if (command.equals("recover-audio")) {
       String nonce = intent.getStringExtra("owned_nonce");
       commandStatus = "Checking explicit audio-service recovery";
