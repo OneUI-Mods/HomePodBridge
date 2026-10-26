@@ -55,6 +55,8 @@ final class CaptureProbe {
     ArrayList<Long> ages = new ArrayList<>();
     long frames = 0;
     long zeroSourceFrames = 0;
+    long[] lastTiming = null;
+    int timingPolls = 0, missingTimingPolls = 0;
     String tuningReport = "", restoreReport = "";
     int tuneOperation = operation == 4 ? 4 : operation == 5 ? 6 : operation;
     int restoreOperation = operation == 4 ? 5 : operation == 5 ? 7 : 3;
@@ -109,6 +111,9 @@ final class CaptureProbe {
             if (now < nextTiming) continue;
             nextTiming = now + TimeUnit.MILLISECONDS.toNanos(250);
             long[] timing = RootConnector.captureTiming(lifetime);
+            timingPolls++;
+            if (timing == null) missingTimingPolls++;
+            else lastTiming = timing;
             if (timing != null && timing.length >= 11) zeroSourceFrames = timing[10];
             if (directTuning && inspected && !tuned) {
               String report = HalInspection.result();
@@ -206,6 +211,12 @@ final class CaptureProbe {
                 + zeroSourceFrames
                 + " timestampSamples="
                 + ages.size()
+                + " timingPolls="
+                + timingPolls
+                + " missingTimingPolls="
+                + missingTimingPolls
+                + " lastTiming="
+                + java.util.Arrays.toString(lastTiming)
                 + " tuning="
                 + tuningReport
                 + " restoration="
