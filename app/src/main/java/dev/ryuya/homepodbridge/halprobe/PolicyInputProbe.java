@@ -57,6 +57,7 @@ final class PolicyInputProbe {
     boolean registered = false;
     JSONObject result = new JSONObject();
     Exception failure = null;
+    String phase = "buildPolicy";
     try {
       builder
           .getClass()
@@ -64,6 +65,7 @@ final class PolicyInputProbe {
           .invoke(builder, callbacks.getLooper());
       builder.getClass().getMethod("addMix", mixType).invoke(builder, mix);
       policy = builder.getClass().getMethod("build").invoke(builder);
+      phase = "registerPolicy";
       int status =
           (Integer)
               AudioManager.class
@@ -72,6 +74,7 @@ final class PolicyInputProbe {
       if (status != 0) throw new IllegalStateException("Self-UID policy registration refused");
       registered = true;
       String address = (String) mixType.getMethod("getRegistration").invoke(mix);
+      phase = "openInput";
       lease = PolicyInputLease.open(context, address);
       result
           .put("inputStarted", true)
@@ -105,8 +108,17 @@ final class PolicyInputProbe {
     if (failure != null) {
       Throwable cause = failure;
       while (cause.getCause() != null) cause = cause.getCause();
-      result.put("failure", cause.getClass().getSimpleName() + ": " + cause.getMessage());
+      result
+          .put("phase", phase)
+          .put("failure", cause.getClass().getSimpleName() + ": " + cause.getMessage());
+      var frames = new org.json.JSONArray();
+      for (StackTraceElement frame : cause.getStackTrace()) {
+        if (frames.length() >= 8) break;
+        frames.put(frame.toString());
+      }
+      result.put("failureFrames", frames);
     }
+    if (!restored) result.put("baseline", new JSONObject(baseline)).put("after", state.snapshot());
     return result;
   }
 
