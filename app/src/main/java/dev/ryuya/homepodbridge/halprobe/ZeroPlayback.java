@@ -11,6 +11,7 @@ final class ZeroPlayback implements AutoCloseable {
   private final java.util.concurrent.ScheduledExecutorService timer =
       Executors.newSingleThreadScheduledExecutor();
   private SilentProbeSource current;
+  private boolean closed;
 
   ZeroPlayback(boolean pulse) {
     toggle();
@@ -18,6 +19,7 @@ final class ZeroPlayback implements AutoCloseable {
   }
 
   private synchronized void toggle() {
+    if (closed) return;
     if (current != null) {
       current.close();
       current = null;
@@ -34,6 +36,7 @@ final class ZeroPlayback implements AutoCloseable {
 
   @Override
   public synchronized void close() {
+    closed = true;
     timer.shutdownNow();
     if (current != null) current.close();
     current = null;

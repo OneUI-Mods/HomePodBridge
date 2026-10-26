@@ -248,6 +248,13 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           .put("streamsClosed", probe.streamsClosed())
           .put("openReplyUncertain", probe.ledger.replyUncertain())
           .put("resourcesRestoredExactly", probe.snapshot().equals(baseline));
+      var after = probe.snapshot();
+      boolean removed =
+          configs.stream().noneMatch(c -> after.configs().stream().anyMatch(x -> x.id() == c.id()));
+      if (patch != null)
+        for (var existing : after.patches()) if (existing.id() == patch.id()) removed = false;
+      report.put(
+          "ownedInputReleased", removed && probe.streamsClosed() && !probe.ledger.replyUncertain());
     }
     return report;
   }

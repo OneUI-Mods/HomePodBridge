@@ -16,6 +16,7 @@ public final class HalCaptureHost {
     boolean allocations = false;
     ReadOnlyHalState state = null;
     String baseline = null;
+    String registration = null;
     try {
       if (args.length != 3
           || !UUID.fromString(args[0]).toString().equals(args[0])
@@ -58,6 +59,7 @@ public final class HalCaptureHost {
         control.start();
         allocations = true;
         try (var policy = new RegisteredPolicy(context, scope)) {
+          registration = policy.address;
           var output = socket.getOutputStream();
           result.put(
               "capture",
@@ -88,13 +90,31 @@ public final class HalCaptureHost {
     }
     try {
       boolean restored = !allocations;
+      boolean ownedReleased = !allocations;
       if (allocations && state != null)
-        for (int i = 0; i < 30; i++) {
-          restored = baseline.equals(state.snapshot().toString());
-          if (restored) break;
+        for (int i = 0; i < 60; i++) {
+          JSONObject after = state.snapshot();
+          restored = baseline.equals(after.toString());
+          boolean ownPort = false;
+          var ports = after.getJSONArray("ports");
+          for (int j = 0; j < ports.length(); j++)
+            if (registration != null
+                && registration.equals(ports.getJSONObject(j).optString("address"))) ownPort = true;
+          JSONObject capture = result.optJSONObject("capture");
+          ownedReleased =
+              registration != null
+                  && !ownPort
+                  && capture != null
+                  && capture.optBoolean("ownedInputReleased");
+          if (restored || ownedReleased) break;
           Thread.sleep(50);
         }
-      result.put("resourcesRestoredExactly", restored).put("noAllocations", !allocations);
+      result
+          .put("resourcesRestoredExactly", restored)
+          .put("ownedResourcesReleased", ownedReleased)
+          .put("noAllocations", !allocations);
+      if (!restored && baseline != null)
+        result.put("before", new JSONObject(baseline)).put("after", state.snapshot());
     } catch (Exception uncertain) {
       try {
         result.put("resourcesRestoredExactly", false);
@@ -103,7 +123,8 @@ public final class HalCaptureHost {
     }
     System.out.println(result);
     System.out.flush();
-    if (result.optBoolean("resourcesRestoredExactly")) System.exit(0);
+    if (result.optBoolean("resourcesRestoredExactly")
+        || result.optBoolean("ownedResourcesReleased")) System.exit(0);
   }
 
   private HalCaptureHost() {}

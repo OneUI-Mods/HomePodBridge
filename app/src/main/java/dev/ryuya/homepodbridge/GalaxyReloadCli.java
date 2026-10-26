@@ -43,6 +43,23 @@ final class GalaxyReloadCli {
       if (!SIGNER.equals(signer)) return "UNTRUSTED_GALAXY_RELOAD";
       String apk = context.getPackageManager().getApplicationInfo(PACKAGE, 0).sourceDir;
       if (!apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk")) return "INVALID_MODULE_PATH";
+      if (action.equals("reload")) {
+        String own = context.getApplicationInfo().sourceDir;
+        if (!own.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk")) return "INVALID_MODULE_PATH";
+        String prepared =
+            AudioServiceRecovery.run(
+                    java.util.List.of(
+                        "su",
+                        "-c",
+                        "CLASSPATH='"
+                            + own
+                            + "' exec app_process /system/bin"
+                            + " dev.ryuya.homepodbridge.GalaxyReloadPrepare"),
+                    256,
+                    8)
+                .trim();
+        if (!prepared.equals("PREPARED")) return "RELOAD_CHECK_UNAVAILABLE";
+      }
       helper =
           new ProcessBuilder(
                   "su",

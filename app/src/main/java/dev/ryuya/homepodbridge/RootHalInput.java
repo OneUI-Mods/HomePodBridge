@@ -136,13 +136,19 @@ final class RootHalInput implements AutoCloseable {
       Thread.currentThread().interrupt();
     }
     JSONObject report = result;
-    return report != null && report.optBoolean("resourcesRestoredExactly");
+    return report != null
+        && (report.optBoolean("resourcesRestoredExactly")
+            || report.optBoolean("ownedResourcesReleased"));
   }
 
   @Override
   public void close() {
     try {
       if (socket != null) socket.close();
+    } catch (java.io.IOException ignored) {
+    }
+    try {
+      if (process != null) process.getOutputStream().close();
     } catch (java.io.IOException ignored) {
     }
   }
