@@ -485,6 +485,28 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   private static void runMain(String[] args) throws Exception {
     rootPreflight();
+    if (args.length == 3 && args[0].equals("metrics")) {
+      if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
+        throw new IllegalArgumentException();
+      String current = epoch();
+      Path proc = Path.of("/proc", current.split(":")[0]);
+      long fds, threads;
+      try (var files = Files.list(proc.resolve("fd"))) {
+        fds = files.count();
+      }
+      try (var tasks = Files.list(proc.resolve("task"))) {
+        threads = tasks.count();
+      }
+      if (!current.equals(epoch()))
+        throw new SecurityException("Module changed during observation");
+      System.out.println(
+          new JSONObject()
+              .put("moduleEpoch", current)
+              .put("openFdCount", fds)
+              .put("threadCount", threads)
+              .put("readOnly", true));
+      return;
+    }
     if (args.length == 3 && args[0].equals("stop")) {
       String nonce = UUID.fromString(args[1]).toString();
       if (!nonce.equals(args[1]) || !args[2].equals("44100")) throw new IllegalArgumentException();
@@ -511,12 +533,13 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       System.out.println("OWNED_PROBE_STOP_SENT");
       return;
     }
+    ProbeScenario scenario = args.length == 0 ? null : ProbeScenario.forOperation(args[0]);
     if ((args.length != 2 && args.length != 3)
         || !(args[0].equals("create")
             || args[0].equals("recover")
             || args[0].equals("configs")
             || args[0].equals("configs-fast")
-            || args[0].equals("streams"))) throw new IllegalArgumentException();
+            || scenario != null)) throw new IllegalArgumentException();
     UUID nonce = UUID.fromString(args[1]);
     if (!nonce.toString().equals(args[1])) throw new IllegalArgumentException();
     Path journal = Path.of("/data/local/tmp/homepod-direct-" + nonce + ".json");
@@ -621,7 +644,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         int output = probe.createVirtualPort(143), input = probe.createVirtualPort(11);
         created.put(output);
         created.put(input);
-        if (args[0].startsWith("configs") || args[0].equals("streams")) {
+        if (args[0].startsWith("configs") || scenario != null) {
           int outMix = probe.configure(3, false, true), inMix = probe.configure(4, true, true);
           int outDevice = probe.configure(output, false, false),
               inDevice = probe.configure(input, true, false);
@@ -629,13 +652,14 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           var inPatch = probe.patch(inDevice, inMix);
           minimumFrames.put(outPatch.minimumFrames);
           minimumFrames.put(inPatch.minimumFrames);
-          if (args[0].equals("streams")) {
+          if (scenario != null) {
             opened.put(probe.open(outMix, false, outPatch.minimumFrames));
             opened.put(probe.open(inMix, true, inPatch.minimumFrames));
             mapping =
                 HalQueueMapping.inspectInChild(
                     probe.streams.stream().map(stream -> stream.descriptor).toList(),
-                    nonce.toString());
+                    nonce.toString(),
+                    scenario);
           }
         }
       }

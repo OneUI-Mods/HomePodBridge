@@ -58,9 +58,15 @@ public final class CommandService extends Service {
       commands.execute(() -> commandStatus = HalTransportProbe.stop(this, nonce));
       return START_NOT_STICKY;
     }
-    if (command.equals("probe-hal-streams")) {
+    if (command.equals("probe-hal-metrics")) {
+      commandStatus = "Reading idle HAL resource counts";
+      commands.execute(() -> commandStatus = HalTransportProbe.metrics(this));
+      return START_NOT_STICKY;
+    }
+    if (dev.ryuya.homepodbridge.halprobe.ProbeScenario.forCommand(command) != null) {
       commandStatus = "Preparing open-only HAL transport probe";
-      commands.execute(() -> commandStatus = HalTransportProbe.run(this));
+      String requested = command;
+      commands.execute(() -> commandStatus = HalTransportProbe.run(this, requested));
       return START_NOT_STICKY;
     }
     if (command.equals("recover-audio")) {

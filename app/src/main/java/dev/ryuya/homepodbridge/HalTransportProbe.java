@@ -6,8 +6,14 @@ import java.util.UUID;
 
 /** No start commands or samples: only test root-owned Binder/FD delivery and closure. */
 final class HalTransportProbe {
-  static String run(Context context) {
-    return execute(context, "streams", UUID.randomUUID().toString());
+  static String run(Context context, String command) {
+    var scenario = dev.ryuya.homepodbridge.halprobe.ProbeScenario.forCommand(command);
+    if (scenario == null) return "HAL_PROBE_REFUSED";
+    return execute(context, scenario.operation, UUID.randomUUID().toString());
+  }
+
+  static String metrics(Context context) {
+    return execute(context, "metrics", UUID.randomUUID().toString());
   }
 
   static String stop(Context context, String nonce) {

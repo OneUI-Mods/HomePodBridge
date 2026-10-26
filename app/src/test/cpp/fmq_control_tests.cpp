@@ -41,6 +41,11 @@ int main() {
     assert(command.view.write->load()==before);assert(command.view.transfer(&pending,8,false));
     assert(!hp_query_standby(command,reply,&result,&elapsed,std::chrono::milliseconds(1)));
     assert(command.view.transfer(&pending,8,false) && pending.tag==1);
+    hp_mapped_queue no_event;
+    assert(no_event.attach(&cmd_fd,1,cg,3,8,1));
+    before=command.view.write->load();
+    assert(!hp_dispatch_status(no_event,reply));
+    assert(command.view.write->load()==before); // Refuse before enqueuing an unwakeable command.
     assert(!::close(cmd_fd) && !::close(reply_fd));
     std::puts("FMQ standby control, origins, pending-reply and timeout guards passed");
 }

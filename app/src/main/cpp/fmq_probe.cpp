@@ -65,3 +65,15 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_queryStandby(
     if(result) env->SetLongArrayRegion(result,0,4,values);
     return result;
 }
+
+// Deliberately end only this isolated worker after one non-audio status dispatch.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_exitAfterStatus(
+    JNIEnv* env,jclass,jintArray command_fds,jlongArray command_grants,
+    jintArray reply_fds,jlongArray reply_grants) {
+    hp_mapped_queue command,reply;
+    if(!hp_attach_status_queue(env,command_fds,command_grants,8,command)
+        || !hp_attach_status_queue(env,reply_fds,reply_grants,56,reply)
+        || !hp_dispatch_status(command,reply)) return JNI_FALSE;
+    _exit(74);
+}

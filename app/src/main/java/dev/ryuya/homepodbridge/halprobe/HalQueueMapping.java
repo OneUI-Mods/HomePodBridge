@@ -22,8 +22,11 @@ public final class HalQueueMapping {
   private static native long[] queryStandby(
       int[] commandFds, long[] commandGrants, int[] replyFds, long[] replyGrants);
 
-  static JSONObject inspectInChild(List<FrozenHalParcel.Stream> streams, String nonce)
-      throws Exception {
+  private static native boolean exitAfterStatus(
+      int[] commandFds, long[] commandGrants, int[] replyFds, long[] replyGrants);
+
+  static JSONObject inspectInChild(
+      List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException();
@@ -37,7 +40,8 @@ public final class HalQueueMapping {
                   HalQueueMapping.class.getName(),
                   name,
                   nonce,
-                  Integer.toString(android.os.Process.myPid()))
+                  Integer.toString(android.os.Process.myPid()),
+                  scenario.workerMode)
               .start();
       var pending = new android.system.StructPollfd();
       pending.fd = server.getFileDescriptor();
@@ -101,8 +105,10 @@ public final class HalQueueMapping {
         try {
           result = new DataInputStream(socket.getInputStream()).readUTF();
         } catch (java.io.IOException unavailable) {
-          if (!child.waitFor(1, TimeUnit.SECONDS)) child.destroyForcibly();
-          child.waitFor(1, TimeUnit.SECONDS);
+          boolean forced = !child.waitFor(1, TimeUnit.SECONDS);
+          if (forced) child.destroyForcibly();
+          if (!child.waitFor(1, TimeUnit.SECONDS))
+            throw new java.io.IOException("Worker termination unconfirmed");
           String diagnostics =
               new String(
                       child.getInputStream().readNBytes(1024),
@@ -110,6 +116,15 @@ public final class HalQueueMapping {
                   + new String(
                       child.getErrorStream().readNBytes(1024),
                       java.nio.charset.StandardCharsets.UTF_8);
+          boolean timedOut = unavailable instanceof java.net.SocketTimeoutException;
+          if (scenario.acceptsFailure(child.exitValue(), timedOut, forced, diagnostics))
+            return new JSONObject()
+                .put("faultObserved", true)
+                .put("fault", scenario.workerMode)
+                .put("workerExit", child.exitValue())
+                .put("forcedTermination", forced)
+                .put("timedOut", timedOut)
+                .put("started", false);
           throw new java.io.IOException("Mapping child failed: " + diagnostics, unavailable);
         }
         if (result.length() > 2048) throw new SecurityException();
@@ -123,11 +138,13 @@ public final class HalQueueMapping {
   }
 
   public static void main(String[] args) throws Exception {
-    if (args.length != 3
+    if (args.length != 4
         || android.os.Process.myUid() != 0
         || !args[0].equals("hpb-map-" + args[1])
         || !java.util.UUID.fromString(args[1]).toString().equals(args[1])
-        || !args[2].matches("[1-9][0-9]{0,6}")) throw new SecurityException();
+        || !args[2].matches("[1-9][0-9]{0,6}")
+        || ProbeScenario.forWorker(args[3]) == null) throw new SecurityException();
+    ProbeScenario scenario = ProbeScenario.forWorker(args[3]);
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException();
@@ -155,6 +172,11 @@ public final class HalQueueMapping {
       var metadata = new DataInputStream(new ByteArrayInputStream(data));
       if (!metadata.readUTF().equals(args[1]) || metadata.readInt() != 6)
         throw new SecurityException();
+      if (scenario == ProbeScenario.EXIT_FDS) {
+        System.out.println("FAULT_CHECKPOINT=after-fds");
+        System.out.flush();
+        Runtime.getRuntime().halt(73);
+      }
       JSONArray reports = new JSONArray();
       var queueFds = new ArrayList<int[]>();
       var queueGrants = new ArrayList<long[]>();
@@ -204,6 +226,23 @@ public final class HalQueueMapping {
                 .put("writtenBytes", result[2]));
       }
       if (next != incoming.length || metadata.available() != 0) throw new SecurityException();
+      if (scenario == ProbeScenario.EXIT_MAP) {
+        System.out.println("FAULT_CHECKPOINT=after-map");
+        System.out.flush();
+        Runtime.getRuntime().halt(73);
+      }
+      if (scenario == ProbeScenario.HANG) {
+        System.out.println("FAULT_CHECKPOINT=hang");
+        System.out.flush();
+        Thread.sleep(10000);
+        throw new SecurityException("Hang fault was not terminated");
+      }
+      if (scenario == ProbeScenario.EXIT_STATUS) {
+        System.out.println("FAULT_CHECKPOINT=after-status");
+        System.out.flush();
+        exitAfterStatus(queueFds.get(0), queueGrants.get(0), queueFds.get(1), queueGrants.get(1));
+        throw new SecurityException("Status dispatch fault failed");
+      }
       var control = new JSONArray();
       for (int base : new int[] {0, 3}) {
         long[] result =

@@ -87,4 +87,5 @@ public:
         syscall(SYS_futex,event_,FUTEX_WAKE,INT_MAX,nullptr,nullptr,0);
         return true;
     }
+    bool can_notify() const { return attached_ && event_!=nullptr; }
 };

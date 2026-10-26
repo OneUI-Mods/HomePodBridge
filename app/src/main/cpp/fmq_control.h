@@ -13,12 +13,9 @@ struct hp_status_reply {
 static_assert(sizeof(hp_status_command)==8);
 static_assert(sizeof(hp_status_reply)==56);
 
-// One outstanding getStatus only. No start, burst, reserved-exit, audio writes or pointer resets.
-inline bool hp_query_standby(hp_mapped_queue& command, hp_mapped_queue& reply,
-                             hp_status_reply* result, int64_t* duration_us,
-                             std::chrono::milliseconds timeout=std::chrono::milliseconds(50)) {
-    if(!result || !duration_us || timeout.count()<=0 || timeout.count()>50
-        || !command.view.valid() || !reply.view.valid()
+// Only one getStatus can be outstanding. Callers consume its reply before the next dispatch.
+inline bool hp_dispatch_status(hp_mapped_queue& command,hp_mapped_queue& reply) {
+    if(!command.can_notify() || !reply.can_notify() || !command.view.valid() || !reply.view.valid()
         || command.view.capacity!=8 || command.view.quantum!=8
         || reply.view.capacity!=56 || reply.view.quantum!=56) return false;
     auto empty=[](const hp_fmq_view& q) {
@@ -26,8 +23,16 @@ inline bool hp_query_standby(hp_mapped_queue& command, hp_mapped_queue& reply,
     };
     if(!empty(command.view) || !empty(reply.view)) return false;
     hp_status_command query{};
+    return command.view.transfer(&query,sizeof(query),true) && command.notify(2);
+}
+
+// No start, burst, reserved-exit, audio writes or pointer resets.
+inline bool hp_query_standby(hp_mapped_queue& command, hp_mapped_queue& reply,
+                             hp_status_reply* result, int64_t* duration_us,
+                             std::chrono::milliseconds timeout=std::chrono::milliseconds(50)) {
+    if(!result || !duration_us || timeout.count()<=0 || timeout.count()>50) return false;
     auto begin=std::chrono::steady_clock::now();
-    if(!command.view.transfer(&query,sizeof(query),true) || !command.notify(2)) return false;
+    if(!hp_dispatch_status(command,reply)) return false;
     hp_status_reply response{};
     while(std::chrono::steady_clock::now()-begin<timeout) {
         if(reply.view.transfer(&response,sizeof(response),false)) {
