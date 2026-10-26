@@ -46,6 +46,7 @@ def check(apk):
         for abi in ("arm64-v8a", "x86_64"):
             assert f"lib/{abi}/libhomepod_bridge.so" in archive.namelist()
             assert f"lib/{abi}/libhomepod_hal.so" in archive.namelist()
+            assert f"lib/{abi}/libhomepod_fmq_probe.so" in archive.namelist()
         for name in archive.namelist():
             assert ".signing" not in name and not name.endswith((".keystore", ".p12"))
             if name.endswith(".dex"):

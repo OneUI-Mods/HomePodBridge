@@ -578,6 +578,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     var created = new JSONArray();
     var minimumFrames = new JSONArray();
     var opened = new JSONArray();
+    JSONObject mapping = null;
     Exception failure = null;
     OwnedHalResources.Result result;
     try {
@@ -596,6 +597,10 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           if (args[0].equals("streams")) {
             opened.put(probe.open(outMix, false, outPatch.minimumFrames));
             opened.put(probe.open(inMix, true, inPatch.minimumFrames));
+            mapping =
+                HalQueueMapping.inspectInChild(
+                    probe.streams.stream().map(stream -> stream.descriptor).toList(),
+                    nonce.toString());
           }
         }
       }
@@ -619,6 +624,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             .put("minimumFrames", minimumFrames)
             .put("fastRequested", probe.fast)
             .put("cleanupErrors", new JSONArray(result.errors()));
+    report.put("resourcesRestoredExactly", probe.snapshot().equals(baseline));
+    if (mapping != null) report.put("mapping", mapping);
     if (failure != null)
       report.put("failure", failure.getClass().getSimpleName() + ": " + failure.getMessage());
     System.out.println(report);
