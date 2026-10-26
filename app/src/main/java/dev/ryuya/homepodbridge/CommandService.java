@@ -52,9 +52,10 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
-    if (command.equals("probe-policy-input")) {
+    if (command.equals("probe-policy-input") || command.equals("probe-policy-route")) {
       commandStatus = "Preparing record-free self-UID policy input";
-      commands.execute(() -> commandStatus = HalTransportProbe.policyInput(this));
+      boolean routeOnly = command.equals("probe-policy-route");
+      commands.execute(() -> commandStatus = HalTransportProbe.policyInput(this, routeOnly));
       return START_NOT_STICKY;
     }
     if (command.equals("stop-hal-probe")) {

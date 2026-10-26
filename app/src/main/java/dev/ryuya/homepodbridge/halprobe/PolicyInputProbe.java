@@ -10,7 +10,7 @@ import org.json.JSONObject;
 
 /** Root self-UID policy only, no AudioTrack playback and no AudioRecord construction. */
 final class PolicyInputProbe {
-  static JSONObject run() throws Exception {
+  static JSONObject run(boolean routeOnly) throws Exception {
     var state = new ReadOnlyHalState();
     String baseline = state.snapshot().toString();
     if (Looper.myLooper() == null) Looper.prepare();
@@ -54,6 +54,7 @@ final class PolicyInputProbe {
     callbacks.start();
     Object policy = null;
     PolicyInputLease lease = null;
+    PolicyRouteLease route = null;
     boolean registered = false;
     JSONObject result = new JSONObject();
     Exception failure = null;
@@ -75,17 +76,20 @@ final class PolicyInputProbe {
       registered = true;
       String address = (String) mixType.getMethod("getRegistration").invoke(mix);
       phase = "openInput";
-      lease = PolicyInputLease.open(context, address);
+      if (routeOnly) route = PolicyRouteLease.open(context, address);
+      else lease = PolicyInputLease.open(context, address);
       result
-          .put("inputStarted", true)
+          .put("inputStarted", !routeOnly)
+          .put("virtualOutputConnected", routeOnly)
           .put("recordCreated", false)
           .put("playbackCreated", false)
-          .put("input", lease.input);
+          .put("input", lease == null ? 0 : lease.input);
     } catch (Exception error) {
       failure = error;
     } finally {
       try {
         if (lease != null) lease.close();
+        if (route != null) route.close();
       } catch (Exception error) {
         failure = error;
       }

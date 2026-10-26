@@ -16,8 +16,9 @@ final class HalTransportProbe {
     return execute(context, "metrics", UUID.randomUUID().toString());
   }
 
-  static String policyInput(Context context) {
-    return execute(context, "policy-input", UUID.randomUUID().toString());
+  static String policyInput(Context context, boolean routeOnly) {
+    return execute(
+        context, routeOnly ? "policy-route" : "policy-input", UUID.randomUUID().toString());
   }
 
   static String stop(Context context, String nonce) {

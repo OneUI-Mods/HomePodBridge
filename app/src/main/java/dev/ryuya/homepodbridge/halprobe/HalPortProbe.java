@@ -485,10 +485,10 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   private static void runMain(String[] args) throws Exception {
     rootPreflight();
-    if (args.length == 3 && args[0].equals("policy-input")) {
+    if (args.length == 3 && (args[0].equals("policy-input") || args[0].equals("policy-route"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
-      System.out.println(PolicyInputProbe.run());
+      System.out.println(PolicyInputProbe.run(args[0].equals("policy-route")));
       return;
     }
     if (args.length == 3 && args[0].equals("metrics")) {
