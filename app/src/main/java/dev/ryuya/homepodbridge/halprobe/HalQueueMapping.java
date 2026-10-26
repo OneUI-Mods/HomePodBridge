@@ -17,6 +17,8 @@ import org.json.JSONObject;
 
 /** Native inspection runs in a child; the Java owner retains all original stream handles/FDs. */
 public final class HalQueueMapping {
+  private static java.io.OutputStream forwardedOutput;
+
   private static native long[] inspect(int[] fds, long[] grants, int quantum, int flags);
 
   private static native long[] queryStandby(
@@ -53,14 +55,17 @@ public final class HalQueueMapping {
       child = command.start();
       if (scenario == ProbeScenario.POLICY_FORWARD) {
         Process producer = child;
+        // Keep stdout open until the resource owner's final cleanup and exit.
+        forwardedOutput = new java.io.FileOutputStream(FileDescriptor.out);
         forwarder =
             new Thread(
                 () -> {
-                  try (var input = producer.getInputStream();
-                      var output = new java.io.FileOutputStream(FileDescriptor.out)) {
+                  try (var input = producer.getInputStream()) {
                     byte[] block = new byte[4096];
                     int count;
-                    while ((count = input.read(block)) != -1) output.write(block, 0, count);
+                    while ((count = input.read(block)) != -1)
+                      forwardedOutput.write(block, 0, count);
+                    forwardedOutput.flush();
                   } catch (java.io.IOException disconnected) {
                     // Closing the reader makes the bounded native writer exit; the Java owner
                     // cleans up.

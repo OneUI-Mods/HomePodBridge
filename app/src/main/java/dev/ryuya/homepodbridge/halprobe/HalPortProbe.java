@@ -146,7 +146,9 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                 } catch (java.io.IOException ignored) {
                 } finally {
                   probe.stopRequested.set(true);
-                  probe.closeStreams();
+                  // The bounded output writer observes the closed/full client pipe. Keep the input
+                  // alive until its owner restores the reserve, then closes it in the normal
+                  // finally.
                 }
               },
               "HomePod-zero-client-death");
