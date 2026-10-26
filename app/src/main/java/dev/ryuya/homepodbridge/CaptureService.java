@@ -309,7 +309,10 @@ public final class CaptureService extends Service {
                   : BridgeState.CaptureBackend.DEDICATED);
           if (generation.get() != token) return;
         } catch (RootHalInput.StartupException unavailable) {
-          if (!unavailable.safeFallback) throw unavailable;
+          if (!unavailable.safeFallback) {
+            halCleanupUnconfirmed = true;
+            throw unavailable;
+          }
           RootConnector.close(connectionLifetime);
           dedicatedHal = false;
           setBackend(token, BridgeState.CaptureBackend.FALLBACK);

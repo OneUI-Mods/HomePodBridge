@@ -8,7 +8,7 @@ import java.util.HexFormat;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-/** Fixed read-only command to the installed, signer-pinned GalaxyReload CLI. */
+/** Fixed check/reload commands to the installed, signer-pinned GalaxyReload CLI. */
 final class GalaxyReloadCli {
   private static final String PACKAGE = "dev.ryuya.galaxyreload";
   private static final String SIGNER =
