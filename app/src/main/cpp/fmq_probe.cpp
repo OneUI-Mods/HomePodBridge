@@ -146,6 +146,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     }
     for(auto& queue:queues) if(!hp_empty(queue)) error=6;
     auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
+    if(error==0 && !hp_realtime_frames(captured,elapsed)) error=9;
     jlong values[]={error==0 && cycles>100 ? 1:0,captured,cycles,elapsed,maximum,max_pending,
         min_pending==INT64_MAX ? -1:min_pending,error,cycles>100 ? sum_pending/(cycles-100):-1};
     auto result=env->NewLongArray(9);

@@ -4,7 +4,7 @@ import android.content.Context;
 import java.util.List;
 import java.util.UUID;
 
-/** No start commands or samples: only test root-owned Binder/FD delivery and closure. */
+/** Fixed silent diagnostics for owned virtual routes; never accepts caller audio or shell text. */
 final class HalTransportProbe {
   static String run(Context context, String command) {
     var scenario = dev.ryuya.homepodbridge.halprobe.ProbeScenario.forCommand(command);

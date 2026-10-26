@@ -4,6 +4,11 @@
 #include <cstdio>
 
 int main() {
+    assert(hp_realtime_frames(44100,1000000));
+    assert(hp_realtime_frames(66176,1500764));
+    assert(!hp_realtime_frames(41800,1507894)); // Waiting must not disguise slowed playback.
+    assert(!hp_realtime_frames(48000,1000000));
+    assert(!hp_realtime_frames(0,1000000) && !hp_realtime_frames(44100,0));
     int cmd_fd=memfd_create("hpb-status-command",MFD_CLOEXEC);
     int reply_fd=memfd_create("hpb-status-reply",MFD_CLOEXEC);
     assert(cmd_fd>=0 && reply_fd>=0);assert(!ftruncate(cmd_fd,4096) && !ftruncate(reply_fd,4096));
@@ -33,6 +38,20 @@ int main() {
     assert(reply.view.read->load()==112 && reply.view.write->load()==112);
     std::thread unexpected(peer,3);
     assert(!hp_query_standby(command,reply,&result,&elapsed));unexpected.join();
+    for(int state:{2,3}) {
+        std::thread active(peer,state);
+        assert(hp_input_position(command,reply,&result));active.join();
+    }
+    std::thread standby(peer,1);
+    assert(!hp_input_position(command,reply,&result));standby.join();
+    std::thread malformed([&] {
+        hp_status_command received{};
+        while(!command.view.transfer(&received,8,false)) std::this_thread::yield();
+        assert(received.tag==1);
+        hp_status_reply response{};response.state=3;response.observable.frames=-1;
+        assert(reply.view.transfer(&response,56,true));
+    });
+    assert(!hp_input_position(command,reply,&result));malformed.join();
     hp_status_reply dirty{};assert(reply.view.transfer(&dirty,56,true));
     uint64_t before=command.view.write->load();
     assert(!hp_query_standby(command,reply,&result,&elapsed));assert(command.view.write->load()==before);

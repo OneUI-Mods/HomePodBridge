@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** One-shot virtual-port lifecycle probe. No stream, patch, source or capture is started. */
+/** Bounded virtual-route probes; data operations use only self-owned streams and fixed zeros. */
 public final class HalPortProbe implements OwnedHalResources.Backend {
   private final ReadOnlyHalState state = new ReadOnlyHalState();
   private final String epoch = epoch();

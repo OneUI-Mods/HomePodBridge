@@ -265,6 +265,10 @@ public final class HalQueueMapping {
                     .put("capturedFrames", result[1])
                     .put("cycles", result[2])
                     .put("elapsedUs", result[3])
+                    .put(
+                        "effectiveFramesPerSecond",
+                        result[3] > 0 ? result[1] * 1000000 / result[3] : 0)
+                    .put("availabilityGated", true)
                     .put("maximumInputCommandUs", result[4])
                     .put("maximumPendingFrames", result[5])
                     .put("minimumPendingFrames", result[6])
