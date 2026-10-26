@@ -16,6 +16,9 @@ final class NativeSender {
       int volumeLimit,
       int bufferMs,
       int latencyMs,
+      boolean independentTiming,
+      int receiverMinimumMs,
+      int receiverMaximumMs,
       boolean compressedAudio,
       boolean adaptiveBuffer);
 

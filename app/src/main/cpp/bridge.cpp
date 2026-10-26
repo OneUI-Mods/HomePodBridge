@@ -23,7 +23,7 @@ struct Engine {
     std::mutex diagnosticMutex;
     std::string diagnostic;
     std::string statistics;
-    jint timing[4] = {0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
+    jint timing[8] = {0, 0, -1, 0, 0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
     jlong pipeline[13] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1};
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
@@ -57,7 +57,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean compressedAudio, jboolean adaptiveBuffer) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jboolean compressedAudio, jboolean adaptiveBuffer) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -67,7 +67,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, compressedAudio, adaptiveBuffer] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, compressedAudio, adaptiveBuffer] {
         try {
             if (setpriority(PRIO_PROCESS, 0, -19) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
@@ -102,6 +102,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             sender.setInputBufferFrames(static_cast<size_t>(std::clamp(static_cast<int>(bufferMs), 0, 300)) * 44100 / 1000);
             sender.setAdaptiveInputBuffer(adaptiveBuffer == JNI_TRUE);
             sender.setPresentationLatencyMs(static_cast<uint32_t>(std::clamp(static_cast<int>(latencyMs), 10, 2000)));
+            if (independentTiming == JNI_TRUE)
+                sender.setReceiverLatencyRangeMs(
+                    static_cast<uint32_t>(std::clamp(static_cast<int>(receiverMinimumMs), 10, 2000)),
+                    static_cast<uint32_t>(std::clamp(static_cast<int>(receiverMaximumMs), 10, 2000)));
             sender.setAuth(fxchain::RaopDeviceInfo::Auth::HapTransient, true, id, {}, {});
             sender.start(ip, static_cast<uint16_t>(port), label);
             auto nextStatistics = std::chrono::steady_clock::now();
@@ -117,6 +121,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                     engine->timing[1] = ms(sender.presentationLatencyFrames());
                     engine->timing[2] = sender.receiverMinimumLatencyFrames() < 0 ? -1 : ms(sender.receiverMinimumLatencyFrames());
                     engine->timing[3] = sender.latencyCompatibilityFallback() ? 1 : 0;
+                    engine->timing[4] = ms(sender.advertisedReceiverMinimumFrames());
+                    engine->timing[5] = ms(sender.advertisedReceiverMaximumFrames());
+                    engine->timing[6] = sender.receiverMaximumLatencyFrames() < 0 ? -1 : ms(sender.receiverMaximumLatencyFrames());
+                    engine->timing[7] = sender.independentReceiverTiming() ? 1 : 0;
                     const auto rtt = loop.tcpRttMicros(fxchain::RaopTcp::Control);
                     const jlong pipeline[] = {
                         static_cast<jlong>(engine->ring.availableRead() / 2),
@@ -133,6 +141,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         + " requestedLatencyMs=" + std::to_string(engine->timing[0])
                         + " targetLatencyMs=" + std::to_string(engine->timing[1])
                         + " receiverMinimumMs=" + std::to_string(engine->timing[2])
+                        + " advertisedMinimumMs=" + std::to_string(engine->timing[4])
+                        + " advertisedMaximumMs=" + std::to_string(engine->timing[5])
+                        + " receiverMaximumMs=" + std::to_string(engine->timing[6])
+                        + " independentTiming=" + std::to_string(engine->timing[7])
                         + " latencyCompatibility=" + std::to_string(engine->timing[3])
                         + " underrunFrames=" + std::to_string(sender.inputUnderrunFrames())
                         + " bufferingFrames=" + std::to_string(sender.bufferingFrames())
@@ -188,10 +200,10 @@ extern "C" JNIEXPORT jintArray JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_timing(JNIEnv* env, jclass) {
     auto engine = getEngine();
     if (!engine) return nullptr;
-    jintArray result = env->NewIntArray(4);
+    jintArray result = env->NewIntArray(8);
     if (!result) return nullptr;
     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
-    env->SetIntArrayRegion(result, 0, 4, engine->timing);
+    env->SetIntArrayRegion(result, 0, 8, engine->timing);
     return result;
 }
 extern "C" JNIEXPORT jstring JNICALL

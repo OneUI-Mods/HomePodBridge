@@ -464,6 +464,7 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     framesSent_ = 0;
     latency_ = requestedLatency_;
     receiverMinimumLatency_ = -1;
+    receiverMaximumLatency_ = -1;
     latencyCompatibilityFallback_ = false;
     firstAudio_ = true;
     srcPhase_ = 0.0;
@@ -1338,7 +1339,7 @@ void RaopSender::onPairingResponse_(int code, const Headers& headers, const std:
         && (code == 400 || code == 406 || code == 415 || code == 451)) {
         // One compatibility attempt before any audio/mute readiness. Never retry auth failures.
         latencyCompatibilityFallback_ = true;
-        latency_ = std::max(requestedLatency_, 11025u);
+        if (!independentReceiverTiming_) latency_ = std::max(requestedLatency_, 11025u);
         warn_("Cast: constrained latency SETUP rejected; retrying compatibility window once");
         sendAp2SetupStream_();
         return;
@@ -1912,8 +1913,8 @@ void RaopSender::sendAp2SetupStream_() {
     stream.emplace_back("dataPort", Value::integer(localAudioPort_));
     stream.emplace_back("ct", Value::integer(2));        // ALAC
     stream.emplace_back("isMedia", Value::boolean(true));
-    stream.emplace_back("latencyMax", Value::integer(latencyCompatibilityFallback_ ? 88200u : requestedLatency_));
-    stream.emplace_back("latencyMin", Value::integer(latencyCompatibilityFallback_ ? 11025u : std::min(requestedLatency_, 11025u)));
+    stream.emplace_back("latencyMax", Value::integer(advertisedReceiverMaximumFrames()));
+    stream.emplace_back("latencyMin", Value::integer(advertisedReceiverMinimumFrames()));
     stream.emplace_back("shk", Value::bytes(ap2_->audioKey));
     stream.emplace_back("spf", Value::integer(352));     // samples per frame
     stream.emplace_back("sr", Value::integer(44100));
@@ -1951,8 +1952,11 @@ void RaopSender::handleAp2SetupStream_(const std::string& body) {
                 // An inconsistent response must not wrap timestamps or invent a receiver minimum.
                 if (minimum < 0 || maximum < 0 || minimum <= maximum) {
                     receiverMinimumLatency_ = minimum;
-                    if (minimum >= 0) latency_ = std::max(latency_, static_cast<uint32_t>(minimum));
-                    if (maximum >= 0) latency_ = std::min(latency_, static_cast<uint32_t>(maximum));
+                    receiverMaximumLatency_ = maximum;
+                    if (!independentReceiverTiming_) {
+                        if (minimum >= 0) latency_ = std::max(latency_, static_cast<uint32_t>(minimum));
+                        if (maximum >= 0) latency_ = std::min(latency_, static_cast<uint32_t>(maximum));
+                    }
                 }
             }
         }
@@ -1966,6 +1970,9 @@ void RaopSender::handleAp2SetupStream_(const std::string& body) {
     if (controlPort_ == 0) controlPort_ = serverPort_;
     info_("Cast: latency requestedFrames={} targetFrames={} receiverMinFrames={} compatibility={}",
           requestedLatency_, latency_, receiverMinimumLatency_, latencyCompatibilityFallback_);
+    info_("Cast: receiver windowMinFrames={} windowMaxFrames={} independent={} reportedMaxFrames={}",
+          advertisedReceiverMinimumFrames(), advertisedReceiverMaximumFrames(),
+          independentReceiverTiming_, receiverMaximumLatency_);
     timingPort_ = serverPort_;   // NTP timing rides the same host
     info_("Cast: AirPlay 2 stream SETUP ok, dataPort={} controlPort={}",
           serverPort_, controlPort_);

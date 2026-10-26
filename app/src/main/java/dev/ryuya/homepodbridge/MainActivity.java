@@ -62,6 +62,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView captureBackendStatus;
   private TextView profileSelection;
   private TextView profileDetails;
+  private TextView receiverTimingSelection;
   private TabLayout tabs;
   private boolean updatingSettings;
   private MediaRouter2 router;
@@ -357,6 +358,10 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     deviceControls.addView(label(getString(R.string.device_buffer_faster_description), 14));
     body.addView(card(deviceControls));
     body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
+    body.addView(
+        button(getString(R.string.receiver_timing_settings), view -> receiverTimingSettings()));
+    receiverTimingSelection = label("", 14);
+    body.addView(receiverTimingSelection);
     body.addView(label(getString(R.string.notes), 14));
     body.addView(button(getString(R.string.licenses), view -> licenses()));
     body = diagnosticsBody;
@@ -430,14 +435,22 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
           getString(
               R.string.profile_values_adaptive,
               settings.effectiveDedicatedCapture() ? 1 : settings.effectiveBlockMs(),
-              settings.effectiveLatencyMs()));
+              settings.requestedPresentationMs()));
     } else
       profileDetails.setText(
           getString(
               R.string.profile_values,
               settings.effectiveBufferMs(),
               settings.effectiveDedicatedCapture() ? 1 : settings.effectiveBlockMs(),
-              settings.effectiveLatencyMs()));
+              settings.requestedPresentationMs()));
+    receiverTimingSelection.setText(
+        getString(
+            settings.receiverTiming().independent()
+                ? R.string.receiver_timing_selected
+                : R.string.receiver_timing_linked,
+            settings.requestedReceiverMinimumMs(),
+            settings.requestedReceiverMaximumMs(),
+            settings.requestedPresentationMs()));
     updatingSettings = false;
   }
 
@@ -600,6 +613,19 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
               : getString(R.string.latency_ms, timing[2]);
       timingStatus.setText(
           getString(R.string.latency_active, timing[1], timing[0], minimum)
+              + (timing.length >= 8
+                  ? "\n"
+                      + getString(
+                          R.string.receiver_timing_active,
+                          timing[4],
+                          timing[5],
+                          timing[6] < 0
+                              ? getString(R.string.latency_unknown)
+                              : getString(R.string.latency_ms, timing[6]))
+                  : "")
+              + (timing.length >= 8 && timing[7] != 0
+                  ? "\n" + getString(R.string.receiver_timing_explicit)
+                  : "")
               + (timing[3] != 0 ? "\n" + getString(R.string.latency_fallback) : ""));
     }
   }
@@ -822,6 +848,9 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     Slider latency =
         settingSlider(
             content, R.string.receiver_latency, 10, 2000, 10, settings.effectiveLatencyMs());
+    latency.setEnabled(!settings.receiverTiming().independent());
+    if (settings.receiverTiming().independent())
+      content.addView(label(getString(R.string.receiver_timing_buffer_note), 14));
     content.addView(label(getString(R.string.buffer_description), 14));
     ScrollView scroll = new ScrollView(this);
     scroll.addView(content);
@@ -839,6 +868,105 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                     Math.round(block.getValue()),
                     Math.round(latency.getValue())))
         .show();
+  }
+
+  private void receiverTimingSettings() {
+    StreamSettings settings = StreamSettings.load(this);
+    ReceiverTiming saved = settings.receiverTiming();
+    LinearLayout content = new LinearLayout(this);
+    content.setOrientation(LinearLayout.VERTICAL);
+    content.setPadding(dp(20), 0, dp(20), 0);
+    MaterialSwitch independent = new MaterialSwitch(this);
+    independent.setText(R.string.receiver_timing_independent);
+    independent.setChecked(saved.independent());
+    content.addView(independent);
+    content.addView(label(getString(R.string.receiver_timing_description), 14));
+    TextInputLayout minimum =
+        timingField(content, R.string.receiver_timing_minimum, saved.minimumMs());
+    TextInputLayout maximum =
+        timingField(content, R.string.receiver_timing_maximum, saved.maximumMs());
+    TextInputLayout presentation =
+        timingField(content, R.string.receiver_timing_presentation, saved.presentationMs());
+    TextInputLayout[] fields = {minimum, maximum, presentation};
+    for (var field : fields) field.setEnabled(saved.independent());
+    independent.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          for (var field : fields) field.setEnabled(enabled);
+        });
+    ScrollView scroll = new ScrollView(this);
+    scroll.addView(content);
+    var dialog =
+        new MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.receiver_timing_settings)
+            .setView(scroll)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton(
+                R.string.receiver_timing_restore,
+                (view, which) ->
+                    saveReceiverTiming(ReceiverTiming.linked(settings.effectiveLatencyMs())))
+            .setPositiveButton(R.string.apply_settings, null)
+            .create();
+    dialog.setOnShowListener(
+        shown ->
+            dialog
+                .getButton(android.content.DialogInterface.BUTTON_POSITIVE)
+                .setOnClickListener(
+                    view -> {
+                      if (!independent.isChecked()) {
+                        saveReceiverTiming(
+                            new ReceiverTiming(
+                                false,
+                                saved.minimumMs(),
+                                saved.maximumMs(),
+                                saved.presentationMs()));
+                        dialog.dismiss();
+                        return;
+                      }
+                      int[] values = new int[3];
+                      boolean valid = true;
+                      for (int i = 0; i < fields.length; i++) {
+                        fields[i].setError(null);
+                        try {
+                          values[i] =
+                              Integer.parseInt(fields[i].getEditText().getText().toString());
+                          if (values[i] < 10 || values[i] > 2000) throw new NumberFormatException();
+                        } catch (NumberFormatException invalid) {
+                          fields[i].setError(getString(R.string.receiver_timing_invalid));
+                          valid = false;
+                        }
+                      }
+                      if (!valid) return;
+                      if (values[0] > values[1]) {
+                        maximum.setError(getString(R.string.receiver_timing_order));
+                        return;
+                      }
+                      saveReceiverTiming(
+                          new ReceiverTiming(
+                              independent.isChecked(), values[0], values[1], values[2]));
+                      dialog.dismiss();
+                    }));
+    dialog.show();
+  }
+
+  private TextInputLayout timingField(LinearLayout content, int title, int value) {
+    TextInputLayout field = new TextInputLayout(this);
+    field.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+    field.setHint(getString(title));
+    field.setSuffixText("ms");
+    TextInputEditText input = new TextInputEditText(field.getContext());
+    input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+    input.setFilters(new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(4)});
+    input.setText(Integer.toString(value));
+    input.selectAll();
+    field.addView(input, new LinearLayout.LayoutParams(-1, -2));
+    content.addView(field);
+    return field;
+  }
+
+  private void saveReceiverTiming(ReceiverTiming timing) {
+    StreamSettings.load(this).withReceiverTiming(timing).save(this);
+    syncSettings();
+    if (BridgeState.capture != null) BridgeState.capture.reconfigure();
   }
 
   private void updateModeSelection(MaterialButtonToggleGroup group) {

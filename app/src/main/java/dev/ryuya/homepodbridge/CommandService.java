@@ -52,6 +52,31 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("timing-independent") || command.equals("timing-linked")) {
+      if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0) {
+        commandStatus = "Stop sharing before changing diagnostic timing";
+        return START_NOT_STICKY;
+      }
+      StreamSettings settings = StreamSettings.load(this);
+      ReceiverTiming timing = ReceiverTiming.linked(settings.effectiveLatencyMs());
+      if (command.equals("timing-independent")) {
+        int minimum = intent.getIntExtra("minimum_ms", -1);
+        int maximum = intent.getIntExtra("maximum_ms", -1);
+        int presentation = intent.getIntExtra("presentation_ms", -1);
+        if (minimum < 10
+            || maximum > 2000
+            || minimum > maximum
+            || presentation < 10
+            || presentation > 2000) {
+          commandStatus = "Invalid independent timing";
+          return START_NOT_STICKY;
+        }
+        timing = new ReceiverTiming(true, minimum, maximum, presentation);
+      }
+      settings.withReceiverTiming(timing).save(this);
+      commandStatus = "Independent receiver timing: " + timing.independent();
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-policy-input") || command.equals("probe-policy-route")) {
       commandStatus = "Preparing record-free self-UID policy input";
       boolean routeOnly = command.equals("probe-policy-route");
@@ -216,6 +241,15 @@ public final class CommandService extends Service {
       }
     }
     StreamSettings settings = StreamSettings.load(this);
+    writer.println(
+        "independentReceiverTiming="
+            + settings.receiverTiming().independent()
+            + " requestedReceiverMinimumMs="
+            + settings.requestedReceiverMinimumMs()
+            + " requestedReceiverMaximumMs="
+            + settings.requestedReceiverMaximumMs()
+            + " requestedPresentationMs="
+            + settings.requestedPresentationMs());
     writer.println(
         "wholeDevice="
             + settings.wholeDevice()

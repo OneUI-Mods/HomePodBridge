@@ -403,7 +403,10 @@ public final class CaptureService extends Service {
           identity(),
           BuildConfig.VOLUME_LIMIT,
           settings.effectiveBufferMs(),
-          settings.effectiveLatencyMs(),
+          settings.requestedPresentationMs(),
+          settings.receiverTiming().independent(),
+          settings.requestedReceiverMinimumMs(),
+          settings.requestedReceiverMaximumMs(),
           settings.compressedAudio(),
           settings.effectiveAdaptiveBuffer());
       ByteBuffer pcm =
@@ -420,7 +423,7 @@ public final class CaptureService extends Service {
         if (state < 0 || (!started && System.nanoTime() > deadline)) break;
         if (state == 2 && now >= nextTiming) {
           int[] timing = NativeSender.timing();
-          if (timing != null && timing.length == 4 && timing[1] > 0) {
+          if (timing != null && timing.length >= 4 && timing[1] > 0) {
             PipelineTiming pipeline =
                 new PipelineTiming(
                     systemMode && !dedicatedHal
@@ -513,7 +516,13 @@ public final class CaptureService extends Service {
                       + " blockMs="
                       + settings.effectiveBlockMs()
                       + " latencyMs="
-                      + settings.effectiveLatencyMs()
+                      + settings.requestedPresentationMs()
+                      + " receiverMinimumMs="
+                      + settings.requestedReceiverMinimumMs()
+                      + " receiverMaximumMs="
+                      + settings.requestedReceiverMaximumMs()
+                      + " independentTiming="
+                      + settings.receiverTiming().independent()
                       + " profile="
                       + settings.profile()
                       + " compressedAudio="

@@ -23,6 +23,7 @@
 #include <mbedtls/bignum.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -1625,6 +1626,60 @@ void testLowLatencyTimeline() {
     }
 }
 
+void testIndependentReceiverTiming() {
+    using airplay::bplist::Value;
+    g_test = "independent receiver window and presentation timeline";
+    for (const auto& values : {std::array<uint32_t,3>{50,50,20}, {20,40,50}, {50,2000,10}}) {
+        Rig r;
+        r.sender->setVolumePolicy(0,100);
+        r.sender->setInputBufferFrames(0);
+        // Reversing setter order must not silently relink the request window.
+        r.sender->setReceiverLatencyRangeMs(values[0],values[1]);
+        r.sender->setPresentationLatencyMs(values[2]);
+        r.rx.latencyMinimum = Value::integer(11025);
+        r.rx.latencyMaximum = Value::integer(22050);
+        r.rx.holdVolume = true;
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        auto plist = airplay::bplist::decode(bytesOf(r.rx.last("SETUP")->body));
+        REQUIRE(plist && plist->find("streams"), "independent stream descriptor");
+        const auto& stream=plist->find("streams")->arr.front();
+        CHECK(stream.find("latencyMin")->asInt()==values[0]*44100/1000, "advertised minimum is independent");
+        CHECK(stream.find("latencyMax")->asInt()==values[1]*44100/1000, "advertised maximum is independent");
+        CHECK(r.sender->presentationLatencyFrames()==values[2]*44100/1000, "receiver bounds do not rewrite explicit offset");
+        CHECK(r.sender->receiverMinimumLatencyFrames()==11025 && r.sender->receiverMaximumLatencyFrames()==22050,
+            "reported bounds retained for diagnostics");
+        CHECK(!r.launchedOk && r.io.takeUdp().empty(), "independent timing still requires initial mute ACK");
+        r.sender->onTcpData(RaopTcp::Control, spanOf(r.rx.heldVolumeReply));
+        REQUIRE(r.launchedOk && *r.launchedOk, "muted independent stream ready");
+        auto sync=r.io.takeUdp(); REQUIRE(!sync.empty(), "independent sync sent");
+        CHECK(be32(sync.front().data,16)==values[2]*44100/1000, "sync carries the independent presentation offset");
+        std::vector<int16_t> audio(704,1234);
+        REQUIRE(r.ring.tryPush(audio), "independent PCM queued");
+        r.advance(8);
+        auto packets=r.io.takeUdp(); REQUIRE(packets.size()==1, "independent RTP packet sent");
+        CHECK(be32(packets.front().data,4)==values[2]*44100/1000, "RTP header uses offset rather than advertised wait");
+        auto decoded=r.rx.decodeAudio(packets.front().data);
+        CHECK(decoded && *decoded==audio, "independent timing preserves PCM");
+        r.sender->stop();
+    }
+    for (int status : {400,401}) {
+        Rig r;
+        r.sender->setVolumePolicy(0,100);
+        r.sender->setPresentationLatencyMs(20);
+        r.sender->setReceiverLatencyRangeMs(40,50);
+        r.rx.setupRejectCode=status;
+        runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        if (status==400) {
+            REQUIRE(r.launchedOk && *r.launchedOk, "independent compatibility retry accepted");
+            CHECK(r.sender->latencyCompatibilityFallback() && r.rx.streamSetups==2, "single compatibility retry");
+            CHECK(r.sender->advertisedReceiverMinimumFrames()==11025 && r.sender->advertisedReceiverMaximumFrames()==88200,
+                "fallback changes advertised range only");
+            CHECK(r.sender->presentationLatencyFrames()==882, "fallback preserves explicit 20 ms offset");
+        } else CHECK(r.launchedOk && !*r.launchedOk && r.rx.streamSetups==1, "independent mode cannot bypass auth refusal");
+        r.sender->stop();
+    }
+}
+
 void testAp2LatencyNegotiation() {
     using airplay::bplist::Value;
     g_test = "AP2 requested latency window and receiver bounds";
@@ -1872,6 +1927,7 @@ int main() {
     testInputJitterReserve();
     testLowLatencyTimeline();
     testAp2LatencyNegotiation();
+    testIndependentReceiverTiming();
     testCompressedAp2Audio();
     testFrameClockPacing();
     testLocalHandoffLead();

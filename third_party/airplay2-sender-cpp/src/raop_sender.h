@@ -123,10 +123,29 @@ public:
     uint64_t trimmedSilentFrames() const { return trimmedSilentFrames_; }
     void setPresentationLatencyMs(uint32_t milliseconds) {
         requestedLatency_ = latency_ = std::clamp(milliseconds, 10u, 2000u) * 44100u / 1000u;
+        if (!independentReceiverTiming_) {
+            requestedReceiverMinimum_ = std::min(requestedLatency_, 11025u);
+            requestedReceiverMaximum_ = requestedLatency_;
+        }
     }
+    // Configure before start. Explicit timing keeps the RTP offset independent of receiver bounds.
+    void setReceiverLatencyRangeMs(uint32_t minimum, uint32_t maximum) {
+        independentReceiverTiming_ = true;
+        requestedReceiverMinimum_ = std::clamp(minimum, 10u, 2000u) * 44100u / 1000u;
+        requestedReceiverMaximum_ = std::max(requestedReceiverMinimum_,
+            std::clamp(maximum, 10u, 2000u) * 44100u / 1000u);
+    }
+    uint32_t advertisedReceiverMinimumFrames() const {
+        return latencyCompatibilityFallback_ ? 11025u : requestedReceiverMinimum_;
+    }
+    uint32_t advertisedReceiverMaximumFrames() const {
+        return latencyCompatibilityFallback_ ? 88200u : requestedReceiverMaximum_;
+    }
+    bool independentReceiverTiming() const { return independentReceiverTiming_; }
     uint32_t requestedLatencyFrames() const { return requestedLatency_; }
     uint32_t presentationLatencyFrames() const { return latency_; }
     int32_t receiverMinimumLatencyFrames() const { return receiverMinimumLatency_; }
+    int32_t receiverMaximumLatencyFrames() const { return receiverMaximumLatency_; }
     bool latencyCompatibilityFallback() const { return latencyCompatibilityFallback_; }
     uint64_t inputUnderrunFrames() const { return inputUnderrunFrames_; }
     uint64_t bufferingFrames() const { return bufferingFrames_; }
@@ -389,6 +408,9 @@ private:
     uint64_t startTs_ = 0;       // NTP-derived start timestamp (pyatv model)
     uint64_t framesSent_ = 0;    // 44.1 kHz frames put on the wire
     uint32_t requestedLatency_ = 66150, latency_ = 66150;
+    uint32_t requestedReceiverMinimum_ = 11025, requestedReceiverMaximum_ = 66150;
+    bool independentReceiverTiming_ = false;
+    int32_t receiverMaximumLatency_ = -1;
     int32_t receiverMinimumLatency_ = -1; // unknown when the receiver omits its bounds
     bool latencyCompatibilityFallback_ = false;
     uint16_t seq_ = 0;           // RTP sequence number
