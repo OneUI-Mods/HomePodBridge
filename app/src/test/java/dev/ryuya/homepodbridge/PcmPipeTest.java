@@ -10,6 +10,63 @@ import java.nio.channels.Channels;
 import org.junit.Test;
 
 public final class PcmPipeTest {
+  private static byte[] halRecord(int magic, int length, long pending) {
+    return ByteBuffer.allocate(200)
+        .putInt(magic)
+        .putInt(length)
+        .putLong(1000000L)
+        .putLong(pending)
+        .put(new byte[176])
+        .array();
+  }
+
+  @Test
+  public void halQueueMetadataSurvivesFragmentationWithoutEnteringPcm() throws Exception {
+    var input =
+        new ByteArrayInputStream(halRecord(PcmPipe.HAL_ZERO_MAGIC, 176, 800)) {
+          @Override
+          public synchronized int read(byte[] out, int start, int count) {
+            return super.read(out, start, Math.min(count, 3));
+          }
+        };
+    PcmPipe pipe = new PcmPipe(Channels.newChannel(input), true, () -> 1234000L, true);
+    ByteBuffer pcm = ByteBuffer.allocateDirect(352);
+    assertEquals(176, pipe.read(pcm));
+    assertEquals(800, pipe.pendingFrames());
+    assertEquals(234, pipe.transitMicros());
+    byte[] bytes = new byte[176];
+    pcm.get(bytes);
+    assertArrayEquals(new byte[176], bytes);
+    assertEquals(-1, pipe.read(pcm));
+  }
+
+  @Test
+  public void halAndLegacyRecordsCannotBeConfused() throws Exception {
+    for (byte[] raw :
+        new byte[][] {
+          halRecord(PcmPipe.MAGIC, 176, 0),
+          halRecord(PcmPipe.HAL_ZERO_MAGIC, 4, 0),
+          halRecord(PcmPipe.HAL_ZERO_MAGIC, 176, -1),
+          halRecord(PcmPipe.HAL_ZERO_MAGIC, 176, 4097)
+        }) {
+      try {
+        new PcmPipe(Channels.newChannel(new ByteArrayInputStream(raw)), true, () -> 2000000L, true)
+            .read(ByteBuffer.allocateDirect(352));
+        fail("Invalid HAL frame accepted");
+      } catch (IOException expected) {
+      }
+    }
+    try {
+      new PcmPipe(
+              Channels.newChannel(
+                  new ByteArrayInputStream(halRecord(PcmPipe.HAL_ZERO_MAGIC, 176, 0))),
+              true)
+          .read(ByteBuffer.allocateDirect(352));
+      fail("HAL frame accepted by legacy decoder");
+    } catch (IOException expected) {
+    }
+  }
+
   @Test
   public void fragmentedReadsPreserveStereoFramesAndEndian() throws Exception {
     byte[] raw = {0, (byte) 128, (byte) 255, 127, 1, 0, (byte) 255, (byte) 255};

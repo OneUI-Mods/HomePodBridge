@@ -28,7 +28,7 @@ public final class HalQueueMapping {
   private static native long[] zeroTransfer(
       int[][] fds, long[][] grants, int frames, boolean exitAfterInput, boolean outputOnly);
 
-  private static native long[] policyInputRead(int[][] fds, long[][] grants);
+  private static native long[] policyInputRead(int[][] fds, long[][] grants, boolean forwardZero);
 
   static JSONObject inspectInChild(
       List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
@@ -37,17 +37,39 @@ public final class HalQueueMapping {
       throw new SecurityException();
     String name = "hpb-map-" + nonce;
     Process child = null;
+    Thread forwarder = null;
     try (var server = new LocalServerSocket(name)) {
-      child =
+      var command =
           new ProcessBuilder(
-                  "app_process",
-                  "/system/bin",
-                  HalQueueMapping.class.getName(),
-                  name,
-                  nonce,
-                  Integer.toString(android.os.Process.myPid()),
-                  scenario.workerMode)
-              .start();
+              "app_process",
+              "/system/bin",
+              HalQueueMapping.class.getName(),
+              name,
+              nonce,
+              Integer.toString(android.os.Process.myPid()),
+              scenario.workerMode);
+      if (scenario == ProbeScenario.POLICY_FORWARD)
+        command.redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")));
+      child = command.start();
+      if (scenario == ProbeScenario.POLICY_FORWARD) {
+        Process producer = child;
+        forwarder =
+            new Thread(
+                () -> {
+                  try (var input = producer.getInputStream();
+                      var output = new java.io.FileOutputStream(FileDescriptor.out)) {
+                    byte[] block = new byte[4096];
+                    int count;
+                    while ((count = input.read(block)) != -1) output.write(block, 0, count);
+                  } catch (java.io.IOException disconnected) {
+                    // Closing the reader makes the bounded native writer exit; the Java owner
+                    // cleans up.
+                  }
+                },
+                "HomePod-zero-forward");
+        forwarder.setDaemon(true);
+        forwarder.start();
+      }
       var pending = new android.system.StructPollfd();
       pending.fd = server.getFileDescriptor();
       pending.events = (short) android.system.OsConstants.POLLIN;
@@ -66,7 +88,7 @@ public final class HalQueueMapping {
         throw new java.io.IOException("Mapping worker did not connect: " + reason);
       }
       try (var socket = server.accept()) {
-        socket.setSoTimeout(3000);
+        socket.setSoTimeout(scenario == ProbeScenario.POLICY_FORWARD ? 15000 : 3000);
         var peer = socket.getPeerCredentials();
         String peerStat =
             new String(
@@ -115,6 +137,8 @@ public final class HalQueueMapping {
         try {
           result = new DataInputStream(socket.getInputStream()).readUTF();
         } catch (java.io.IOException unavailable) {
+          if (scenario == ProbeScenario.POLICY_FORWARD)
+            throw new java.io.IOException("Zero forwarding worker unavailable", unavailable);
           long readWaitNanos = System.nanoTime() - readStarted;
           var outcome = WorkerTermination.collect(child, readWaitNanos, () -> killWorker(identity));
           if (scenario.acceptsFailure(
@@ -137,6 +161,7 @@ public final class HalQueueMapping {
       }
     } finally {
       if (child != null) child.destroyForcibly();
+      if (forwarder != null) forwarder.join(500);
     }
   }
 
@@ -168,6 +193,7 @@ public final class HalQueueMapping {
         || !args[2].matches("[1-9][0-9]{0,6}")
         || ProbeScenario.forWorker(args[3]) == null) throw new SecurityException();
     ProbeScenario scenario = ProbeScenario.forWorker(args[3]);
+    if (scenario == ProbeScenario.POLICY_FORWARD) System.setOut(System.err);
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException();
@@ -253,7 +279,10 @@ public final class HalQueueMapping {
       if (scenario.policyInput()) {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
         long[] result =
-            policyInputRead(queueFds.toArray(new int[0][]), queueGrants.toArray(new long[0][]));
+            policyInputRead(
+                queueFds.toArray(new int[0][]),
+                queueGrants.toArray(new long[0][]),
+                scenario == ProbeScenario.POLICY_FORWARD);
         if (result == null || result.length != 9)
           throw new SecurityException("Input read unavailable");
         new DataOutputStream(socket.getOutputStream())

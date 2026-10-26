@@ -51,6 +51,10 @@ public final class CaptureService extends Service {
   private boolean destroyed;
   private volatile boolean zeroProbeActive;
   private volatile long zeroProbeFrames;
+  private volatile boolean dedicatedHalProbe;
+  private volatile RootZeroInput activeZeroHal;
+  private volatile long halPendingFrames = -1;
+  private volatile String halNonce;
   private ConnectionCallback pendingCallback;
   private int callbackGeneration;
   private String selectedPackage = BridgeState.MUSIC;
@@ -143,8 +147,25 @@ public final class CaptureService extends Service {
     select(receiver, BridgeState.MUSIC, callback, true);
   }
 
+  void selectZeroHalProbe(Receiver receiver, ConnectionCallback callback) {
+    select(receiver, BridgeState.MUSIC, callback, true, true);
+  }
+
   private void select(
       Receiver receiver, String sourcePackage, ConnectionCallback callback, boolean zeroProbe) {
+    select(receiver, sourcePackage, callback, zeroProbe, false);
+  }
+
+  private void select(
+      Receiver receiver,
+      String sourcePackage,
+      ConnectionCallback callback,
+      boolean zeroProbe,
+      boolean dedicatedHal) {
+    if (dedicatedHal && (!zeroProbe || !systemMode)) {
+      callback.finished(false);
+      return;
+    }
     if (destroyed || (projection == null && !systemMode)) {
       callback.finished(false);
       return;
@@ -170,10 +191,14 @@ public final class CaptureService extends Service {
     BridgeState.phonePath = null;
     zeroProbeActive = zeroProbe;
     zeroProbeFrames = 0;
+    dedicatedHalProbe = dedicatedHal;
+    halPendingFrames = -1;
+    halNonce = null;
     BridgeState.status = R.string.connecting;
     BridgeState.publish();
     IBinder connectionLifetime = lifetime;
-    worker.execute(() -> stream(receiver, sourcePackage, token, connectionLifetime, zeroProbe));
+    worker.execute(
+        () -> stream(receiver, sourcePackage, token, connectionLifetime, zeroProbe, dedicatedHal));
   }
 
   private void stream(
@@ -181,8 +206,10 @@ public final class CaptureService extends Service {
       String sourcePackage,
       int token,
       IBinder connectionLifetime,
-      boolean zeroProbe) {
+      boolean zeroProbe,
+      boolean dedicatedHal) {
     AudioRecord recorder = null;
+    RootZeroInput zeroHal = null;
     ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
     Network previousNetwork = connectivity.getBoundNetworkForProcess();
     boolean networkBound = false;
@@ -224,7 +251,18 @@ public final class CaptureService extends Service {
       }
       if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
       PcmPipe rootInput = null;
-      if (systemMode) {
+      if (dedicatedHal) {
+        zeroHal = new RootZeroInput(this);
+        activeZeroHal = zeroHal;
+        halNonce = zeroHal.nonce;
+        rootInput =
+            new PcmPipe(
+                java.nio.channels.Channels.newChannel(zeroHal.input()),
+                true,
+                System::nanoTime,
+                true);
+        if (generation.get() != token) return;
+      } else if (systemMode) {
         RootConnector.Input opened =
             RootConnector.open(sourcePackage, connectionLifetime, settings, zeroProbe);
         ParcelFileDescriptor pipe = opened.pipe();
@@ -361,6 +399,7 @@ public final class CaptureService extends Service {
             rootInput != null
                 ? rootInput.read(pcm)
                 : recorder.read(pcm, pcm.capacity(), AudioRecord.READ_NON_BLOCKING);
+        if (dedicatedHal) halPendingFrames = rootInput.pendingFrames();
         if (read < 0) {
           failure = R.string.capture_failed;
           break;
@@ -393,6 +432,10 @@ public final class CaptureService extends Service {
       }
       failure = R.string.capture_failed;
     } finally {
+      if (zeroHal != null) {
+        zeroHal.close();
+        if (activeZeroHal == zeroHal) activeZeroHal = null;
+      }
       try {
         try (var diagnostics = openFileOutput("last-connection.txt", MODE_PRIVATE)) {
           diagnostics.write(
@@ -462,6 +505,9 @@ public final class CaptureService extends Service {
   }
 
   private void closeSystemInput() {
+    RootZeroInput zeroHal = activeZeroHal;
+    activeZeroHal = null;
+    if (zeroHal != null) zeroHal.close();
     BridgeState.captureRegistration = null;
     BridgeState.phonePath = null;
     OwnedAudioPath devicePath = activeDevicePath;
@@ -574,6 +620,15 @@ public final class CaptureService extends Service {
             + " wholeDevice="
             + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
+    writer.println(
+        "dedicatedHalProbe="
+            + dedicatedHalProbe
+            + " halQueuedFrames="
+            + halPendingFrames
+            + " halNonce="
+            + halNonce
+            + " captureScope="
+            + (dedicatedHalProbe ? "self-root-zero" : "configured"));
     writer.println(
         "zeroProbe="
             + zeroProbeActive

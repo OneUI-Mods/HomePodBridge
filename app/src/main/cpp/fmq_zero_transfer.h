@@ -11,7 +11,7 @@ struct hp_zero_result {
 };
 
 inline bool hp_realtime_frames(int64_t frames,int64_t elapsed_us) {
-    if(frames<=0 || frames>10000000 || elapsed_us<500000 || elapsed_us>10000000) return false;
+    if(frames<=0 || frames>10000000 || elapsed_us<500000 || elapsed_us>15000000) return false;
     const int64_t expected=elapsed_us*44100;
     return frames*100000000>=expected*95 && frames*100000000<=expected*105;
 }

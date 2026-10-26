@@ -4,6 +4,9 @@
 #include <cerrno>
 #include "fmq_control.h"
 #include "fmq_zero_transfer.h"
+#include "zero_pcm_pipe.h"
+#include <fcntl.h>
+#include <signal.h>
 
 // This entry point only maps/inspects counters. It never changes shared memory.
 extern "C" JNIEXPORT jlongArray JNICALL
@@ -106,7 +109,13 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_zeroTransfer(
 // Read only the self-UID policy's dedicated virtual input. No output commands or caller PCM.
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
-    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants) {
+    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jboolean forward_zero) {
+    const bool forward=forward_zero==JNI_TRUE;
+    if(forward) {
+        int flags=fcntl(STDOUT_FILENO,F_GETFL);
+        if(flags<0 || fcntl(STDOUT_FILENO,F_SETFL,flags|O_NONBLOCK)<0) return nullptr;
+        signal(SIGPIPE,SIG_IGN); // Isolated worker only; never changes the audio service's signals.
+    }
     if(env->GetArrayLength(fds)!=3 || env->GetArrayLength(grants)!=3) return nullptr;
     std::array<hp_mapped_queue,3> queues{};
     constexpr size_t quantum[]={8,56,1};
@@ -123,7 +132,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     if(!hp_stream_once(queues[0],queues[1],2,0,2,&response,&duration)) error=1;
     std::array<uint8_t,176> input{};
     auto begin=std::chrono::steady_clock::now();
-    while(error==0 && cycles<2048) {
+    while(error==0 && cycles<(forward ? 15000:2048)) {
         // r_submix reports the requested byte count even after zero-padding a short read.
         // Wait for a complete burst to exist before asking the sole consumer to read it.
         auto available_begin=std::chrono::steady_clock::now();
@@ -141,8 +150,13 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
         captured+=44;++cycles;
         int64_t pending=response.observable.frames-captured;
         if(pending<0) {error=5;break;}
+        if(forward) {
+            timespec now{};
+            if(clock_gettime(CLOCK_MONOTONIC,&now)!=0 || !hp_write_zero_packet(STDOUT_FILENO,
+                int64_t(now.tv_sec)*1000000000+now.tv_nsec,pending)) {error=10;break;}
+        }
         if(cycles>100) {max_pending=std::max(max_pending,pending);min_pending=std::min(min_pending,pending);sum_pending+=pending;}
-        if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(1500)) break;
+        if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(forward ? 10000:1500)) break;
     }
     for(auto& queue:queues) if(!hp_empty(queue)) error=6;
     auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();

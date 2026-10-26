@@ -10,7 +10,12 @@ import org.json.JSONObject;
 
 /** Root self-UID policy only; optional source contains fixed zeros. No AudioRecord construction. */
 final class PolicyInputProbe {
-  static JSONObject run(boolean routeOnly, java.util.UUID nonce, boolean directCapture, int target)
+  static JSONObject run(
+      boolean routeOnly,
+      java.util.UUID nonce,
+      boolean directCapture,
+      int target,
+      boolean forwardZero)
       throws Exception {
     var state = new ReadOnlyHalState();
     String baseline = state.snapshot().toString();
@@ -87,7 +92,8 @@ final class PolicyInputProbe {
           .put("zeroSourceOnly", directCapture)
           .put("input", lease == null ? 0 : lease.input);
       if (directCapture)
-        result.put("directCapture", HalPortProbe.policyCapture(address, nonce, target));
+        result.put(
+            "directCapture", HalPortProbe.policyCapture(address, nonce, target, forwardZero));
     } catch (Exception error) {
       failure = error;
     } finally {

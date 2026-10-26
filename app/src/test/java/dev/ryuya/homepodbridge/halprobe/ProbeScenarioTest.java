@@ -48,7 +48,9 @@ public final class ProbeScenarioTest {
     assertNull(ProbeScenario.forWorker("hang; id"));
     assertNull(ProbeScenario.forCommand(null));
     for (var scenario : ProbeScenario.values()) {
-      assertSame(scenario, ProbeScenario.forCommand(scenario.command));
+      if (scenario == ProbeScenario.POLICY_FORWARD)
+        assertNull(ProbeScenario.forCommand(scenario.command)); // PCM needs the dedicated reader.
+      else assertSame(scenario, ProbeScenario.forCommand(scenario.command));
       assertSame(scenario, ProbeScenario.forOperation(scenario.operation));
       assertSame(scenario, ProbeScenario.forWorker(scenario.workerMode));
     }

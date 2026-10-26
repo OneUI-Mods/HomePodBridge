@@ -86,13 +86,14 @@ public final class CommandService extends Service {
       commands.execute(() -> commandStatus = "GalaxyReload CLI: " + GalaxyReloadCli.check(this));
       return START_NOT_STICKY;
     }
-    if (command.equals("connect-zero")) {
+    if (command.equals("connect-zero") || command.equals("connect-zero-hal")) {
+      boolean dedicated = command.equals("connect-zero-hal");
       commands.execute(
           () -> {
             try {
               long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
               while (!RootConnector.available() && System.nanoTime() < deadline) Thread.sleep(25);
-              if (RootConnector.available()) main.post(playback::start);
+              if (RootConnector.available()) main.post(() -> playback.start(dedicated));
               else commandStatus = "System bridge unavailable";
             } catch (InterruptedException interrupted) {
               Thread.currentThread().interrupt();
@@ -155,6 +156,12 @@ public final class CommandService extends Service {
   protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
     writer.println("Command service: " + commandStatus);
     writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
+    try (var report = openFileInput("last-hal-zero.txt")) {
+      writer.println(
+          "Last zero HAL result: "
+              + new String(report.readNBytes(8192), java.nio.charset.StandardCharsets.UTF_8));
+    } catch (java.io.IOException absent) {
+    }
     StreamSettings settings = StreamSettings.load(this);
     writer.println(
         "deviceBuffer="

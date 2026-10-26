@@ -1,9 +1,22 @@
 #include "../../main/cpp/fmq_control.h"
 #include "../../main/cpp/fmq_zero_transfer.h"
+#include "../../main/cpp/zero_pcm_pipe.h"
 #include <cassert>
 #include <cstdio>
 
 int main() {
+    int packet_pipe[2];assert(pipe2(packet_pipe,O_CLOEXEC|O_NONBLOCK)==0);
+    assert(hp_write_zero_packet(packet_pipe[1],1000000,800));
+    std::array<uint8_t,200> packet{};assert(read(packet_pipe[0],packet.data(),packet.size())==200);
+    assert(packet[0]==0x48 && packet[1]==0x42 && packet[2]==0x50 && packet[3]==0x32);
+    assert(packet[7]==176 && packet[22]==3 && packet[23]==32);
+    for(size_t i=24;i<packet.size();i++) assert(packet[i]==0);
+    assert(!hp_write_zero_packet(packet_pipe[1],0,0));
+    assert(!hp_write_zero_packet(packet_pipe[1],1000000,4097));
+    int written=0;auto blocked_begin=std::chrono::steady_clock::now();
+    while(hp_write_zero_packet(packet_pipe[1],1000000,0)) {assert(++written<1024);}
+    assert(written>0 && std::chrono::steady_clock::now()-blocked_begin<std::chrono::milliseconds(200));
+    assert(close(packet_pipe[0])==0 && close(packet_pipe[1])==0);
     assert(hp_realtime_frames(44100,1000000));
     assert(hp_realtime_frames(66176,1500764));
     assert(!hp_realtime_frames(41800,1507894)); // Waiting must not disguise slowed playback.

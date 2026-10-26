@@ -62,7 +62,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   /** Borrow a policy-owned input port, owning only the newly returned config and patch IDs. */
-  static JSONObject policyCapture(String address, UUID nonce, int target) throws Exception {
+  static JSONObject policyCapture(String address, UUID nonce, int target, boolean forwardZero)
+      throws Exception {
     if (target != 2587 && target != 928 && target != 464 && target != 800)
       throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
@@ -134,8 +135,24 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           probe.stopRequested.set(true);
           probe.closeStreams();
         },
-        15,
+        forwardZero ? 22 : 15,
         TimeUnit.SECONDS);
+    if (forwardZero) {
+      Thread stopped =
+          new Thread(
+              () -> {
+                try (var control = new java.io.FileInputStream(java.io.FileDescriptor.in)) {
+                  control.read();
+                } catch (java.io.IOException ignored) {
+                } finally {
+                  probe.stopRequested.set(true);
+                  probe.closeStreams();
+                }
+              },
+              "HomePod-zero-client-death");
+      stopped.setDaemon(true);
+      stopped.start();
+    }
     try {
       int mix = probe.configure(4, true, true);
       configs.add(
@@ -164,7 +181,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             HalQueueMapping.inspectInChild(
                 probe.streams.stream().map(stream -> stream.descriptor).toList(),
                 nonce.toString(),
-                ProbeScenario.POLICY_INPUT));
+                forwardZero ? ProbeScenario.POLICY_FORWARD : ProbeScenario.POLICY_INPUT));
         report.put("sourceWrittenFrames", source.writtenFrames());
       }
     } catch (Exception failure) {
@@ -659,6 +676,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   public static void main(String[] args) {
+    if (args.length > 0 && args[0].equals("policy-forward")) System.setOut(System.err);
     try {
       runMain(args);
     } catch (Throwable failure) {
@@ -675,19 +693,23 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             || args[0].equals("policy-capture")
             || args[0].equals("policy-capture-fast")
             || args[0].equals("policy-capture-minimum")
-            || args[0].equals("policy-capture-smaller"))) {
+            || args[0].equals("policy-capture-smaller")
+            || args[0].equals("policy-forward"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
       JSONObject report =
           PolicyInputProbe.run(
               !args[0].equals("policy-input"),
               UUID.fromString(args[1]),
-              args[0].startsWith("policy-capture"),
+              args[0].startsWith("policy-capture") || args[0].equals("policy-forward"),
               args[0].equals("policy-capture-fast")
                   ? 928
                   : args[0].equals("policy-capture-minimum")
                       ? 464
-                      : args[0].equals("policy-capture-smaller") ? 800 : 2587);
+                      : args[0].equals("policy-capture-smaller") || args[0].equals("policy-forward")
+                          ? 800
+                          : 2587,
+              args[0].equals("policy-forward"));
       System.out.println(report);
       System.out.flush();
       JSONObject direct = report.optJSONObject("directCapture");

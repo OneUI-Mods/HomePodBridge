@@ -17,6 +17,7 @@ final class CommandPlayback implements AutoCloseable {
   private CaptureService ownedService;
   private IBinder ownedLifetime;
   private boolean selectionPending;
+  private boolean dedicatedHal;
 
   CommandPlayback(Context context, Consumer<String> status) {
     this.context = context;
@@ -24,6 +25,10 @@ final class CommandPlayback implements AutoCloseable {
   }
 
   void start() {
+    start(false);
+  }
+
+  void start(boolean dedicatedHal) {
     if (BridgeState.capture != null) {
       status.accept("Existing sharing must stop before the test");
       return;
@@ -33,6 +38,7 @@ final class CommandPlayback implements AutoCloseable {
       return;
     }
     close();
+    this.dedicatedHal = dedicatedHal;
     selectionPending = false;
     long token = ++epoch;
     status.accept("Discovering one HomePod for a muted zero-input transfer");
@@ -88,15 +94,16 @@ final class CommandPlayback implements AutoCloseable {
     CaptureService service = BridgeState.capture;
     if (service != null) {
       ownedService = service;
-      service.selectZeroProbe(
-          receiver,
+      CaptureService.ConnectionCallback finished =
           success -> {
             if (token == epoch)
               status.accept(
                   success
                       ? "Zero-input transfer connected at initial mute"
                       : "Zero-input transfer failed");
-          });
+          };
+      if (dedicatedHal) service.selectZeroHalProbe(receiver, finished);
+      else service.selectZeroProbe(receiver, finished);
       ownedLifetime = service.lifetime();
       return;
     }

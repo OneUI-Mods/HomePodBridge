@@ -8,10 +8,13 @@ import java.nio.channels.ReadableByteChannel;
 final class PcmPipe {
   private final ReadableByteChannel input;
   static final int MAGIC = 0x48425031;
+  static final int HAL_ZERO_MAGIC = 0x48425032;
   private final boolean timed;
-  private final ByteBuffer header = ByteBuffer.allocateDirect(16);
+  private final boolean halZero;
+  private final ByteBuffer header;
   private final java.util.function.LongSupplier clock;
   private long transitMicros = -1;
+  private volatile long pendingFrames = -1;
 
   PcmPipe(ReadableByteChannel input) {
     this(input, false, System::nanoTime);
@@ -22,9 +25,24 @@ final class PcmPipe {
   }
 
   PcmPipe(ReadableByteChannel input, boolean timed, java.util.function.LongSupplier clock) {
+    this(input, timed, clock, false);
+  }
+
+  PcmPipe(
+      ReadableByteChannel input,
+      boolean timed,
+      java.util.function.LongSupplier clock,
+      boolean halZero) {
+    if (halZero && !timed) throw new IllegalArgumentException("HAL records require timing");
     this.input = input;
     this.timed = timed;
     this.clock = clock;
+    this.halZero = halZero;
+    header = ByteBuffer.allocateDirect(halZero ? 24 : 16);
+  }
+
+  long pendingFrames() {
+    return pendingFrames;
   }
 
   long transitMicros() {
@@ -37,13 +55,21 @@ final class PcmPipe {
     if (timed) {
       header.clear();
       if (fill(header) == 0) return -1;
-      if (header.position() != 16) throw new IOException("Truncated timing header");
+      if (header.position() != header.capacity()) throw new IOException("Truncated timing header");
       header.flip();
-      if (header.getInt() != MAGIC) throw new IOException("Invalid timing header");
+      if (header.getInt() != (halZero ? HAL_ZERO_MAGIC : MAGIC))
+        throw new IOException("Invalid timing header");
       int length = header.getInt();
       capturedAt = header.getLong();
+      if (halZero) {
+        long pending = header.getLong();
+        if (pending < 0 || pending > 4096) throw new IOException("Invalid HAL queue depth");
+        pendingFrames = pending;
+      }
       if (length <= 0 || length > pcm.capacity() || length % 4 != 0)
         throw new IOException("Invalid PCM block length");
+      if (halZero && (length != 176 || capturedAt <= 0))
+        throw new IOException("Invalid zero HAL record");
       pcm.limit(length);
     }
     int expected = pcm.remaining();
