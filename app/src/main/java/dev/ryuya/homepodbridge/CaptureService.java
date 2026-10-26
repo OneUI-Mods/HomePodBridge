@@ -40,6 +40,8 @@ public final class CaptureService extends Service {
   // Service recreation must wait for the previous native sender and route lease.
   private static final ExecutorService worker = Executors.newSingleThreadExecutor();
   private static final ExecutorService devicePaths = Executors.newSingleThreadExecutor();
+  // The shared worker must not open another path after an unconfirmed dedicated close.
+  private static boolean halCleanupUnconfirmed;
   private final AtomicInteger generation = new AtomicInteger();
   private MediaProjection projection;
   private int musicUid;
@@ -253,6 +255,8 @@ public final class CaptureService extends Service {
     int failure = R.string.connection_failed;
     try {
       if (generation.get() != token) return;
+      if (halCleanupUnconfirmed)
+        throw new java.io.IOException("Previous capture cleanup unconfirmed");
       wake.acquire(60_000);
       long nextWakeRefresh = android.os.SystemClock.elapsedRealtime() + 30_000;
       if (!systemMode
@@ -476,17 +480,18 @@ public final class CaptureService extends Service {
         if (read == 0) Thread.sleep(settings.lowLatency() ? 1 : 5);
       }
     } catch (Exception e) {
-      try (var error = openFileOutput("last-capture-error.txt", MODE_PRIVATE)) {
-        error.write(
-            (e.getClass().getSimpleName() + ": " + e.getMessage())
-                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-      } catch (java.io.IOException ignored) {
+      if (!destroyed && generation.get() == token) {
+        try (var error = openFileOutput("last-capture-error.txt", MODE_PRIVATE)) {
+          error.write(
+              (e.getClass().getSimpleName() + ": " + e.getMessage())
+                  .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.io.IOException ignored) {
+        }
       }
       failure = R.string.capture_failed;
     } finally {
       if (zeroHal != null) {
         zeroHal.close();
-        zeroHal.awaitCleanup(5000);
         if (activeZeroHal == zeroHal) activeZeroHal = null;
       }
       try {
@@ -526,6 +531,7 @@ public final class CaptureService extends Service {
           recorder.release();
         }
         NativeSender.stop();
+        if (zeroHal != null) halCleanupUnconfirmed = !zeroHal.awaitCleanup(5000);
         if (localRoute != null) localRoute.close();
         if (networkBound) connectivity.bindProcessToNetwork(previousNetwork);
         boolean wasStarted = started;

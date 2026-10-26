@@ -109,7 +109,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             .snapshot()
             .put("epoch", probe.epoch)
             .put("registeredAddress", address)
-            .put("zeroOnly", true)
+            .put("zeroOnly", zeroOnly)
             .put("streamLedger", new JSONArray());
     Files.write(
         journal,
@@ -805,9 +805,41 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       if (matches.size() != 1)
         throw new SecurityException("Expected exactly one owned prototype process");
       Path proc = matches.get(0);
+      String command = readString(proc.resolve("cmdline"));
+      String identity = readString(proc.resolve("stat"));
+      if (OwnedProbeProcess.matchesClosedCycle(command, nonce)) {
+        Path journal = Path.of("/data/local/tmp/homepod-policy-input-" + nonce + ".json");
+        if (Files.isSymbolicLink(journal)
+            || Files.size(journal) > 65536
+            || ((Number) Files.getAttribute(journal, "unix:uid", LinkOption.NOFOLLOW_LINKS))
+                    .intValue()
+                != 0) throw new SecurityException("Invalid closed capture journal");
+        JSONObject saved = new JSONObject(readString(journal));
+        var probe = new HalPortProbe(UUID.fromString(nonce), 44100, false);
+        var current = probe.snapshot();
+        if (!saved.getBoolean("zeroOnly")
+            || !saved.getString("epoch").equals(probe.epoch)
+            || current.ports().stream()
+                .anyMatch(p -> p.address().equals(saved.optString("registeredAddress"))))
+          throw new SecurityException("Capture policy still owned");
+        JSONArray entries = saved.getJSONArray("streamLedger");
+        if (entries.length() == 0) throw new SecurityException("Missing closed capture proof");
+        for (int i = 0; i < entries.length(); i++) {
+          JSONObject entry = entries.getJSONObject(i);
+          if (!entry.getString("phase").equals("CLOSED")
+              || current.configs().stream().anyMatch(c -> c.id() == entry.optInt("config")))
+            throw new SecurityException("Capture input still owned");
+        }
+      }
       if (!OwnedProbeProcess.matches(
           readString(proc.resolve("cmdline")), readString(proc.resolve("status")), nonce))
         throw new SecurityException();
+      String now = readString(proc.resolve("stat"));
+      if (!identity
+          .substring(identity.lastIndexOf(')') + 2)
+          .split("\\s+")[19]
+          .equals(now.substring(now.lastIndexOf(')') + 2).split("\\s+")[19]))
+        throw new SecurityException("Helper identity changed");
       android.os.Process.sendSignal(Integer.parseInt(proc.getFileName().toString()), 15);
       System.out.println("OWNED_PROBE_STOP_SENT");
       return;

@@ -19,7 +19,14 @@ final class OwnedProbeProcess {
               + "\u000044100\u0000";
       if (command.endsWith(suffix)) return true;
     }
-    return false;
+    return matchesClosedCycle(command, nonce);
+  }
+
+  static boolean matchesClosedCycle(String command, String nonce) {
+    return command.endsWith(
+        "dev.ryuya.homepodbridge.halprobe.HalCaptureHost\u0000"
+            + nonce
+            + "\u0000test-cycle\u0000com.apple.android.music\u0000");
   }
 
   private OwnedProbeProcess() {}

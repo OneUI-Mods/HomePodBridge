@@ -24,5 +24,14 @@ public final class OwnedProbeProcessTest {
             command, root.replace("0\t0\t0\t0", "2000\t2000\t2000\t2000"), nonce));
     assertFalse(OwnedProbeProcess.matches(command + "extra\u0000", root, nonce));
     assertFalse(OwnedProbeProcess.matches(command, root, nonce + "; id"));
+    String cycle =
+        "app_process\u0000/system/bin\u0000dev.ryuya.homepodbridge.halprobe.HalCaptureHost\u0000"
+            + nonce
+            + "\u0000test-cycle\u0000com.apple.android.music\u0000";
+    assertTrue(OwnedProbeProcess.matches(cycle, root, nonce));
+    assertFalse(OwnedProbeProcess.matches(cycle.replace("test-cycle", "whole"), root, nonce));
+    assertFalse(
+        OwnedProbeProcess.matches(
+            cycle.replace("com.apple.android.music", "other.app"), root, nonce));
   }
 }

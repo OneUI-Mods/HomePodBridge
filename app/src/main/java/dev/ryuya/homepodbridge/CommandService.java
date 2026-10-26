@@ -100,6 +100,15 @@ public final class CommandService extends Service {
       commandStatus = "Dedicated capture preference: " + command.endsWith("on");
       return START_NOT_STICKY;
     }
+    if (command.equals("capture-scope-whole") || command.equals("capture-scope-selected")) {
+      if (BridgeState.capture != null) {
+        commandStatus = "Stop sharing before changing diagnostic scope";
+        return START_NOT_STICKY;
+      }
+      StreamSettings.load(this).withWholeDevice(command.endsWith("whole")).save(this);
+      commandStatus = "Whole-device capture preference: " + command.endsWith("whole");
+      return START_NOT_STICKY;
+    }
     if (java.util.List.of(
             "connect-zero",
             "connect-zero-hal",
@@ -208,7 +217,9 @@ public final class CommandService extends Service {
     }
     StreamSettings settings = StreamSettings.load(this);
     writer.println(
-        "deviceBuffer="
+        "wholeDevice="
+            + settings.wholeDevice()
+            + " deviceBuffer="
             + settings.deviceBuffer()
             + " effectiveDeviceBuffer="
             + settings.effectiveDeviceBuffer()
