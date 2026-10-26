@@ -616,24 +616,28 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                     : t.capture(9) == 0 ? R.string.capture_standard : R.string.diagnostics_unknown);
     OwnedAudioPath.Update path = BridgeState.phonePath;
     phoneBufferTiming.setText(
-        path == null
-            ? getString(R.string.device_buffer_off)
-            : switch (path.state()) {
-              case CHECKING -> getString(R.string.device_buffer_checking);
-              case ACTIVE ->
-                  getString(R.string.device_buffer_active, framesTime(path.targetFrames()));
-              case STANDARD -> getString(R.string.device_buffer_standard);
-              case RECOVERY_REQUIRED -> getString(R.string.device_buffer_recovering);
-            });
+        t.halQueuedFrames() >= 0
+            ? getString(R.string.device_buffer_hal_test)
+            : path == null
+                ? getString(R.string.device_buffer_off)
+                : switch (path.state()) {
+                  case CHECKING -> getString(R.string.device_buffer_checking);
+                  case ACTIVE ->
+                      getString(R.string.device_buffer_active, framesTime(path.targetFrames()));
+                  case STANDARD -> getString(R.string.device_buffer_standard);
+                  case RECOVERY_REQUIRED -> getString(R.string.device_buffer_recovering);
+                });
     captureTiming.setText(
-        getString(
-            R.string.diagnostics_capture,
-            millis(t.captureAgeFresh() ? t.capture(1) : -1),
-            millis(t.capture(3)),
-            millis(t.capture(4)),
-            framesTime(t.capture(8)),
-            framesTime(t.capture(7)),
-            request));
+        t.halQueuedFrames() >= 0
+            ? getString(R.string.diagnostics_hal_capture, framesTime(t.halQueuedFrames()))
+            : getString(
+                R.string.diagnostics_capture,
+                millis(t.captureAgeFresh() ? t.capture(1) : -1),
+                millis(t.capture(3)),
+                millis(t.capture(4)),
+                framesTime(t.capture(8)),
+                framesTime(t.capture(7)),
+                request));
     pipeTiming.setText(
         getString(
             R.string.diagnostics_pipe,

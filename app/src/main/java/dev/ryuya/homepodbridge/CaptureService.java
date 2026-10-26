@@ -367,10 +367,13 @@ public final class CaptureService extends Service {
           if (timing != null && timing.length == 4 && timing[1] > 0) {
             PipelineTiming pipeline =
                 new PipelineTiming(
-                    systemMode ? RootConnector.captureTiming(connectionLifetime) : null,
+                    systemMode && !dedicatedHal
+                        ? RootConnector.captureTiming(connectionLifetime)
+                        : null,
                     NativeSender.pipeline(),
                     rootInput == null ? -1 : rootInput.transitMicros(),
-                    System.nanoTime());
+                    System.nanoTime(),
+                    dedicatedHal ? rootInput.pendingFrames() : -1);
             main.post(
                 () -> {
                   if (generation.get() != token || destroyed) return;

@@ -6,6 +6,15 @@ import org.junit.Test;
 
 public final class PipelineTimingTest {
   @Test
+  public void halQueueIsSeparateFromUnknownCaptureAge() {
+    var timing = new PipelineTiming(null, null, 100, 2000000L, 800);
+    assertEquals(800, timing.halQueuedFrames());
+    assertEquals(-1, timing.capture(1));
+    assertFalse(timing.captureAgeFresh());
+    assertEquals(-1, new PipelineTiming(null, null, -1, 1).halQueuedFrames());
+  }
+
+  @Test
   public void appendedProbeMetricsKeepTheExistingTimingPrefix() {
     long[] capture = {1, 61000, 1_000_000_000L, 2000, 21000, 20, 50, 2784, 88, 1, 44100};
     var timing = new PipelineTiming(capture, null, 100, 2_000_000_000L);

@@ -4,6 +4,8 @@
     <string name="device_buffer">スマートフォンの音声バッファを削減（root）</string>
     <string name="device_buffer_description">対応するシステムでrootを使って内部の待ち時間を削減します。低遅延モード専用です。利用できない場合は通常の取り込みを維持します。負荷時に音が途切れる場合はオフにしてください。</string>
     <string name="device_buffer_off">スマートフォン側のバッファ\n削減はオフ</string>
+    <string name="device_buffer_hal_test">スマートフォン側のバッファ\n専用HAL・無音テスト</string>
+    <string name="diagnostics_hal_capture">専用HAL・無音テスト\n直近の読み取り時に残っていた音声：%1$s\n読み取り単位：44フレーム（約1 ms）\n音源のミキシング、ネットワーク、受信機の処理時間は含みません。</string>
     <string name="device_buffer_checking">スマートフォン側のバッファ\n対応状況を確認中…</string>
     <string name="device_buffer_active">スマートフォン側のバッファ\nバッファ削減が有効\n目標の充填量：%1$s\nこの量は取り込み時刻の推定遅れに含まれます。合算しないでください。</string>
     <string name="device_buffer_standard">スマートフォン側のバッファ\n通常の取り込みを維持</string>

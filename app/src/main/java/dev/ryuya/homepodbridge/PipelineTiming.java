@@ -1,7 +1,12 @@
 package dev.ryuya.homepodbridge;
 
 /** Numeric diagnostics only; no PCM, receiver addresses, credentials or acoustic-delay claim. */
-record PipelineTiming(long[] capture, long[] sender, long pipeMicros, long sampledAtNanos) {
+record PipelineTiming(
+    long[] capture, long[] sender, long pipeMicros, long sampledAtNanos, long halQueuedFrames) {
+  PipelineTiming(long[] capture, long[] sender, long pipeMicros, long sampledAtNanos) {
+    this(capture, sender, pipeMicros, sampledAtNanos, -1);
+  }
+
   long capture(int index) {
     return capture != null
             && capture.length >= 10
