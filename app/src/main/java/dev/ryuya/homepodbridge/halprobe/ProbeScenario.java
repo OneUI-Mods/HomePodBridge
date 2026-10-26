@@ -13,7 +13,8 @@ public enum ProbeScenario {
   ZERO_HALF_MS("probe-hal-zero-half-ms", "streams-zero-half-ms", "zero-half-ms", 22),
   ZERO_INPUT_EXIT("probe-hal-zero-input-exit", "streams-zero-input-exit", "zero-input-exit", 928),
   ZERO_OUTPUT_BLOCK(
-      "probe-hal-zero-output-block", "streams-zero-output-block", "zero-output-block", 928);
+      "probe-hal-zero-output-block", "streams-zero-output-block", "zero-output-block", 928),
+  POLICY_INPUT("probe-policy-capture", "policy-capture", "policy-capture");
 
   public final String command;
   public final String operation;

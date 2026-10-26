@@ -6,16 +6,16 @@ import android.media.AudioTrack;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Explicit capture-only benchmark source: every byte is zero, never caller-provided audio. */
-final class SilentProbeSource implements AutoCloseable {
+public final class SilentProbeSource implements AutoCloseable {
   private final AtomicBoolean closed = new AtomicBoolean();
   private AudioTrack track;
   private volatile long writtenFrames;
 
-  long writtenFrames() {
+  public long writtenFrames() {
     return writtenFrames;
   }
 
-  void start() {
+  public void start() {
     new Thread(this::pump, "HomePod-zero-input").start();
   }
 

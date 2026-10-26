@@ -28,6 +28,8 @@ public final class HalQueueMapping {
   private static native long[] zeroTransfer(
       int[][] fds, long[][] grants, int frames, boolean exitAfterInput, boolean outputOnly);
 
+  private static native long[] policyInputRead(int[][] fds, long[][] grants);
+
   static JSONObject inspectInChild(
       List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
     String apk = System.getenv("CLASSPATH");
@@ -191,7 +193,8 @@ public final class HalQueueMapping {
       byte[] data = new byte[length];
       input.readFully(data);
       var metadata = new DataInputStream(new ByteArrayInputStream(data));
-      if (!metadata.readUTF().equals(args[1]) || metadata.readInt() != 6)
+      int queueCount = scenario == ProbeScenario.POLICY_INPUT ? 3 : 6;
+      if (!metadata.readUTF().equals(args[1]) || metadata.readInt() != queueCount)
         throw new SecurityException();
       if (scenario == ProbeScenario.EXIT_FDS) {
         System.out.println("FAULT_CHECKPOINT=after-fds");
@@ -202,7 +205,7 @@ public final class HalQueueMapping {
       var queueFds = new ArrayList<int[]>();
       var queueGrants = new ArrayList<long[]>();
       int next = 0;
-      for (int i = 0; i < 6; i++) {
+      for (int i = 0; i < queueCount; i++) {
         int quantum = metadata.readInt(),
             flags = metadata.readInt(),
             fdCount = metadata.readInt(),
@@ -247,6 +250,28 @@ public final class HalQueueMapping {
                 .put("writtenBytes", result[2]));
       }
       if (next != incoming.length || metadata.available() != 0) throw new SecurityException();
+      if (scenario == ProbeScenario.POLICY_INPUT) {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+        long[] result =
+            policyInputRead(queueFds.toArray(new int[0][]), queueGrants.toArray(new long[0][]));
+        if (result == null || result.length != 8)
+          throw new SecurityException("Input read unavailable");
+        new DataOutputStream(socket.getOutputStream())
+            .writeUTF(
+                new JSONObject()
+                    .put("mappedQueues", 3)
+                    .put("framesPerBurst", 44)
+                    .put("passed", result[0] == 1)
+                    .put("capturedFrames", result[1])
+                    .put("cycles", result[2])
+                    .put("elapsedUs", result[3])
+                    .put("maximumInputCommandUs", result[4])
+                    .put("maximumPendingFrames", result[5])
+                    .put("minimumPendingFrames", result[6])
+                    .put("errorCode", result[7])
+                    .toString());
+        return;
+      }
       if (scenario == ProbeScenario.EXIT_MAP) {
         System.out.println("FAULT_CHECKPOINT=after-map");
         System.out.flush();

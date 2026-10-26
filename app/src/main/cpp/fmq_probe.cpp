@@ -102,3 +102,43 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_zeroTransfer(
     if(result) env->SetLongArrayRegion(result,0,13,values);
     return result;
 }
+
+// Read only the self-UID policy's dedicated virtual input. No output commands or caller PCM.
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
+    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants) {
+    if(env->GetArrayLength(fds)!=3 || env->GetArrayLength(grants)!=3) return nullptr;
+    std::array<hp_mapped_queue,3> queues{};
+    constexpr size_t quantum[]={8,56,1};
+    for(int i=0;i<3;i++) {
+        auto queue_fds=static_cast<jintArray>(env->GetObjectArrayElement(fds,i));
+        auto queue_grants=static_cast<jlongArray>(env->GetObjectArrayElement(grants,i));
+        bool attached=queue_fds && queue_grants && hp_attach_status_queue(env,queue_fds,queue_grants,quantum[i],queues[size_t(i)]);
+        if(queue_fds) env->DeleteLocalRef(queue_fds);
+        if(queue_grants) env->DeleteLocalRef(queue_grants);
+        if(!attached || env->ExceptionCheck() || !hp_empty(queues[size_t(i)])) return nullptr;
+    }
+    hp_status_reply response{};int64_t duration=0;
+    int error=0,cycles=0;int64_t captured=0,maximum=0,max_pending=0,min_pending=INT64_MAX;
+    if(!hp_stream_once(queues[0],queues[1],2,0,2,&response,&duration)) error=1;
+    std::array<uint8_t,176> input{};
+    auto begin=std::chrono::steady_clock::now();
+    while(error==0 && cycles<2048) {
+        if(!hp_empty(queues[2]) || !hp_stream_once(queues[0],queues[1],3,176,3,&response,&duration)) {error=2;break;}
+        maximum=std::max(maximum,duration);
+        if(!queues[2].view.transfer(input.data(),input.size(),false)) {error=3;break;}
+        if(std::any_of(input.begin(),input.end(),[](uint8_t value){return value!=0;})) {error=4;break;}
+        captured+=44;++cycles;
+        int64_t pending=response.observable.frames-captured;
+        if(pending<0) {error=5;break;}
+        if(cycles>100) {max_pending=std::max(max_pending,pending);min_pending=std::min(min_pending,pending);}
+        if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(500)) break;
+    }
+    for(auto& queue:queues) if(!hp_empty(queue)) error=6;
+    auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
+    jlong values[]={error==0 && cycles>100 ? 1:0,captured,cycles,elapsed,maximum,max_pending,
+        min_pending==INT64_MAX ? -1:min_pending,error};
+    auto result=env->NewLongArray(8);
+    if(result) env->SetLongArrayRegion(result,0,8,values);
+    return result;
+}

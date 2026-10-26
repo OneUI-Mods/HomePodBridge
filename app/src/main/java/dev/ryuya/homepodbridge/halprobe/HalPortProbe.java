@@ -44,13 +44,127 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   HalPortProbe(UUID nonce, int rate, boolean fast) throws Exception {
+    this(nonce, rate, fast, null);
+  }
+
+  private HalPortProbe(UUID nonce, int rate, boolean fast, String registration) throws Exception {
     if (rate != 44100 && rate != 32000 && rate != 16000 && rate != 8000)
       throw new IllegalArgumentException();
     this.rate = rate;
     this.fast = fast;
-    address = "HomePodBridgeDirect:" + nonce;
+    if (registration != null && !registration.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+"))
+      throw new SecurityException("Unexpected policy registration");
+    address = registration == null ? "HomePodBridgeDirect:" + nonce : registration;
     int marker = (nonce.hashCode() & 0x07ffffff) | 0x40000000;
-    tag = new OwnedHalResources.Tag(address, 3, 4, marker, marker ^ 0x20000000);
+    tag =
+        new OwnedHalResources.Tag(
+            "HomePodBridgeDirect:" + nonce, 3, 4, marker, marker ^ 0x20000000);
+  }
+
+  /** Borrow a policy-owned input port, owning only the newly returned config and patch IDs. */
+  static JSONObject policyCapture(String address, UUID nonce) throws Exception {
+    HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
+    var baseline = probe.snapshot();
+    int device = 0;
+    for (var port : baseline.ports())
+      if (port.type() == 11 && address.equals(port.address())) {
+        if (device != 0) throw new SecurityException("Ambiguous policy input");
+        device = port.id();
+      }
+    if (device == 0) throw new SecurityException("Policy input port missing");
+    Path journal = Path.of("/data/local/tmp/homepod-policy-input-" + nonce + ".json");
+    JSONObject document =
+        probe
+            .state
+            .snapshot()
+            .put("epoch", probe.epoch)
+            .put("registeredAddress", address)
+            .put("zeroOnly", true)
+            .put("streamLedger", new JSONArray());
+    Files.write(
+        journal,
+        document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        StandardOpenOption.CREATE_NEW,
+        StandardOpenOption.WRITE);
+    Files.setPosixFilePermissions(journal, PosixFilePermissions.fromString("rw-------"));
+    probe.ledger =
+        new StreamOpenLedger(
+            entries -> {
+              var values = new JSONArray();
+              for (var entry : entries)
+                values.put(
+                    new JSONObject()
+                        .put("config", entry.configId())
+                        .put("input", entry.input())
+                        .put("phase", entry.phase().name()));
+              document.put("streamLedger", values);
+              Path next = journal.resolveSibling(journal.getFileName() + ".next");
+              Files.write(
+                  next,
+                  document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                  StandardOpenOption.CREATE_NEW,
+                  StandardOpenOption.WRITE);
+              Files.setPosixFilePermissions(next, PosixFilePermissions.fromString("rw-------"));
+              try (var channel =
+                  java.nio.channels.FileChannel.open(next, StandardOpenOption.WRITE)) {
+                channel.force(true);
+              }
+              Files.move(
+                  next,
+                  journal,
+                  java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                  java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            },
+            List.of());
+    var configs = new ArrayList<OwnedHalResources.Config>();
+    OwnedHalResources.Patch patch = null;
+    var report = new JSONObject();
+    try {
+      int mix = probe.configure(4, true, true);
+      configs.add(
+          probe.snapshot().configs().stream().filter(c -> c.id() == mix).findFirst().orElseThrow());
+      int deviceConfig = probe.configure(device, true, false);
+      configs.add(
+          probe.snapshot().configs().stream()
+              .filter(c -> c.id() == deviceConfig)
+              .findFirst()
+              .orElseThrow());
+      var connected = probe.patch(deviceConfig, mix);
+      patch = new OwnedHalResources.Patch(connected.id, List.of(deviceConfig), List.of(mix));
+      report.put("stream", probe.open(mix, true, connected.minimumFrames));
+      try (var source = new dev.ryuya.homepodbridge.SilentProbeSource()) {
+        source.start();
+        report.put(
+            "mapping",
+            HalQueueMapping.inspectInChild(
+                probe.streams.stream().map(stream -> stream.descriptor).toList(),
+                nonce.toString(),
+                ProbeScenario.POLICY_INPUT));
+        report.put("sourceWrittenFrames", source.writtenFrames());
+      }
+    } catch (Exception failure) {
+      report.put("failure", failure.getClass().getSimpleName() + ": " + failure.getMessage());
+    } finally {
+      probe.closeStreams();
+      if (probe.streamsClosed()) {
+        if (patch != null && probe.snapshot().patches().contains(patch))
+          probe.removePatch(patch.id());
+        for (int i = configs.size() - 1; i >= 0; i--) {
+          var config = configs.get(i);
+          var current = probe.snapshot();
+          if (current.configs().contains(config)
+              && current.patches().stream()
+                  .noneMatch(
+                      p -> p.sources().contains(config.id()) || p.sinks().contains(config.id())))
+            probe.removeConfig(config.id());
+        }
+      }
+      report
+          .put("streamsClosed", probe.streamsClosed())
+          .put("openReplyUncertain", probe.ledger.replyUncertain())
+          .put("resourcesRestoredExactly", probe.snapshot().equals(baseline));
+    }
+    return report;
   }
 
   static String epoch() throws Exception {
@@ -485,10 +599,17 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   private static void runMain(String[] args) throws Exception {
     rootPreflight();
-    if (args.length == 3 && (args[0].equals("policy-input") || args[0].equals("policy-route"))) {
+    if (args.length == 3
+        && (args[0].equals("policy-input")
+            || args[0].equals("policy-route")
+            || args[0].equals("policy-capture"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
-      System.out.println(PolicyInputProbe.run(args[0].equals("policy-route")));
+      System.out.println(
+          PolicyInputProbe.run(
+              !args[0].equals("policy-input"),
+              UUID.fromString(args[1]),
+              args[0].equals("policy-capture")));
       return;
     }
     if (args.length == 3 && args[0].equals("metrics")) {
