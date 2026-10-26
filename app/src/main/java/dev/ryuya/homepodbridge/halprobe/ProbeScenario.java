@@ -11,7 +11,9 @@ public enum ProbeScenario {
   ZERO_2MS("probe-hal-zero-2ms", "streams-zero-2ms", "zero-2ms", 88),
   ZERO_1MS("probe-hal-zero-1ms", "streams-zero-1ms", "zero-1ms", 44),
   ZERO_HALF_MS("probe-hal-zero-half-ms", "streams-zero-half-ms", "zero-half-ms", 22),
-  ZERO_INPUT_EXIT("probe-hal-zero-input-exit", "streams-zero-input-exit", "zero-input-exit", 88);
+  ZERO_INPUT_EXIT("probe-hal-zero-input-exit", "streams-zero-input-exit", "zero-input-exit", 928),
+  ZERO_OUTPUT_BLOCK(
+      "probe-hal-zero-output-block", "streams-zero-output-block", "zero-output-block", 928);
 
   public final String command;
   public final String operation;

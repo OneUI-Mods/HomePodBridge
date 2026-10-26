@@ -40,7 +40,7 @@ inline bool hp_stream_once(hp_mapped_queue& command,hp_mapped_queue& reply,uint8
     return false;
 }
 
-inline hp_zero_result hp_zero_transfer(std::array<hp_mapped_queue,6>& q,int frames,bool exit_after_input) {
+inline hp_zero_result hp_zero_transfer(std::array<hp_mapped_queue,6>& q,int frames,bool exit_after_input,bool output_only=false) {
     hp_zero_result report{};report.frames=frames;
     if(frames!=22 && frames!=44 && frames!=88 && frames!=928) {report.error=1;return report;}
     int bytes=frames*4;
@@ -59,6 +59,11 @@ inline hp_zero_result hp_zero_transfer(std::array<hp_mapped_queue,6>& q,int fram
         if(!hp_empty(q[2]) || !q[2].view.transfer(zeros.data(),size_t(bytes),true)) {report.error=4;break;}
         if(!hp_stream_once(q[0],q[1],3,bytes,3,&response,&elapsed)) {report.error=5;break;}
         report.max_output_us=std::max(report.max_output_us,elapsed);report.sent+=frames;
+        if(output_only) {
+            ++report.cycles;
+            if(report.cycles>=8) break;
+            continue;
+        }
         if(!hp_empty(q[2]) || !hp_empty(q[5])) {report.error=6;break;}
         if(exit_after_input) {
             if(!hp_stream_dispatch(q[3],q[4],3,bytes)) {report.error=7;break;}
@@ -75,7 +80,8 @@ inline hp_zero_result hp_zero_transfer(std::array<hp_mapped_queue,6>& q,int fram
         if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(500)) break;
     }
     report.elapsed_us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
-    report.passed=report.error==0 && report.cycles>=4 && report.sent==report.captured;
+    report.passed=output_only ? (report.error==5 && report.cycles>=4 && report.sent>=3712)
+        : (report.error==0 && report.cycles>=4 && report.sent==report.captured);
     for(auto& queue:q) if(!hp_empty(queue)) report.passed=false;
     return report;
 }

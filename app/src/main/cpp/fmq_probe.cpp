@@ -82,7 +82,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_exitAfterStatus(
 
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_zeroTransfer(
-    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jint frames,jboolean exit_after_input) {
+    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jint frames,jboolean exit_after_input,jboolean output_only) {
     if(env->GetArrayLength(fds)!=6 || env->GetArrayLength(grants)!=6) return nullptr;
     std::array<hp_mapped_queue,6> queues{};
     constexpr size_t quantum[]={8,56,1,8,56,1};
@@ -94,7 +94,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_zeroTransfer(
         if(queue_grants) env->DeleteLocalRef(queue_grants);
         if(!attached || env->ExceptionCheck()) return nullptr;
     }
-    auto report=hp_zero_transfer(queues,frames,exit_after_input==JNI_TRUE);
+    auto report=hp_zero_transfer(queues,frames,exit_after_input==JNI_TRUE,output_only==JNI_TRUE);
     jlong values[]={report.passed ? 1:0,report.frames,report.cycles,report.sent,report.captured,
         report.elapsed_us,report.max_output_us,report.max_input_us,report.max_pending,
         report.error,report.start_flags,report.observed,report.expected};

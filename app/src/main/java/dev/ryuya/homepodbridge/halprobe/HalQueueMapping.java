@@ -26,7 +26,7 @@ public final class HalQueueMapping {
       int[] commandFds, long[] commandGrants, int[] replyFds, long[] replyGrants);
 
   private static native long[] zeroTransfer(
-      int[][] fds, long[][] grants, int frames, boolean exitAfterInput);
+      int[][] fds, long[][] grants, int frames, boolean exitAfterInput, boolean outputOnly);
 
   static JSONObject inspectInChild(
       List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
@@ -278,7 +278,8 @@ public final class HalQueueMapping {
                 queueFds.toArray(new int[0][]),
                 queueGrants.toArray(new long[0][]),
                 scenario.zeroFrames,
-                scenario == ProbeScenario.ZERO_INPUT_EXIT);
+                scenario == ProbeScenario.ZERO_INPUT_EXIT,
+                scenario == ProbeScenario.ZERO_OUTPUT_BLOCK);
         if (flow == null || flow.length != 13)
           throw new SecurityException("Zero transfer unavailable");
         var transfer =
@@ -296,6 +297,9 @@ public final class HalQueueMapping {
                 .put("startFlags", flow[10])
                 .put("inputObservableFrames", flow[11])
                 .put("expectedInputFrames", flow[12]);
+        transfer.put(
+            "expectedBackpressure",
+            scenario == ProbeScenario.ZERO_OUTPUT_BLOCK && flow[0] == 1 && flow[9] == 5);
         new DataOutputStream(socket.getOutputStream())
             .writeUTF(
                 new JSONObject()
