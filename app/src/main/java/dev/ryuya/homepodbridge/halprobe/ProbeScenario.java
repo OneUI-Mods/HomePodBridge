@@ -17,10 +17,15 @@ public enum ProbeScenario {
   POLICY_INPUT("probe-policy-capture", "policy-capture", "policy-capture"),
   POLICY_FAST("probe-policy-capture-fast", "policy-capture-fast", "policy-capture-fast"),
   POLICY_MINIMUM(
-      "probe-policy-capture-minimum", "policy-capture-minimum", "policy-capture-minimum");
+      "probe-policy-capture-minimum", "policy-capture-minimum", "policy-capture-minimum"),
+  POLICY_SMALLER(
+      "probe-policy-capture-smaller", "policy-capture-smaller", "policy-capture-smaller");
 
   boolean policyInput() {
-    return this == POLICY_INPUT || this == POLICY_FAST || this == POLICY_MINIMUM;
+    return this == POLICY_INPUT
+        || this == POLICY_FAST
+        || this == POLICY_MINIMUM
+        || this == POLICY_SMALLER;
   }
 
   public final String command;

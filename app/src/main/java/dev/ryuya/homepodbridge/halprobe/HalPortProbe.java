@@ -63,7 +63,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   /** Borrow a policy-owned input port, owning only the newly returned config and patch IDs. */
   static JSONObject policyCapture(String address, UUID nonce, int target) throws Exception {
-    if (target != 2587 && target != 928 && target != 464) throw new IllegalArgumentException();
+    if (target != 2587 && target != 928 && target != 464 && target != 800)
+      throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
     var baseline = probe.snapshot();
     int device = 0;
@@ -151,7 +152,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       report.put("targetFillFrames", target);
       if (target != 2587) {
         tuneAttempted = true;
-        String tuning = changePolicyReserve(address, target == 928 ? "brief" : "minimum");
+        String tuning = changePolicyReserve(address, reserveOperation(target, false));
         report.put("tuning", tuning);
         if (!tuning.contains("Owned reserve changed: 2587 -> " + target + ";"))
           throw new IllegalStateException("Reserve change not confirmed");
@@ -171,9 +172,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     } finally {
       if (tuneAttempted) {
         try {
-          report.put(
-              "restore",
-              changePolicyReserve(address, target == 928 ? "restore-brief" : "restore-minimum"));
+          report.put("restore", changePolicyReserve(address, reserveOperation(target, true)));
         } catch (Exception failure) {
           report.put("restoreFailure", failure.getClass().getSimpleName());
         }
@@ -199,6 +198,17 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           .put("resourcesRestoredExactly", probe.snapshot().equals(baseline));
     }
     return report;
+  }
+
+  private static String reserveOperation(int target, boolean restore) {
+    String operation =
+        switch (target) {
+          case 928 -> "brief";
+          case 464 -> "minimum";
+          case 800 -> "direct";
+          default -> throw new IllegalArgumentException();
+        };
+    return restore ? "restore-" + operation : operation;
   }
 
   private static String changePolicyReserve(String address, String operation) throws Exception {
@@ -664,7 +674,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             || args[0].equals("policy-route")
             || args[0].equals("policy-capture")
             || args[0].equals("policy-capture-fast")
-            || args[0].equals("policy-capture-minimum"))) {
+            || args[0].equals("policy-capture-minimum")
+            || args[0].equals("policy-capture-smaller"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
       System.out.println(
@@ -674,7 +685,9 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
               args[0].startsWith("policy-capture"),
               args[0].equals("policy-capture-fast")
                   ? 928
-                  : args[0].equals("policy-capture-minimum") ? 464 : 2587));
+                  : args[0].equals("policy-capture-minimum")
+                      ? 464
+                      : args[0].equals("policy-capture-smaller") ? 800 : 2587));
       return;
     }
     if (args.length == 3 && args[0].equals("metrics")) {
