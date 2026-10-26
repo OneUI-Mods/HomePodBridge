@@ -16,6 +16,10 @@ final class HalTransportProbe {
     return execute(context, "metrics", UUID.randomUUID().toString());
   }
 
+  static String policyInput(Context context) {
+    return execute(context, "policy-input", UUID.randomUUID().toString());
+  }
+
   static String stop(Context context, String nonce) {
     if (!AudioServiceRecovery.validNonce(nonce)) return "HAL_PROBE_REFUSED";
     return execute(context, "stop", nonce);

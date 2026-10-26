@@ -52,6 +52,11 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("probe-policy-input")) {
+      commandStatus = "Preparing record-free self-UID policy input";
+      commands.execute(() -> commandStatus = HalTransportProbe.policyInput(this));
+      return START_NOT_STICKY;
+    }
     if (command.equals("stop-hal-probe")) {
       String nonce = intent.getStringExtra("owned_nonce");
       commandStatus = "Stopping specified prototype helper";
