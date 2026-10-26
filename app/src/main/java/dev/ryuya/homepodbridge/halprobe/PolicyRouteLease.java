@@ -32,8 +32,9 @@ final class PolicyRouteLease implements AutoCloseable {
     boolean input = false;
     for (var device :
         context.getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_INPUTS))
-      if (device.isSource() && address.equals(device.getAddress()) && device.getType() == 25)
-        input = true;
+      if (device.isSource()
+          && address.equals(device.getAddress())
+          && device.getType() == android.media.AudioDeviceInfo.TYPE_REMOTE_SUBMIX) input = true;
     if (!input) throw new SecurityException("Owned policy input missing");
     system = Class.forName("android.media.AudioSystem");
     attributesType = Class.forName("android.media.AudioDeviceAttributes");
