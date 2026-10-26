@@ -73,6 +73,10 @@ final class AudioServiceRecovery {
     }
   }
 
+  private static String readProc(Path path) throws java.io.IOException {
+    return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+  }
+
   private static String modulePid() throws Exception {
     String pid =
         run(List.of("dumpsys", "--pid", "android.hardware.audio.core.IModule/r_submix"), 128, 3)
@@ -86,12 +90,12 @@ final class AudioServiceRecovery {
       if (args.length != 1 || !validNonce(args[0])) throw new IllegalArgumentException();
       String pid = modulePid();
       Path proc = Path.of("/proc", pid);
-      String executable = Files.readString(proc.resolve("cmdline"));
-      String identity = Files.readString(proc.resolve("status"));
+      String executable = readProc(proc.resolve("cmdline"));
+      String identity = readProc(proc.resolve("status"));
       if (!executable.split("\u0000")[0].equals("/vendor/bin/hw/audiohalservice.qti")
           || !identity.matches("(?s).*\\nUid:\\s+1041\\s+1041\\s+1041\\s+1041\\s*\\n.*"))
         throw new SecurityException();
-      String epoch = Files.readString(proc.resolve("stat"));
+      String epoch = readProc(proc.resolve("stat"));
       String mode = run(List.of("dumpsys", "audio"), 1048576, 4);
       if (!mode.contains("mAudioModeOwner: AudioDeviceBroker$AudioModeInfo[mMode=0,"))
         throw new SecurityException();
@@ -101,7 +105,7 @@ final class AudioServiceRecovery {
       if (!"running"
               .equals(run(List.of("getprop", "init.svc.vendor.audio-hal-aidl"), 128, 2).trim())
           || !pid.equals(modulePid())) throw new SecurityException();
-      String currentStat = Files.readString(proc.resolve("stat"));
+      String currentStat = readProc(proc.resolve("stat"));
       // PID reuse guard: compare the process start-time field, rather than changing counters.
       if (!epoch
           .substring(epoch.lastIndexOf(')') + 2)
