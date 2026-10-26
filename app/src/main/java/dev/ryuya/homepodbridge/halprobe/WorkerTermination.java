@@ -9,7 +9,11 @@ import java.util.concurrent.TimeUnit;
 final class WorkerTermination {
   record Outcome(int exitCode, boolean forced, boolean timedOut, String diagnostics) {}
 
-  static Outcome collect(Process child, long readWaitNanos) throws Exception {
+  interface Killer {
+    void kill() throws Exception;
+  }
+
+  static Outcome collect(Process child, long readWaitNanos, Killer killer) throws Exception {
     boolean forced = !child.waitFor(1, TimeUnit.SECONDS);
     String diagnostics = "";
     try {
@@ -17,7 +21,7 @@ final class WorkerTermination {
     } catch (Exception unavailable) {
       diagnostics = "WORKER_DIAGNOSTICS_UNAVAILABLE";
     } finally {
-      if (forced) child.destroyForcibly();
+      if (forced) killer.kill();
     }
     if (!child.waitFor(1, TimeUnit.SECONDS))
       throw new IOException("Worker termination unconfirmed");

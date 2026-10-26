@@ -75,7 +75,8 @@ public final class WorkerTerminationTest {
   @Test
   public void capturesCheckpointBeforeAndroidClosesPipesOnForcedExit() throws Exception {
     Child child = new Child();
-    var outcome = WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(3));
+    var outcome =
+        WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(3), child::destroyForcibly);
     assertTrue(child.out.closed);
     assertTrue(outcome.forced());
     assertTrue(outcome.timedOut());
@@ -87,7 +88,10 @@ public final class WorkerTerminationTest {
 
   @Test
   public void earlyReadFailureCannotBeCalledTimeout() throws Exception {
-    var outcome = WorkerTermination.collect(new Child(), TimeUnit.MILLISECONDS.toNanos(200));
+    Child child = new Child();
+    var outcome =
+        WorkerTermination.collect(
+            child, TimeUnit.MILLISECONDS.toNanos(200), child::destroyForcibly);
     assertFalse(outcome.timedOut());
     assertFalse(
         ProbeScenario.HANG.acceptsFailure(
@@ -99,7 +103,8 @@ public final class WorkerTerminationTest {
     Child child = new Child();
     child.alive = false;
     child.code = 73;
-    var outcome = WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(4));
+    var outcome =
+        WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(4), child::destroyForcibly);
     assertFalse(outcome.forced());
     assertFalse(outcome.timedOut());
     assertFalse(child.out.closed);
@@ -112,7 +117,8 @@ public final class WorkerTerminationTest {
   public void missingPipesStillRequireConfirmedTerminationAndCannotPassFault() throws Exception {
     Child child = new Child();
     child.out.close();
-    var outcome = WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(3));
+    var outcome =
+        WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(3), child::destroyForcibly);
     assertFalse(child.alive);
     assertTrue(outcome.forced());
     assertEquals("WORKER_DIAGNOSTICS_UNAVAILABLE", outcome.diagnostics());
@@ -126,7 +132,7 @@ public final class WorkerTerminationTest {
     Child child = new Child();
     child.neverStops = true;
     try {
-      WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(3));
+      WorkerTermination.collect(child, TimeUnit.SECONDS.toNanos(3), child::destroyForcibly);
       fail();
     } catch (IOException expected) {
       assertEquals("Worker termination unconfirmed", expected.getMessage());

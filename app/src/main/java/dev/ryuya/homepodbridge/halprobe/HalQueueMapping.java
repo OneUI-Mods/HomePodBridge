@@ -68,12 +68,16 @@ public final class HalQueueMapping {
                 java.nio.file.Files.readAllBytes(
                     java.nio.file.Path.of("/proc", Integer.toString(peer.getPid()), "stat")),
                 java.nio.charset.StandardCharsets.UTF_8);
-        if (peer.getUid() != 0
-            || !peerStat
-                .substring(peerStat.lastIndexOf(')') + 2)
-                .split("\\s+")[1]
-                .equals(Integer.toString(android.os.Process.myPid())))
-          throw new SecurityException("Unexpected mapping worker");
+        var identity =
+            WorkerIdentity.authenticate(
+                peer.getPid(),
+                peer.getUid(),
+                android.os.Process.myPid(),
+                peerStat,
+                procString(peer.getPid(), "status"),
+                procString(peer.getPid(), "cmdline"),
+                nonce,
+                scenario);
         var descriptors = new ArrayList<FileDescriptor>();
         var bytes = new ByteArrayOutputStream();
         var metadata = new DataOutputStream(bytes);
@@ -107,7 +111,7 @@ public final class HalQueueMapping {
           result = new DataInputStream(socket.getInputStream()).readUTF();
         } catch (java.io.IOException unavailable) {
           long readWaitNanos = System.nanoTime() - readStarted;
-          var outcome = WorkerTermination.collect(child, readWaitNanos);
+          var outcome = WorkerTermination.collect(child, readWaitNanos, () -> killWorker(identity));
           if (scenario.acceptsFailure(
               outcome.exitCode(), outcome.timedOut(), outcome.forced(), outcome.diagnostics()))
             return new JSONObject()
@@ -129,6 +133,26 @@ public final class HalQueueMapping {
     } finally {
       if (child != null) child.destroyForcibly();
     }
+  }
+
+  private static String procString(int pid, String name) throws Exception {
+    return new String(
+        java.nio.file.Files.readAllBytes(
+            java.nio.file.Path.of("/proc", Integer.toString(pid), name)),
+        java.nio.charset.StandardCharsets.UTF_8);
+  }
+
+  private static void killWorker(WorkerIdentity identity) throws Exception {
+    try {
+      if (!identity.matches(
+          procString(identity.pid(), "stat"),
+          procString(identity.pid(), "status"),
+          procString(identity.pid(), "cmdline")))
+        throw new SecurityException("Worker identity changed; signal refused");
+    } catch (java.nio.file.NoSuchFileException exited) {
+      return;
+    }
+    android.os.Process.sendSignal(identity.pid(), android.system.OsConstants.SIGKILL);
   }
 
   public static void main(String[] args) throws Exception {
