@@ -49,6 +49,8 @@ public final class CaptureService extends Service {
   private volatile OwnedAudioPath activeDevicePath;
   private volatile boolean deviceBufferSuppressed;
   private boolean destroyed;
+  private volatile boolean zeroProbeActive;
+  private volatile long zeroProbeFrames;
   private ConnectionCallback pendingCallback;
   private int callbackGeneration;
   private String selectedPackage = BridgeState.MUSIC;
@@ -138,10 +140,6 @@ public final class CaptureService extends Service {
   }
 
   void selectZeroProbe(Receiver receiver, ConnectionCallback callback) {
-    if (!StreamSettings.load(this).wholeDevice()) {
-      callback.finished(false);
-      return;
-    }
     select(receiver, BridgeState.MUSIC, callback, true);
   }
 
@@ -170,6 +168,8 @@ public final class CaptureService extends Service {
     BridgeState.timing = null;
     BridgeState.pipeline = null;
     BridgeState.phonePath = null;
+    zeroProbeActive = zeroProbe;
+    zeroProbeFrames = 0;
     BridgeState.status = R.string.connecting;
     BridgeState.publish();
     IBinder connectionLifetime = lifetime;
@@ -191,7 +191,8 @@ public final class CaptureService extends Service {
     boolean started = false;
     long capturedFrames = 0;
     long signalBlocks = 0;
-    StreamSettings settings = StreamSettings.load(this);
+    StreamSettings savedSettings = StreamSettings.load(this);
+    StreamSettings settings = zeroProbe ? savedSettings.withWholeDevice(true) : savedSettings;
     PowerManager.WakeLock wake =
         getSystemService(PowerManager.class)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HomePodBridge:stream");
@@ -372,6 +373,10 @@ public final class CaptureService extends Service {
               signalBlocks++;
               break;
             }
+          }
+          if (zeroProbe) {
+            ZeroProbePcm.clear(pcm, read);
+            zeroProbeFrames += read / 4;
           }
           while (!NativeSender.write(pcm, read)
               && generation.get() == token
@@ -569,6 +574,13 @@ public final class CaptureService extends Service {
             + " wholeDevice="
             + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
+    writer.println(
+        "zeroProbe="
+            + zeroProbeActive
+            + " zeroProbeFrames="
+            + zeroProbeFrames
+            + " effectiveWholeDevice="
+            + (zeroProbeActive || StreamSettings.load(this).wholeDevice()));
     OwnedAudioPath.Update path = BridgeState.phonePath;
     writer.println(
         "deviceBufferRequested="

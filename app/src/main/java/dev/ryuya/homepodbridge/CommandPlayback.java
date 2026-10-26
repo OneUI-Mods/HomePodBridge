@@ -28,8 +28,8 @@ final class CommandPlayback implements AutoCloseable {
       status.accept("Existing sharing must stop before the test");
       return;
     }
-    if (!StreamSettings.load(context).wholeDevice() || !RootConnector.available()) {
-      status.accept("Zero-input transfer requires the system bridge and whole-device mode");
+    if (!RootConnector.available()) {
+      status.accept("Zero-input transfer requires the system bridge");
       return;
     }
     close();
