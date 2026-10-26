@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "fmq_mapped_queue.h"
 #include <array>
+#include <cerrno>
 
 // Only map and inspect queue counters. No command/data writes, index resets or notifications.
 extern "C" JNIEXPORT jlongArray JNICALL
@@ -19,11 +20,15 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_inspect(
         grants[i]={int32_t(values[i*3]),uint64_t(values[i*3+1]),uint64_t(values[i*3+2])};
     }
     hp_mapped_queue queue;
-    if(!queue.attach(raw.data(),size_t(fds),grants.data(),size_t(fields/3),size_t(quantum),uint32_t(flags))) return nullptr;
-    uint64_t read=queue.view.read->load(std::memory_order_acquire);
-    uint64_t write=queue.view.write->load(std::memory_order_acquire);
-    if(read!=0 || write!=0) return nullptr; // This probe supports unstarted queues only.
-    jlong result[]={jlong(queue.view.capacity),jlong(read),jlong(write)};
+    bool attached=queue.attach(raw.data(),size_t(fds),grants.data(),size_t(fields/3),size_t(quantum),uint32_t(flags));
+    int attach_errno=errno;
+    uint64_t read=attached ? queue.view.read->load(std::memory_order_acquire):0;
+    uint64_t write=attached ? queue.view.write->load(std::memory_order_acquire):0;
+    // Empty queues need not have an origin of zero. Never rebase shared counters.
+    if(attached && (read!=write || read%uint64_t(quantum))) return nullptr;
+    jlong result[]={attached ? jlong(queue.view.capacity):-1,
+        attached ? jlong(read):jlong(ASharedMemory_getSize(raw[0])),
+        attached ? jlong(write):jlong(attach_errno)};
     jlongArray output=env->NewLongArray(3);
     if(output) env->SetLongArrayRegion(output,0,3,result);
     return output;

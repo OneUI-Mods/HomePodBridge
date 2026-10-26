@@ -178,7 +178,8 @@ public final class HalQueueMapping {
           grants[g * 3 + 2] = metadata.readLong();
         }
         long[] result = inspect(fds, grants, quantum, flags);
-        if (result == null) {
+        System.out.println("MAPPING_NATIVE=" + java.util.Arrays.toString(result));
+        if (result == null || result[0] < 0) {
           for (var fd : owned) {
             var stat = android.system.Os.fstat(fd.getFileDescriptor());
             System.out.println("MAPPING_FSTAT size=" + stat.st_size + " mode=" + stat.st_mode);
@@ -186,7 +187,7 @@ public final class HalQueueMapping {
           System.out.println("MAPPING_GRANTS=" + java.util.Arrays.toString(grants));
         }
         System.out.println("MAPPING_QUEUE=" + i + " accepted=" + (result != null));
-        if (result == null || result.length != 3)
+        if (result == null || result.length != 3 || result[0] < 0)
           throw new SecurityException("Queue mapping rejected");
         reports.put(
             new JSONObject()
