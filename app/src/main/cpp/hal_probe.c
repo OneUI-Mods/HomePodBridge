@@ -110,7 +110,10 @@ static int thaw(task* tasks,size_t count) {
 JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     JNIEnv* env,jclass type,jint pid,jlong module,jlong mono,jstring registration,jint operation) {
     (void)type;
-    if (getuid()!=0 || pid<=1 || operation<0 || operation>2) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
+    if (getuid()!=0 || pid<=1 || operation<0 || operation>6) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
+    // Production keeps 1856. Smaller fixed targets are explicit capture-only experiments.
+    const int before[]={0,2587,1856,2587,928,2587,464};
+    const int after[]={0,1856,2587,928,2587,464,2587};
     const char* address=(*env)->GetStringUTFChars(env,registration,NULL);
     if (!address) return NULL;
     memory mem={.fd=-1}; task tasks[256];size_t count=0;uint64_t begin=monotonic_ns();
@@ -128,7 +131,7 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
         if (!error) error=hp_find_owned(read_memory,&mem,(uint64_t)module,(uint64_t)mono,address,&owned);
         if (!error && monotonic_ns()>begin+25000000u) error="exclusive interval exceeded";
         if (!error && operation) error=hp_change_reserve(read_memory,write_memory,&mem,&owned,1,
-            operation==1?2587:1856,operation==1?1856:2587);
+            before[operation],after[operation]);
     }
     int detached=thaw(tasks,count);
     if (!detached) raise(SIGALRM);
@@ -136,7 +139,7 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     uint64_t elapsed=(monotonic_ns()-begin)/1000;
     if (!detached) error="detach incomplete";
     if (error) snprintf(report,sizeof(report),"Owned HAL operation refused: %s; maps=%zu tasks=%zu elapsedUs=%llu writeAttempts=%u",error,mem.count,count,(unsigned long long)elapsed,mem.writes);
-    else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu writeAttempts=%u; exact field verified",operation==1?2587:1856,operation==1?1856:2587,count,(unsigned long long)elapsed,mem.writes);
+    else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu writeAttempts=%u; exact field verified",before[operation],after[operation],count,(unsigned long long)elapsed,mem.writes);
     else snprintf(report,sizeof(report),"Read-only freeze check passed: tasks=%zu elapsedUs=%llu targetFillFrames=%llu; no memory writes",count,(unsigned long long)elapsed,(unsigned long long)owned.target);
     (*env)->ReleaseStringUTFChars(env,registration,address);
     return (*env)->NewStringUTF(env,report);

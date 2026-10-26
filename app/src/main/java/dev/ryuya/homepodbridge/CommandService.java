@@ -76,7 +76,8 @@ public final class CommandService extends Service {
       commandStatus = "Phone buffer reduction preference: " + command.endsWith("on");
       return START_NOT_STICKY;
     }
-    if (!java.util.List.of("baseline", "guard", "tuned", "lease").contains(command)) {
+    if (!java.util.List.of("baseline", "guard", "tuned", "lease", "brief", "minimum")
+        .contains(command)) {
       commandStatus = "Unknown diagnostic command";
       return START_NOT_STICKY;
     }
@@ -93,9 +94,14 @@ public final class CommandService extends Service {
             }
             CaptureProbe.request(
                 this,
-                requested.equals("lease")
-                    ? 3
-                    : requested.equals("tuned") ? 2 : requested.equals("guard") ? 1 : 0);
+                switch (requested) {
+                  case "guard" -> 1;
+                  case "tuned" -> 2;
+                  case "lease" -> 3;
+                  case "brief" -> 4;
+                  case "minimum" -> 5;
+                  default -> 0;
+                });
             commandStatus = "Dispatched " + requested;
           } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();

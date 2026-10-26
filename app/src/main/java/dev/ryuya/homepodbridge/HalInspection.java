@@ -25,14 +25,14 @@ final class HalInspection {
     if (address == null
         || !address.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")
         || operation < 0
-        || operation > 3) return "Owned registration unavailable";
+        || operation > 7) return "Owned registration unavailable";
     if (operation != 0
         && context.getSystemService(android.media.AudioManager.class).getMode()
             != android.media.AudioManager.MODE_NORMAL)
       return "Device buffer operation skipped during communication";
     String apk = context.getApplicationInfo().sourceDir;
     if (!apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk")) return "Module path unavailable";
-    String action = new String[] {"", " freeze", " tune", " restore"}[operation];
+    String action = action(operation);
     String command =
         "CLASSPATH='"
             + apk
@@ -58,8 +58,14 @@ final class HalInspection {
 
   static synchronized void requestRoute(
       android.content.Context context, String registration, int operation) {
-    if (operation < 0 || operation > 3) return;
+    if (operation < 0 || operation > 7) return;
     if (running) return;
+    if (operation != 0
+        && context.getSystemService(android.media.AudioManager.class).getMode()
+            != android.media.AudioManager.MODE_NORMAL) {
+      status = "Device buffer operation skipped during communication; writeAttempts=0";
+      return;
+    }
     String address = registration == null ? "none" : registration;
     if (!address.equals("none") && !address.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")) {
       status = "Unrecognized owned registration";
@@ -74,7 +80,7 @@ final class HalInspection {
     image = null;
     selected = 3;
     status = "Checking owned HAL route";
-    String action = new String[] {"", " freeze", " tune", " restore"}[operation];
+    String action = action(operation);
     new Thread(
             () -> {
               try {
@@ -135,6 +141,20 @@ final class HalInspection {
             },
             "HomePod-HAL-inspection")
         .start();
+  }
+
+  private static String action(int operation) {
+    return new String[] {
+          "",
+          " freeze",
+          " tune",
+          " restore",
+          " brief",
+          " restore-brief",
+          " minimum",
+          " restore-minimum"
+        }
+        [operation];
   }
 
   private static byte[] read(String file) throws IOException, InterruptedException {

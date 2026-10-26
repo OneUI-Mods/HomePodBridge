@@ -33,7 +33,7 @@ final class CaptureProbe {
   }
 
   static synchronized void request(Context context, int operation) {
-    if (operation < 0 || operation > 3) return;
+    if (operation < 0 || operation > 5) return;
     if (running) return;
     if (BridgeState.capture != null || !RootConnector.available()) {
       status = "Probe requires idle sharing and an available system bridge";
@@ -56,6 +56,10 @@ final class CaptureProbe {
     long frames = 0;
     long zeroSourceFrames = 0;
     String tuningReport = "", restoreReport = "";
+    int tuneOperation = operation == 4 ? 4 : operation == 5 ? 6 : operation;
+    int restoreOperation = operation == 4 ? 5 : operation == 5 ? 7 : 3;
+    int targetFrames = operation == 4 ? 928 : operation == 5 ? 464 : 1856;
+    boolean directTuning = operation == 2 || operation == 4 || operation == 5;
     try {
       android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
       StreamSettings settings = StreamSettings.load(context);
@@ -106,11 +110,11 @@ final class CaptureProbe {
             nextTiming = now + TimeUnit.MILLISECONDS.toNanos(250);
             long[] timing = RootConnector.captureTiming(lifetime);
             if (timing != null && timing.length >= 11) zeroSourceFrames = timing[10];
-            if (operation == 2 && inspected && !tuned) {
+            if (directTuning && inspected && !tuned) {
               String report = HalInspection.result();
               if (report != null) {
                 tuningReport = report;
-                if (!report.contains("Owned reserve changed: 2587 -> 1856"))
+                if (!report.contains("Owned reserve changed: 2587 -> " + targetFrames))
                   throw new IllegalStateException("Owned tuning was refused");
                 tuned = true;
                 sampleAfter = now + TimeUnit.SECONDS.toNanos(2);
@@ -138,7 +142,7 @@ final class CaptureProbe {
             }
             if (!inspected) {
               inspected = true;
-              HalInspection.requestRoute(context, input.registration(), operation);
+              HalInspection.requestRoute(context, input.registration(), tuneOperation);
             }
           }
           if (operation >= 2 && !tuned) throw new IllegalStateException("Tuning not confirmed");
@@ -149,13 +153,17 @@ final class CaptureProbe {
             leaseExecutor.awaitTermination(2, TimeUnit.SECONDS);
             restoreReport = lease.restorationReport();
           }
-          if (operation == 2 && input.registration() != null) {
+          if (directTuning && input.registration() != null) {
             long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
             while (HalInspection.result() == null && System.nanoTime() < end) Thread.sleep(10);
             if (HalInspection.result() != null) {
-              HalInspection.requestRoute(context, input.registration(), 3);
-              while (HalInspection.result() == null && System.nanoTime() < end) Thread.sleep(10);
-              restoreReport = String.valueOf(HalInspection.result());
+              if (HalInspection.result().contains("writeAttempts=0")) {
+                restoreReport = "No restoration needed; writeAttempts=0";
+              } else {
+                HalInspection.requestRoute(context, input.registration(), restoreOperation);
+                while (HalInspection.result() == null && System.nanoTime() < end) Thread.sleep(10);
+                restoreReport = String.valueOf(HalInspection.result());
+              }
             } else restoreReport = "Helper pending; closing owned route";
           }
         }

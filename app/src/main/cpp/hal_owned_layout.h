@@ -56,7 +56,7 @@ static const char* hp_find_owned(hp_read read, void* ctx, uint64_t module, uint6
         if (hp_pointer(hp_u64(pipe))!=mono+0x8018 || hp_u64(pipe+0x30)!=4
             || hp_u64(pipe+0x40)!=4096 || pipe[0xf0]!=1 || pipe[0xf1]) return "owned pipe identity";
         uint64_t target=hp_u64(pipe+0xe8);
-        if (target!=2587 && target!=1856) return "competing reserve change";
+        if (target!=2587 && target!=1856 && target!=928 && target!=464) return "competing reserve change";
         result->route=owner; result->sink=sink; result->target_address=sink+0xe8; result->target=target;
     }
     if (visited!=count) return "incomplete route tree";
@@ -68,7 +68,9 @@ static const char* hp_change_reserve(hp_read read,hp_write write,void* ctx,const
                                     int exclusive,uint64_t before,uint64_t after) {
     uint8_t original[256],expected[256],observed[256];
     if (!exclusive) return "exclusive access required";
-    if (!((before==2587 && after==1856)||(before==1856 && after==2587))) return "unsupported reserve transition";
+    if (!((before==2587 && (after==1856 || after==928 || after==464))
+          || ((before==1856 || before==928 || before==464) && after==2587)))
+        return "unsupported reserve transition";
     if (owned->target_address!=owned->sink+0xe8 || owned->target!=before) return "stale owned target";
     if (!read(ctx,owned->sink,original,256) || hp_u64(original+0xe8)!=before) return "target changed";
     memcpy(expected,original,256);memcpy(expected+0xe8,&after,8);
