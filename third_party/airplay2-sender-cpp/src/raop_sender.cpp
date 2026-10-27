@@ -1918,7 +1918,7 @@ void RaopSender::sendAp2SetupStream_() {
     stream.emplace_back("latencyMax", Value::integer(advertisedReceiverMaximumFrames()));
     stream.emplace_back("latencyMin", Value::integer(advertisedReceiverMinimumFrames()));
     stream.emplace_back("shk", Value::bytes(ap2_->audioKey));
-    stream.emplace_back("spf", Value::integer(shortAudioPackets_ ? 88 : 352)); // samples per frame
+    stream.emplace_back("spf", Value::integer(352));     // samples per frame
     stream.emplace_back("sr", Value::integer(44100));
     stream.emplace_back("type", Value::integer(0x60));   // realtime
     stream.emplace_back("supportsDynamicStreamID", Value::boolean(false));
