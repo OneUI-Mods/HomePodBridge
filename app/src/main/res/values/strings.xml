@@ -12,7 +12,7 @@
     <string name="capture_backend_test">Capture: faster path · silent test</string>
     <string name="capture_backend_fallback">Capture: standard (faster path unavailable)</string>
     <string name="device_buffer_fast_capture">Phone buffering\nDedicated capture active</string>
-    <string name="diagnostics_hal_capture_live">Faster capture\nQueued audio at last read: %1$s\nRead size: about 1 ms\nSource mixing, networking and receiver processing are measured separately or remain unknown.</string>
+    <string name="diagnostics_hal_capture_live">Faster capture\nQueued audio at last read: %1$s\nRead size: %2$s\nSource mixing, networking and receiver processing are measured separately or remain unknown.</string>
     <string name="diagnostics_hal_idle">Faster capture\nWaiting for capturable playback. The connection remains active.</string>
     <string name="device_buffer_hal_test">Phone buffering\nDedicated HAL · silent test</string>
     <string name="diagnostics_hal_capture">Dedicated HAL · silent test\nQueued audio at last read: %1$s\nRead size: 44 frames (about 1 ms)\nThis queue excludes source mixing, networking and receiver processing.</string>

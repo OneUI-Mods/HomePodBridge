@@ -12,7 +12,7 @@
     <string name="capture_backend_test">取り込み：高速経路・無音テスト</string>
     <string name="capture_backend_fallback">取り込み：標準（高速経路は使用できません）</string>
     <string name="device_buffer_fast_capture">スマートフォン側のバッファ\n専用の取り込み経路を使用中</string>
-    <string name="diagnostics_hal_capture_live">高速な取り込み\n直近の読み取り時に残っていた音声：%1$s\n読み取り単位：約1 ms\n音源のミキシング、ネットワーク、受信機の処理時間は別に測定するか、未測定として表示します。</string>
+    <string name="diagnostics_hal_capture_live">高速な取り込み\n直近の読み取り時に残っていた音声：%1$s\n読み取り単位：%2$s\n音源のミキシング、ネットワーク、受信機の処理時間は別に測定するか、未測定として表示します。</string>
     <string name="diagnostics_hal_idle">高速な取り込み\n取り込める音声を待機中です。接続は維持しています。</string>
     <string name="device_buffer_hal_test">スマートフォン側のバッファ\n専用HAL・無音テスト</string>
     <string name="diagnostics_hal_capture">専用HAL・無音テスト\n直近の読み取り時に残っていた音声：%1$s\n読み取り単位：44フレーム（約1 ms）\n音源のミキシング、ネットワーク、受信機の処理時間は含みません。</string>

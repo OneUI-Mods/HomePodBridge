@@ -722,7 +722,10 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         live
             ? (t.halQueuedFrames() < 0
                 ? getString(R.string.diagnostics_hal_idle)
-                : getString(R.string.diagnostics_hal_capture_live, framesTime(t.halQueuedFrames())))
+                : getString(
+                    R.string.diagnostics_hal_capture_live,
+                    framesTime(t.halQueuedFrames()),
+                    framesTime(BufferLimits.DEDICATED_FRAMES)))
             : t.halQueuedFrames() >= 0
                 ? getString(R.string.diagnostics_hal_capture, framesTime(t.halQueuedFrames()))
                 : getString(
