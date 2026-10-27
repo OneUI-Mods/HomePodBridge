@@ -22,6 +22,8 @@ record NetworkTiming(long[] values, int wifiRequest) {
     if (value(9) == 0) return R.string.network_wifi_off;
     if (wifiRequest == 2) return R.string.network_wifi_eligible;
     if (wifiRequest == 1) return R.string.network_wifi_waiting;
+    if (wifiRequest == 3) return R.string.network_wifi_not_wifi;
+    if (wifiRequest == 4) return R.string.network_wifi_denied;
     return R.string.network_wifi_unavailable;
   }
 }

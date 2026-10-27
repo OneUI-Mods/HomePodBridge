@@ -10,9 +10,14 @@ import android.os.PowerManager;
 /** Public, session-owned Wi-Fi request. Held is not evidence of radio/driver activation. */
 final class NetworkLease implements AutoCloseable {
   private WifiManager.WifiLock lock;
+  private int unavailable;
 
   NetworkLease(Context context, boolean requested) {
-    if (!requested || !onWifi(context)) return;
+    if (!requested) return;
+    if (!onWifi(context)) {
+      unavailable = 3;
+      return;
+    }
     try {
       WifiManager wifi = context.getApplicationContext().getSystemService(WifiManager.class);
       if (wifi != null) {
@@ -20,13 +25,17 @@ final class NetworkLease implements AutoCloseable {
         lock.setReferenceCounted(false);
         lock.acquire();
       }
+    } catch (SecurityException denied) {
+      close();
+      unavailable = 4;
     } catch (RuntimeException unsupported) {
       close();
+      unavailable = 5;
     }
   }
 
   int status(Context context) {
-    if (lock == null || !lock.isHeld()) return 0;
+    if (lock == null || !lock.isHeld()) return unavailable;
     var process = new ActivityManager.RunningAppProcessInfo();
     ActivityManager.getMyMemoryState(process);
     boolean eligible =
@@ -39,6 +48,7 @@ final class NetworkLease implements AutoCloseable {
   private static boolean onWifi(Context context) {
     var manager = context.getSystemService(ConnectivityManager.class);
     var network = manager.getBoundNetworkForProcess();
+    if (network == null) network = manager.getActiveNetwork();
     var capabilities = network == null ? null : manager.getNetworkCapabilities(network);
     return capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
   }

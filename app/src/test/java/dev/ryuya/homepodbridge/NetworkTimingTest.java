@@ -28,6 +28,8 @@ public class NetworkTimingTest {
     assertEquals(R.string.network_priority_accepted, active.priorityResource());
     assertEquals(R.string.network_wifi_eligible, active.wifiResource());
     assertEquals(R.string.network_wifi_waiting, new NetworkTiming(data, 1).wifiResource());
+    assertEquals(R.string.network_wifi_not_wifi, new NetworkTiming(data, 3).wifiResource());
+    assertEquals(R.string.network_wifi_denied, new NetworkTiming(data, 4).wifiResource());
     data[11] = 0;
     assertEquals(R.string.network_priority_unavailable, active.priorityResource());
     data[9] = 0;

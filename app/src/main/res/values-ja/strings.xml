@@ -9,6 +9,8 @@
     <string name="network_priority_unavailable">優先要求中（一部の指定が未受理）</string>
     <string name="network_wifi_off">Wi-Fi低遅延ロック：要求なし</string>
     <string name="network_wifi_unavailable">Wi-Fi低遅延ロック：利用不可または未計測</string>
+    <string name="network_wifi_not_wifi">Wi-Fi要求を見送り（現在の接続経路をWi-Fiとして確認できません）</string>
+    <string name="network_wifi_denied">システムがWi-Fi低遅延要求を拒否しました</string>
     <string name="network_wifi_waiting">Wi-Fi要求を保持中（Wi-Fi接続・前面・画面点灯の条件待ち）</string>
     <string name="network_wifi_eligible">Wi-Fi要求を保持中（Wi-Fi接続・前面・画面点灯の条件成立／無線側の適用は未確認）</string>
     <string name="diagnostics_network_tx">端末内のUDP送信\nアプリ投入→ドライバ 中央値／p95：%1$s／%2$s\nカーネルの送信待ち→ドライバ p95：%3$s\nカーネル送信キュー（バイト）：%4$s\nUDP送信失敗／呼び出し：%5$d／%6$d\nタイムスタンプ標本数：%7$d\n受信機の再送要求／送信投入／保存期間外：%10$d／%11$d／%12$d\n%8$s\n%9$s\nドライバのソフトウェア時刻には、無線の空中時間やHomePod到着までの時間は含みません。往復時間とキュー容量は片道の音声遅延ではありません。</string>
