@@ -19,6 +19,7 @@ import org.json.JSONObject;
 
 /** Explicit DUMP-only acoustic diagnostic. Mic samples are never forwarded or stored on disk. */
 final class AcousticProbe implements AutoCloseable {
+  static final int MAX_DIAGNOSTIC_VOLUME = 35;
   private static final java.util.concurrent.atomic.AtomicReference<AcousticProbe> current =
       new java.util.concurrent.atomic.AtomicReference<>();
   private static final int MIC_RATE = 48000, MAX_SECONDS = 6;
@@ -50,8 +51,8 @@ final class AcousticProbe implements AutoCloseable {
       boolean paired,
       Consumer<String> status,
       Runnable finishedCallback) {
-    if (volume < 1 || volume > 25)
-      throw new IllegalArgumentException("Diagnostic volume must be 1..25");
+    if (volume < 1 || volume > MAX_DIAGNOSTIC_VOLUME)
+      throw new IllegalArgumentException("Diagnostic volume must be 1.." + MAX_DIAGNOSTIC_VOLUME);
     this.context = context;
     this.paired = paired;
     this.volume = volume;

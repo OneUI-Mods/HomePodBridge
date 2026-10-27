@@ -57,7 +57,10 @@ public final class CommandService extends Service {
     if (command.equals("measure-acoustic") || command.equals("measure-acoustic-paired")) {
       boolean paired = command.equals("measure-acoustic-paired");
       int volume = intent.getIntExtra("volume", -1);
-      if (volume < 1 || volume > 25 || BridgeState.capture != null || BridgeState.connected) {
+      if (volume < 1
+          || volume > AcousticProbe.MAX_DIAGNOSTIC_VOLUME
+          || BridgeState.capture != null
+          || BridgeState.connected) {
         commandStatus = "ACOUSTIC_REFUSED busy or invalid volume";
         return START_NOT_STICKY;
       }
