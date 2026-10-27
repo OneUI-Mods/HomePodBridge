@@ -23,6 +23,10 @@ public:
     }
     void reset() {active=false;nextId_=packetCounter_=0;timing.reset();}
     ssize_t send(int fd,const void* data,size_t size,int flags,const sockaddr_in& to) {
+        if(active && nextId_>=64 && !timing.count()) {
+            drain(fd);
+            if(!timing.count())invalidate(fd); // Socket option accepted, but no usable driver pairs.
+        }
         if(!active || packetCounter_++%16!=0) {
             const auto n=sendto(fd,data,size,flags,reinterpret_cast<const sockaddr*>(&to),sizeof(to));
             if(n<0)invalidate(fd);
@@ -48,7 +52,7 @@ public:
         return n;
     }
     void drain(int fd) {
-        if(!active)return;
+        if(!active) {clearQueue(fd);return;}
         for(int i=0;i<64;i++) {
             unsigned char payload[1];iovec iov{payload,sizeof(payload)};
             alignas(cmsghdr) unsigned char control[512]{};
@@ -78,7 +82,18 @@ private:
     static int64_t clockNs(clockid_t clock) {
         timespec t{};return clock_gettime(clock,&t)==0?int64_t(t.tv_sec)*1000000000LL+t.tv_nsec:0;
     }
-    void invalidate(int fd) {active=false;timing.reset();int flags=0;setsockopt(fd,SOL_SOCKET,SO_TIMESTAMPING,&flags,sizeof(flags));}
+    static void clearQueue(int fd) {
+        for(int i=0;i<64;i++) {
+            unsigned char payload[1];iovec iov{payload,sizeof(payload)};
+            alignas(cmsghdr) unsigned char control[512]{};
+            msghdr msg{};msg.msg_iov=&iov;msg.msg_iovlen=1;msg.msg_control=control;msg.msg_controllen=sizeof(control);
+            if(recvmsg(fd,&msg,MSG_ERRQUEUE|MSG_DONTWAIT)<0)break;
+        }
+    }
+    void invalidate(int fd) {
+        active=false;timing.reset();int flags=0;setsockopt(fd,SOL_SOCKET,SO_TIMESTAMPING,&flags,sizeof(flags));
+        clearQueue(fd);clearQueue(fd);
+    }
 };
 }
 #endif
