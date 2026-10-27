@@ -20,6 +20,8 @@ public enum ProbeScenario {
       "probe-policy-capture-minimum", "policy-capture-minimum", "policy-capture-minimum"),
   POLICY_SMALLER(
       "probe-policy-capture-smaller", "policy-capture-smaller", "policy-capture-smaller"),
+  POLICY_POLL("probe-policy-capture-poll", "policy-capture-poll", "policy-capture-poll"),
+  POLICY_HALF("probe-policy-capture-half", "policy-capture-half", "policy-capture-half"),
   POLICY_FORWARD("probe-policy-forward", "policy-forward", "policy-forward"),
   LIVE("internal-live", "live", "live"),
   LIVE_ZERO("internal-live-zero", "live-zero", "live-zero");
@@ -32,6 +34,8 @@ public enum ProbeScenario {
     return this == POLICY_INPUT
         || this == POLICY_FAST
         || this == POLICY_MINIMUM
+        || this == POLICY_POLL
+        || this == POLICY_HALF
         || this == POLICY_SMALLER
         || this == POLICY_FORWARD
         || live();

@@ -32,7 +32,7 @@ inline bool hp_stream_dispatch(hp_mapped_queue& command,hp_mapped_queue& reply,u
 }
 
 inline bool hp_stream_once(hp_mapped_queue& command,hp_mapped_queue& reply,uint8_t tag,int bytes,
-                            int expected_state,hp_status_reply* result,int64_t* elapsed_us) {
+                            int expected_state,hp_status_reply* result,int64_t* elapsed_us,bool event_wait=true) {
     auto begin=std::chrono::steady_clock::now();
     if(!hp_stream_dispatch(command,reply,tag,bytes)) return false;
     while(std::chrono::steady_clock::now()-begin<std::chrono::milliseconds(100)) {
@@ -41,13 +41,14 @@ inline bool hp_stream_once(hp_mapped_queue& command,hp_mapped_queue& reply,uint8
             *elapsed_us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
             return result->status==0 && result->bytes==bytes && result->state==expected_state && result->xrun_frames<=0;
         }
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        if(event_wait) {if(!reply.wait_readable(begin+std::chrono::milliseconds(100))) return false;}
+        else std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     return false;
 }
 
 // Query without consuming PCM. Only an input with a sole, owned reader may use this as a gate.
-inline bool hp_input_position(hp_mapped_queue& command,hp_mapped_queue& reply,hp_status_reply* result) {
+inline bool hp_input_position(hp_mapped_queue& command,hp_mapped_queue& reply,hp_status_reply* result,bool event_wait=true) {
     if(!hp_dispatch_status(command,reply)) return false;
     auto begin=std::chrono::steady_clock::now();
     while(std::chrono::steady_clock::now()-begin<std::chrono::milliseconds(100)) {
@@ -56,7 +57,8 @@ inline bool hp_input_position(hp_mapped_queue& command,hp_mapped_queue& reply,hp
             return result->status==0 && result->bytes==0 && (result->state==2 || result->state==3)
                 && result->xrun_frames<=0 && result->observable.frames>=0;
         }
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        if(event_wait) {if(!reply.wait_readable(begin+std::chrono::milliseconds(100))) return false;}
+        else std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     return false;
 }

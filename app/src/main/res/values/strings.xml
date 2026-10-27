@@ -40,13 +40,13 @@
     <string name="high_quality_description">Preserve captured 44.1 kHz / 16-bit stereo without discarding samples. Uses a 150 ms reserve and 1500 ms receiver target for stable listening. Low latency uses the same audio precision. This does not turn the source into high-resolution audio.</string>
     <string name="profile_selected">Active profile: %1$s</string>
     <string name="profile_custom">Custom / Standard</string>
-    <string name="profile_values">Reserve %1$d ms · Capture %2$d ms · Presentation target %3$d ms\nChanging profiles reconnects at 0%% volume.</string>
+    <string name="profile_values">Reserve %1$d ms · Capture %2$.1f ms · Presentation target %3$d ms\nChanging profiles reconnects at 0%% volume.</string>
     <string name="compressed_audio">Reduce audio data · Lossless ALAC</string>
     <string name="compressed_audio_description">ON compresses audio without changing samples. OFF restores uncompressed ALAC frames. Independent of the audio profile. Data savings depend on the sound; compression may not reduce delay. Changes reconnect at 0% volume.</string>
     <string name="tuning_description">Fine-tune delay and buffering. Applying values switches both audio profiles off and retains the compression choice.</string>
     <string name="low_latency_description">2 ms capture blocks and a 50 ms receiver target. Shorter targets may connect without audible playback. This is not measured end-to-end delay. Adaptive buffering starts near 8 ms; turn it off for a 0 ms reserve. Turn this mode off if dropouts increase. Applying Latency and buffers switches to custom settings. Changes reconnect at 0% volume.</string>
     <string name="adaptive_buffer">Adaptive buffer · Low latency only</string>
-    <string name="profile_values_adaptive">Reserve auto 8–48 ms · Capture %1$d ms · Presentation target %2$d ms\nChanging profiles reconnects at 0%% volume.</string>
+    <string name="profile_values_adaptive">Reserve auto 8–48 ms · Capture %1$.1f ms · Presentation target %2$d ms\nChanging profiles reconnects at 0%% volume.</string>
     <string name="adaptive_buffer_description">Starts near 8 ms and increases only as needed after input shortages, up to 48 ms. Reduces again during sustained silence, trimming only excess zero samples. Audible samples are retained. Each new connection starts small. OFF uses a 0 ms reserve. Changes reconnect at 0% volume.</string>
     <string name="buffer_amount">Send-ahead buffer: %1$d ms</string>
     <string name="capture_block">Capture block: %1$d ms</string>
@@ -114,4 +114,7 @@
     <string name="receiver_timing_active">Advertised wait: %1$d–%2$d ms\nReceiver maximum: %3$s</string>
     <string name="receiver_timing_explicit">Independent presentation offset is active.</string>
     <string name="receiver_timing_buffer_note">Presentation timing is controlled in Receiver timing.</string>
+    <string name="capture_block_fixed">Capture block: %1$.1f ms (fixed for dedicated capture)</string>
+    <string name="buffer_profile_fixed">This preset fixes these values. Switch to custom settings to edit supported values. Dedicated capture is only active in Low latency mode. Independent receiver timing is configured separately.</string>
+    <string name="buffer_use_custom">Use custom settings</string>
 </resources>

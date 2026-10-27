@@ -39,13 +39,13 @@
     <string name="high_quality_description">取り込んだ44.1 kHz・16 bitステレオを間引かず転送します。送信前150 ms・受信目標1500 msで安定したリスニングを優先します。低遅延モードも同じ音声精度です。音源のハイレゾ化は行いません。</string>
     <string name="profile_selected">現在の設定：%1$s</string>
     <string name="profile_custom">カスタム・標準</string>
-    <string name="profile_values">送信前 %1$d ms・取り込み %2$d ms・再生目標 %3$d ms\nモード変更時は音量0%%で再接続します。</string>
+    <string name="profile_values">送信前 %1$d ms・取り込み %2$.1f ms・再生目標 %3$d ms\nモード変更時は音量0%%で再接続します。</string>
     <string name="compressed_audio">音声データを削減・ロスレスALAC</string>
     <string name="compressed_audio_description">ONは音声の値を変えずに圧縮し、OFFは従来の非圧縮ALACに戻します。音声モードとは独立しています。削減量は音の内容により異なり、遅延が減るとは限りません。変更時は音量0%で再接続します。</string>
     <string name="tuning_description">遅延とバッファを細かく調整します。適用時は両方の音声モードをOFFにし、圧縮の選択は保持します。</string>
     <string name="low_latency_description">取り込み2 ms・受信目標50 msです。短すぎる目標値では、接続できても音が出ない場合があります。実際の遅延の測定値ではありません。自動バッファは約8 msから始め、OFFにすると送信前0 msになります。音切れが増える場合はこのモードをOFFにしてください。「遅延とバッファ」を適用するとカスタム設定に切り替わります。変更時は音量0%で再接続します。</string>
     <string name="adaptive_buffer">自動バッファ・低遅延のみ</string>
-    <string name="profile_values_adaptive">送信前 自動8〜48 ms・取り込み %1$d ms・再生目標 %2$d ms\nモード変更時は音量0%%で再接続します。</string>
+    <string name="profile_values_adaptive">送信前 自動8〜48 ms・取り込み %1$.1f ms・再生目標 %2$d ms\nモード変更時は音量0%%で再接続します。</string>
     <string name="adaptive_buffer_description">約8 msから始め、入力不足が出た時だけ最大48 msまで増やします。無音が続いた時に余剰のゼロ値だけを整理して減らし、音のあるサンプルは保持します。接続ごとに小さい値から再調整します。OFFは送信前0 msです。変更時は音量0%で再接続します。</string>
     <string name="buffer_amount">送信前バッファ：%1$d ms</string>
     <string name="capture_block">取り込み単位：%1$d ms</string>
@@ -113,4 +113,7 @@
     <string name="receiver_timing_active">受信機へ伝えた待機範囲：%1$d〜%2$d ms\n受信機が返した最大値：%3$s</string>
     <string name="receiver_timing_explicit">再生時刻のオフセットを個別に指定しています。</string>
     <string name="receiver_timing_buffer_note">再生時刻は「受信待機と再生時刻」の個別設定を使用中です。</string>
+    <string name="capture_block_fixed">取り込み単位：%1$.1f ms（専用経路の固定値）</string>
+    <string name="buffer_profile_fixed">プリセットではこの値を使用します。対応する範囲で数値を変更するにはカスタム設定へ切り替えてください。専用経路は低遅延モードでのみ有効です。受信待機と再生時刻の個別設定は別に変更できます。</string>
+    <string name="buffer_use_custom">カスタム設定に切り替え</string>
 </resources>

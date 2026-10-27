@@ -434,14 +434,14 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       profileDetails.setText(
           getString(
               R.string.profile_values_adaptive,
-              settings.effectiveDedicatedCapture() ? 1 : settings.effectiveBlockMs(),
+              settings.captureUnitMs(),
               settings.requestedPresentationMs()));
     } else
       profileDetails.setText(
           getString(
               R.string.profile_values,
               settings.effectiveBufferMs(),
-              settings.effectiveDedicatedCapture() ? 1 : settings.effectiveBlockMs(),
+              settings.captureUnitMs(),
               settings.requestedPresentationMs()));
     receiverTimingSelection.setText(
         getString(
@@ -842,32 +842,72 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     content.setOrientation(LinearLayout.VERTICAL);
     content.setPadding(dp(20), 0, dp(20), 0);
     Slider buffering =
-        settingSlider(content, R.string.buffer_amount, 0, 300, 1, settings.effectiveBufferMs());
+        settingSlider(
+            content,
+            R.string.buffer_amount,
+            BufferLimits.RESERVE_MIN_MS,
+            BufferLimits.RESERVE_MAX_MS,
+            1,
+            settings.effectiveBufferMs());
+    boolean editable = settings.profile() == 0;
+    buffering.setEnabled(editable);
     Slider block =
-        settingSlider(content, R.string.capture_block, 2, 40, 1, settings.effectiveBlockMs());
+        settings.effectiveDedicatedCapture()
+            ? null
+            : settingSlider(
+                content,
+                R.string.capture_block,
+                BufferLimits.CAPTURE_MIN_MS,
+                BufferLimits.CAPTURE_MAX_MS,
+                1,
+                settings.effectiveBlockMs());
+    if (block != null) block.setEnabled(editable);
+    else
+      content.addView(label(getString(R.string.capture_block_fixed, settings.captureUnitMs()), 16));
     Slider latency =
         settingSlider(
-            content, R.string.receiver_latency, 10, 2000, 10, settings.effectiveLatencyMs());
-    latency.setEnabled(!settings.receiverTiming().independent());
+            content,
+            R.string.receiver_latency,
+            BufferLimits.TIMING_MIN_MS,
+            BufferLimits.TIMING_MAX_MS,
+            1,
+            settings.effectiveLatencyMs());
+    latency.setEnabled(editable && !settings.receiverTiming().independent());
+    if (!editable) content.addView(label(getString(R.string.buffer_profile_fixed), 14));
     if (settings.receiverTiming().independent())
       content.addView(label(getString(R.string.receiver_timing_buffer_note), 14));
     content.addView(label(getString(R.string.buffer_description), 14));
     ScrollView scroll = new ScrollView(this);
     scroll.addView(content);
-    new MaterialAlertDialogBuilder(this)
-        .setTitle(R.string.buffer_settings)
-        .setView(scroll)
-        .setNeutralButton(
-            R.string.restore_defaults, (dialog, which) -> saveBufferSettings(150, 10, 1500))
-        .setNegativeButton(android.R.string.cancel, null)
-        .setPositiveButton(
-            R.string.apply_settings,
-            (dialog, which) ->
-                saveBufferSettings(
-                    Math.round(buffering.getValue()),
-                    Math.round(block.getValue()),
-                    Math.round(latency.getValue())))
-        .show();
+    var dialog =
+        new MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.buffer_settings)
+            .setView(scroll)
+            .setNeutralButton(
+                editable ? R.string.restore_defaults : R.string.buffer_use_custom,
+                (view, which) -> {
+                  if (editable) saveBufferSettings(150, 10, 1500);
+                  else
+                    saveBufferSettings(
+                        settings.effectiveBufferMs(),
+                        settings.effectiveBlockMs(),
+                        settings.effectiveLatencyMs());
+                })
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(
+                R.string.apply_settings,
+                (view, which) -> {
+                  if (editable)
+                    saveBufferSettings(
+                        Math.round(buffering.getValue()),
+                        Math.round(block.getValue()),
+                        Math.round(latency.getValue()));
+                })
+            .create();
+    dialog.setOnShowListener(
+        shown ->
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setEnabled(editable));
+    dialog.show();
   }
 
   private void receiverTimingSettings() {
@@ -929,7 +969,9 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                         try {
                           values[i] =
                               Integer.parseInt(fields[i].getEditText().getText().toString());
-                          if (values[i] < 10 || values[i] > 2000) throw new NumberFormatException();
+                          if (values[i] < BufferLimits.TIMING_MIN_MS
+                              || values[i] > BufferLimits.TIMING_MAX_MS)
+                            throw new NumberFormatException();
                         } catch (NumberFormatException invalid) {
                           fields[i].setError(getString(R.string.receiver_timing_invalid));
                           valid = false;

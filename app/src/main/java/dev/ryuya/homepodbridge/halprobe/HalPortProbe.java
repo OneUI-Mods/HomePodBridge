@@ -28,6 +28,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   private final java.util.concurrent.atomic.AtomicBoolean stopRequested =
       new java.util.concurrent.atomic.AtomicBoolean();
 
+  private static final ThreadLocal<ProbeScenario> diagnosticScenario = new ThreadLocal<>();
+
   private java.util.function.BooleanSupplier externalStopped = () -> false;
 
   private boolean isStopping() {
@@ -214,7 +216,11 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                 nonce.toString(),
                 live
                     ? (zeroOnly ? ProbeScenario.LIVE_ZERO : ProbeScenario.LIVE)
-                    : forwardZero ? ProbeScenario.POLICY_FORWARD : ProbeScenario.POLICY_INPUT,
+                    : forwardZero
+                        ? ProbeScenario.POLICY_FORWARD
+                        : diagnosticScenario.get() != null
+                            ? diagnosticScenario.get()
+                            : ProbeScenario.POLICY_INPUT,
                 sink,
                 stopped));
         report.put("sourceWrittenFrames", source == null ? 0 : source.writtenFrames());
@@ -736,9 +742,13 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
             || args[0].equals("policy-capture-fast")
             || args[0].equals("policy-capture-minimum")
             || args[0].equals("policy-capture-smaller")
+            || args[0].equals("policy-capture-poll")
+            || args[0].equals("policy-capture-half")
             || args[0].equals("policy-forward"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
+      if (args[0].equals("policy-capture-poll")) diagnosticScenario.set(ProbeScenario.POLICY_POLL);
+      if (args[0].equals("policy-capture-half")) diagnosticScenario.set(ProbeScenario.POLICY_HALF);
       JSONObject report =
           PolicyInputProbe.run(
               !args[0].equals("policy-input"),
@@ -748,7 +758,12 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                   ? 928
                   : args[0].equals("policy-capture-minimum")
                       ? 464
-                      : args[0].equals("policy-capture-smaller") || args[0].equals("policy-forward")
+                      : java.util.Set.of(
+                                  "policy-capture-smaller",
+                                  "policy-forward",
+                                  "policy-capture-poll",
+                                  "policy-capture-half")
+                              .contains(args[0])
                           ? 800
                           : 2587,
               args[0].equals("policy-forward"));

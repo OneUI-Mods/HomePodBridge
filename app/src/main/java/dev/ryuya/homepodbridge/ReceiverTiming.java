@@ -13,6 +13,6 @@ record ReceiverTiming(boolean independent, int minimumMs, int maximumMs, int pre
   }
 
   private static int clamp(int value) {
-    return Math.max(10, Math.min(2000, value));
+    return BufferLimits.clamp(value, BufferLimits.TIMING_MIN_MS, BufferLimits.TIMING_MAX_MS);
   }
 }

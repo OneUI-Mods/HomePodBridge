@@ -110,8 +110,11 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_zeroTransfer(
 // Read only the self-UID policy's dedicated virtual input. No output commands or caller PCM.
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
-    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jboolean forward_zero,jboolean live_capture,jboolean sanitize) {
+    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jboolean forward_zero,jboolean live_capture,jboolean sanitize,jint burst_frames,jboolean event_wait) {
     const bool live=live_capture==JNI_TRUE;
+    const int frames=int(burst_frames);
+    const bool events=event_wait==JNI_TRUE;
+    if((frames!=22 && frames!=44) || (live && frames!=22)) return nullptr;
     const bool forward=forward_zero==JNI_TRUE || live;
     if(forward) {
         int flags=fcntl(STDOUT_FILENO,F_GETFL);
@@ -132,30 +135,33 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     if(live) {
         auto r=hp_live_capture(queues,sanitize==JNI_TRUE);
         jlong values[]={r.error==0?1:0,r.captured,r.cycles,r.elapsed,r.maximum,r.max_pending,
-            r.min_pending==INT64_MAX?-1:r.min_pending,r.error,r.observations?r.sum_pending/r.observations:-1,r.sent,r.idle};
-        auto result=env->NewLongArray(11);if(result) env->SetLongArrayRegion(result,0,11,values);return result;
+            r.min_pending==INT64_MAX?-1:r.min_pending,r.error,r.observations?r.sum_pending/r.observations:-1,r.sent,r.idle,r.status_queries,r.captured>0?r.total_input_us/(r.captured/22):0};
+        auto result=env->NewLongArray(13);if(result) env->SetLongArrayRegion(result,0,13,values);return result;
     }
     hp_status_reply response{};int64_t duration=0;
     int error=0,cycles=0;int64_t captured=0,maximum=0,max_pending=0,min_pending=INT64_MAX,sum_pending=0;
-    if(!hp_stream_once(queues[0],queues[1],2,0,2,&response,&duration)) error=1;
+    int64_t queries=0,total_input_us=0;
+    if(!hp_stream_once(queues[0],queues[1],2,0,2,&response,&duration,events)) error=1;
     std::array<uint8_t,176> input{};
     auto begin=std::chrono::steady_clock::now();
-    while(error==0 && cycles<(forward ? 15000:2048)) {
+    while(error==0 && cycles<(forward ? 30000:4096)) {
         // r_submix reports the requested byte count even after zero-padding a short read.
         // Wait for a complete burst to exist before asking the sole consumer to read it.
         auto available_begin=std::chrono::steady_clock::now();
         while(true) {
-            if(!hp_input_position(queues[0],queues[1],&response)) {error=7;break;}
-            if(response.observable.frames-captured>=44) break;
+            if(events && response.observable.frames-captured>=frames) break;
+            ++queries;
+            if(!hp_input_position(queues[0],queues[1],&response,events)) {error=7;break;}
+            if(response.observable.frames-captured>=frames) break;
             if(std::chrono::steady_clock::now()-available_begin>=std::chrono::milliseconds(50)) {error=8;break;}
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
         if(error) break;
-        if(!hp_empty(queues[2]) || !hp_stream_once(queues[0],queues[1],3,176,3,&response,&duration)) {error=2;break;}
-        maximum=std::max(maximum,duration);
-        if(!queues[2].view.transfer(input.data(),input.size(),false)) {error=3;break;}
-        if(std::any_of(input.begin(),input.end(),[](uint8_t value){return value!=0;})) {error=4;break;}
-        captured+=44;++cycles;
+        if(!hp_empty(queues[2]) || !hp_stream_once(queues[0],queues[1],3,frames*4,3,&response,&duration,events)) {error=2;break;}
+        maximum=std::max(maximum,duration);total_input_us+=duration;
+        if(!queues[2].view.transfer(input.data(),size_t(frames*4),false)) {error=3;break;}
+        if(std::any_of(input.begin(),input.begin()+frames*4,[](uint8_t value){return value!=0;})) {error=4;break;}
+        captured+=frames;++cycles;
         int64_t pending=response.observable.frames-captured;
         if(pending<0) {error=5;break;}
         if(forward) {
@@ -170,8 +176,8 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
     if(error==0 && !hp_realtime_frames(captured,elapsed)) error=9;
     jlong values[]={error==0 && cycles>100 ? 1:0,captured,cycles,elapsed,maximum,max_pending,
-        min_pending==INT64_MAX ? -1:min_pending,error,cycles>100 ? sum_pending/(cycles-100):-1};
-    auto result=env->NewLongArray(9);
-    if(result) env->SetLongArrayRegion(result,0,9,values);
+        min_pending==INT64_MAX ? -1:min_pending,error,cycles>100 ? sum_pending/(cycles-100):-1,queries,cycles?total_input_us/cycles:0};
+    auto result=env->NewLongArray(11);
+    if(result) env->SetLongArrayRegion(result,0,11,values);
     return result;
 }

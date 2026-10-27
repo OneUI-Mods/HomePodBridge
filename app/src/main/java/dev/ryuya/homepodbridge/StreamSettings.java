@@ -121,9 +121,11 @@ record StreamSettings(
   }
 
   StreamSettings {
-    bufferMs = Math.max(0, Math.min(300, bufferMs));
-    blockMs = Math.max(2, Math.min(40, blockMs));
-    latencyMs = Math.max(10, Math.min(2000, latencyMs));
+    bufferMs =
+        BufferLimits.clamp(bufferMs, BufferLimits.RESERVE_MIN_MS, BufferLimits.RESERVE_MAX_MS);
+    blockMs = BufferLimits.clamp(blockMs, BufferLimits.CAPTURE_MIN_MS, BufferLimits.CAPTURE_MAX_MS);
+    latencyMs =
+        BufferLimits.clamp(latencyMs, BufferLimits.TIMING_MIN_MS, BufferLimits.TIMING_MAX_MS);
     deviceBufferFrames = deviceBufferFrames == 928 ? 928 : 1856;
     if (lowLatency) highQuality = false;
     if (receiverTiming == null) receiverTiming = ReceiverTiming.linked(latencyMs);
@@ -351,6 +353,12 @@ record StreamSettings(
 
   int samplesPerRead() {
     return 2 * (44100 * effectiveBlockMs() / 1000);
+  }
+
+  double captureUnitMs() {
+    return effectiveDedicatedCapture()
+        ? BufferLimits.DEDICATED_FRAMES * 1000.0 / 44100
+        : effectiveBlockMs();
   }
 
   int effectiveBufferMs() {

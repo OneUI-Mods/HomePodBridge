@@ -11,6 +11,38 @@ import org.junit.Test;
 
 public final class PcmPipeTest {
   @Test
+  public void halfMillisecondLiveRecordsKeepFramingAndNonzeroPcm() throws Exception {
+    byte[] raw =
+        ByteBuffer.allocate(224)
+            .putInt(PcmPipe.HAL_MAGIC)
+            .putInt(88)
+            .putLong(1000000L)
+            .putLong(22)
+            .put(new byte[88])
+            .putInt(PcmPipe.HAL_MAGIC)
+            .putInt(88)
+            .putLong(1000000L)
+            .putLong(-1)
+            .put(new byte[88])
+            .array();
+    raw[24] = 17;
+    PcmPipe pipe =
+        new PcmPipe(
+            Channels.newChannel(new ByteArrayInputStream(raw)),
+            true,
+            () -> 2000000L,
+            PcmPipe.HAL_MAGIC);
+    ByteBuffer pcm = ByteBuffer.allocateDirect(176);
+    assertEquals(88, pipe.read(pcm));
+    assertEquals(17, pcm.get(0));
+    assertEquals(22, pipe.pendingFrames());
+    assertEquals(88, pipe.read(pcm));
+    assertEquals(0, pcm.get(0));
+    assertEquals(-1, pipe.pendingFrames());
+    assertEquals(-1, pipe.read(pcm));
+  }
+
+  @Test
   public void liveIdleRecordsKeepTheConnectionOpenWithoutInventingCaptureDelay() throws Exception {
     byte[] raw = halRecord(PcmPipe.HAL_MAGIC, 176, -1);
     PcmPipe input =

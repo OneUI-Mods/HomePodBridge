@@ -80,7 +80,8 @@ final class PcmPipe {
       }
       if (length <= 0 || length > pcm.capacity() || length % 4 != 0)
         throw new IOException("Invalid PCM block length");
-      if (halZero && (length != 176 || capturedAt <= 0))
+      if (halZero
+          && ((length != 176 && (halMagic != HAL_MAGIC || length != 88)) || capturedAt <= 0))
         throw new IOException("Invalid zero HAL record");
       pcm.limit(length);
     }

@@ -103,8 +103,13 @@ final class RootHalInput implements AutoCloseable {
           throw new SecurityException("Capture handshake mismatch");
         registration = input.readUTF();
         if (!registration.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")) throw new SecurityException();
-        byte[] first = new byte[200];
-        input.readFully(first);
+        byte[] header = new byte[24];
+        input.readFully(header);
+        int payload = java.nio.ByteBuffer.wrap(header).getInt(4);
+        if (payload != 88 && payload != 176) throw new java.io.IOException("Invalid HAL block");
+        byte[] first = new byte[24 + payload];
+        System.arraycopy(header, 0, first, 0, header.length);
+        input.readFully(first, 24, payload);
         // Decode it before accepting the backend. The first record may represent idle silence.
         new PcmPipe(
                 java.nio.channels.Channels.newChannel(new java.io.ByteArrayInputStream(first)),

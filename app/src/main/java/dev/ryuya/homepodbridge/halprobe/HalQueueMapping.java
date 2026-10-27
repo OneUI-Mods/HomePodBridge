@@ -31,7 +31,13 @@ public final class HalQueueMapping {
       int[][] fds, long[][] grants, int frames, boolean exitAfterInput, boolean outputOnly);
 
   private static native long[] policyInputRead(
-      int[][] fds, long[][] grants, boolean forwardZero, boolean live, boolean sanitize);
+      int[][] fds,
+      long[][] grants,
+      boolean forwardZero,
+      boolean live,
+      boolean sanitize,
+      int frames,
+      boolean eventWait);
 
   static JSONObject inspectInChild(
       List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
@@ -319,14 +325,18 @@ public final class HalQueueMapping {
                 queueGrants.toArray(new long[0][]),
                 scenario == ProbeScenario.POLICY_FORWARD,
                 scenario.live(),
-                scenario == ProbeScenario.LIVE_ZERO);
-        if (result == null || result.length != (scenario.live() ? 11 : 9))
+                scenario == ProbeScenario.LIVE_ZERO,
+                scenario.live() || scenario == ProbeScenario.POLICY_HALF ? 22 : 44,
+                scenario != ProbeScenario.POLICY_POLL);
+        if (result == null || result.length != (scenario.live() ? 13 : 11))
           throw new SecurityException("Input read unavailable");
         new DataOutputStream(socket.getOutputStream())
             .writeUTF(
                 new JSONObject()
                     .put("mappedQueues", 3)
-                    .put("framesPerBurst", 44)
+                    .put(
+                        "framesPerBurst",
+                        scenario.live() || scenario == ProbeScenario.POLICY_HALF ? 22 : 44)
                     .put("passed", result[0] == 1)
                     .put("capturedFrames", result[1])
                     .put("cycles", result[2])
@@ -341,6 +351,9 @@ public final class HalQueueMapping {
                     .put("meanPendingFrames", result[8])
                     .put("sentFrames", scenario.live() ? result[9] : result[1])
                     .put("idleFrames", scenario.live() ? result[10] : 0)
+                    .put("statusQueries", result[scenario.live() ? 11 : 9])
+                    .put("meanInputCommandUs", result[scenario.live() ? 12 : 10])
+                    .put("eventWait", scenario != ProbeScenario.POLICY_POLL)
                     .put("errorCode", result[7])
                     .toString());
         return;

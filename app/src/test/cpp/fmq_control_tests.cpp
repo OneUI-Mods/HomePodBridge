@@ -15,6 +15,11 @@ int main() {
     assert(hp_write_pcm_packet(packet_pipe[1],1000000,800,signal.data(),true,false));
     assert(read(packet_pipe[0],packet.data(),packet.size())==200 && packet[3]==0x33);
     assert(std::equal(signal.begin(),signal.end(),packet.begin()+24));
+    assert(hp_write_pcm_packet(packet_pipe[1],1000000,80,signal.data(),true,false,22));
+    assert(read(packet_pipe[0],packet.data(),packet.size())==112 && packet[7]==88);
+    assert(std::equal(signal.begin(),signal.begin()+88,packet.begin()+24));
+    assert(!hp_write_pcm_packet(packet_pipe[1],1000000,80,signal.data(),false,false,22));
+    assert(!hp_write_pcm_packet(packet_pipe[1],1000000,80,signal.data(),true,false,21));
     assert(hp_write_pcm_packet(packet_pipe[1],1000000,-1,signal.data(),true,true));
     assert(read(packet_pipe[0],packet.data(),packet.size())==200);
     for(size_t i=24;i<packet.size();i++)assert(packet[i]==0);
@@ -49,7 +54,7 @@ int main() {
         }
         assert(received.tag==1 && received.unused==0); // Never start or write PCM.
         hp_status_reply response{};response.state=state;
-        assert(reply.view.transfer(&response,56,true));
+        assert(reply.view.transfer(&response,56,true));assert(reply.notify(2));
     };
     hp_status_reply result{};int64_t elapsed=0;
     std::thread worker(peer,1);
@@ -70,7 +75,7 @@ int main() {
         while(!command.view.transfer(&received,8,false)) std::this_thread::yield();
         assert(received.tag==1);
         hp_status_reply response{};response.state=3;response.observable.frames=-1;
-        assert(reply.view.transfer(&response,56,true));
+        assert(reply.view.transfer(&response,56,true));assert(reply.notify(2));
     });
     assert(!hp_input_position(command,reply,&result));malformed.join();
     hp_status_reply dirty{};assert(reply.view.transfer(&dirty,56,true));

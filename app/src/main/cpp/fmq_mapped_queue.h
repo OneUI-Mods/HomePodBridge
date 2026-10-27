@@ -3,6 +3,8 @@
 #include "fmq_queue_view.h"
 #include <array>
 #include <climits>
+#include <cerrno>
+#include <chrono>
 #include <fcntl.h>
 #include <linux/futex.h>
 #include <sys/mman.h>
@@ -88,4 +90,23 @@ public:
         return true;
     }
     bool can_notify() const { return attached_ && event_!=nullptr; }
+    // Consume only NOT_EMPTY, preserving the writer's NOT_FULL bit. Queue indices remain authoritative.
+    bool wait_readable(std::chrono::steady_clock::time_point deadline) {
+        if(!can_notify()) return false;
+        while(true) {
+            auto readable=[&]() {
+                uint64_t count=view.write->load(std::memory_order_acquire)-view.read->load(std::memory_order_relaxed);
+                return count>=view.quantum && count<=view.capacity;
+            };
+            if(readable()) return true;
+            uint32_t expected=event_->fetch_and(~uint32_t(2),std::memory_order_acq_rel)&~uint32_t(2);
+            if(readable()) return true; // Close the clear-versus-producer-notify race.
+            auto remaining=deadline-std::chrono::steady_clock::now();
+            if(remaining<=std::chrono::steady_clock::duration::zero()) return false;
+            auto nanos=std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count();
+            timespec timeout{time_t(nanos/1000000000),long(nanos%1000000000)};
+            int result=int(syscall(SYS_futex,event_,FUTEX_WAIT,expected,&timeout,nullptr,0));
+            if(result<0 && errno!=EAGAIN && errno!=EINTR && errno!=ETIMEDOUT) return false;
+        }
+    }
 };
