@@ -16,6 +16,15 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
     constexpr int frames=22;
     std::array<uint8_t,frames*4> pcm{};
     auto begin=std::chrono::steady_clock::now();
+    // Only the verified 96-frame context uses this tolerance. Legacy capture keeps its clock.
+    const bool short_period=q[2].view.capacity==96*4;
+    int64_t last_produced=reply.observable.frames;
+    auto last_production=begin;
+    auto note_production=[&] {
+        if(reply.observable.frames>last_produced) {
+            last_produced=reply.observable.frames;last_production=std::chrono::steady_clock::now();
+        }
+    };
     while(true) {
         if(!hp_capture_owner_alive(owner_control)) {r.error=11;break;}
         auto offset=std::chrono::seconds(r.sent/44100)
@@ -24,10 +33,24 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
         if(reply.observable.frames-r.captured<frames) {
             ++r.status_queries;
             if(!hp_input_position(q[0],q[1],&reply)) {r.error=7;break;}
+            note_production();
+        }
+        if(short_period && last_produced>0 && reply.observable.frames-r.captured<frames
+            && std::chrono::steady_clock::now()-last_production<std::chrono::milliseconds(10)) {
+            auto grace=std::chrono::steady_clock::now()+std::chrono::microseconds(2200);
+            while(reply.observable.frames-r.captured<frames && std::chrono::steady_clock::now()<grace) {
+                if(!hp_capture_owner_alive(owner_control)){r.error=11;break;}
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                ++r.status_queries;
+                if(!hp_input_position(q[0],q[1],&reply)){r.error=7;break;}
+                note_production();
+            }
+            if(r.error)break;
         }
         int64_t pending=-1;
         if(reply.observable.frames-r.captured>=frames) {
             if(!hp_empty(q[2]) || !hp_stream_once(q[0],q[1],3,frames*4,3,&reply,&duration)) {r.error=2;break;}
+            note_production();
             r.maximum=std::max(r.maximum,duration);r.total_input_us+=duration;
             if(!q[2].view.transfer(pcm.data(),pcm.size(),false)) {r.error=3;break;}
             r.captured+=frames;pending=reply.observable.frames-r.captured;
