@@ -29,18 +29,30 @@ final class HalPeriodExperiment implements AutoCloseable {
   private volatile int accepted;
 
   private HalPeriodExperiment(String address, boolean mixer) throws Exception {
-    byte[] bytes = Files.readAllBytes(Path.of("/data/local/tmp/homepod-period-trace"));
+    String apk = System.getenv("CLASSPATH");
+    if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
+      throw new SecurityException("Installed helper required");
+    byte[] bytes;
+    try (var archive = new java.util.zip.ZipFile(apk)) {
+      var entry = archive.getEntry("lib/arm64-v8a/libhomepod_period_tool.so");
+      if (entry == null || entry.getSize() > 1048576)
+        throw new SecurityException("Packaged trial tool missing");
+      try (var input = archive.getInputStream(entry)) {
+        bytes = input.readNBytes(1048577);
+      }
+    }
     if (bytes.length > 1048576
-        || !HexFormat.of()
-            .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
-            .equals("867aecfe0054d1e30aa8cdf7921da31c0fc462df4eb2aa6412273f69a8049f7c"))
-      throw new SecurityException("Unverified getter trial executable");
+        || bytes.length < 64
+        || bytes[0] != 127
+        || bytes[1] != 'E'
+        || bytes[2] != 'L'
+        || bytes[3] != 'F') throw new SecurityException("Invalid packaged executable");
     if (mixer) {
-      byte[] library = Files.readAllBytes(Path.of("/system/lib64/libaudioflinger.so"));
+      byte[] library = Files.readAllBytes(Path.of("/system/bin/audioserver"));
       if (library.length > 4194304
           || !HexFormat.of()
               .formatHex(MessageDigest.getInstance("SHA-256").digest(library))
-              .equals("45cb0b3a2eb1dad87fe3dab123658a60c8e20f0b30c2645bc7a2fe42c9e7f41f"))
+              .equals("78d47cf72768eff61e5e47ad96c5cd10e6779b97301cf01c135bccda05c9e201"))
         throw new SecurityException("Unsupported mixer build");
     }
     directory =
@@ -64,21 +76,20 @@ final class HalPeriodExperiment implements AutoCloseable {
       if (!query.waitFor(2, TimeUnit.SECONDS) || !pid.matches("[1-9][0-9]{0,6}"))
         throw new SecurityException();
       String base = null;
-      StringBuilder mapped = new StringBuilder();
+
       for (String line : Files.readAllLines(Path.of("/proc", pid, "maps"))) {
         String[] fields = line.trim().split("\\s+");
-        if (line.contains("audio") && mapped.length() < 3000) mapped.append(line).append(";");
         if (fields.length == 6
             && fields[2].equals("00000000")
             && fields[5].equals(
                 mixer
-                    ? "/system/lib64/libaudioflinger.so"
+                    ? "/system/bin/audioserver"
                     : "/vendor/lib64/libaudioserviceexampleimpl.so")) {
           if (base != null) throw new SecurityException("Ambiguous module");
           base = fields[0].split("-")[0];
         }
       }
-      if (base == null) throw new SecurityException("Pinned module missing: " + mapped);
+      if (base == null) throw new SecurityException("Pinned module missing");
       started =
           new ProcessBuilder(
                   mixer

@@ -137,9 +137,9 @@ static int run(pid_t pid,uint64_t address,int selftest) {
     static const uint32_t expected[]={0xd503245f,0x528002a0,0xd65f03c0};
     char path[64];snprintf(path,sizeof(path),"/proc/%d/mem",pid);
     int memory=open(path,O_RDONLY|O_CLOEXEC);uint32_t code[3];
-    size_t code_size=mixer_mode?4:sizeof(code);
-    uint32_t mixer_code=0xfd413660;
-    if(memory<0 || pread(memory,code,code_size,(off_t)address)!=(ssize_t)code_size || memcmp(code,mixer_mode?&mixer_code:expected,code_size)) {
+    size_t code_size=mixer_mode && selftest?4:sizeof(code);
+    const uint32_t mixer_code[]={0xfd413660,0xf9400275,0x528ef609};
+    if(memory<0 || pread(memory,code,code_size,(off_t)address)!=(ssize_t)code_size || memcmp(code,mixer_mode?mixer_code:expected,code_size)) {
         if(memory>=0)close(memory);puts("REFUSED getter code");return 1;
     }
     getter_address=address;
@@ -254,7 +254,7 @@ int main(int argc,char** argv) {
     snprintf(path,sizeof(path),"/proc/%ld/maps",pid);f=fopen(path,"re");if(!f)return 2;int mapped=0;
     while(fgets(text,sizeof(text),f)) {unsigned long long a,offset;char permissions[5];
         if(sscanf(text,"%llx-%*x %4s %llx",&a,permissions,&offset)==3 && a==base && offset==0
-            && strstr(text,mixer_mode?"/system/lib64/libaudioflinger.so":"/vendor/lib64/libaudioserviceexampleimpl.so"))mapped=1;}
+            && strstr(text,mixer_mode?"/system/bin/audioserver":"/vendor/lib64/libaudioserviceexampleimpl.so"))mapped=1;}
     fclose(f);if(!mapped)return 2;
-    return run((pid_t)pid,base+(mixer_mode?0x145078:0x150518),0);
+    return run((pid_t)pid,base+(mixer_mode?0x1b8d84:0x150518),0);
 }

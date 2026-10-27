@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
 project(homepod_bridge LANGUAGES C CXX)
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    add_executable(homepod_period_tool ../../../../tools/native/period_trace.c)
+    set_target_properties(homepod_period_tool PROPERTIES OUTPUT_NAME "libhomepod_period_tool.so"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+    target_compile_options(homepod_period_tool PRIVATE -O2 -Wall -Wextra -Werror -mbranch-protection=standard)
+    target_link_options(homepod_period_tool PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,force-bti")
+endif()
 add_library(homepod_hal SHARED hal_probe.c output_period_probe.c)
 target_link_libraries(homepod_hal PRIVATE dl)
 add_library(homepod_fmq_probe SHARED fmq_probe.cpp)
