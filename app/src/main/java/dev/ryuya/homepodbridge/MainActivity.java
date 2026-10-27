@@ -19,6 +19,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.widget.TextViewCompat;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
@@ -43,6 +44,10 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView networkTiming;
   private TextView connectionTiming;
   private TextView phoneBufferTiming;
+  private TextView diagnosticsEmpty;
+  private View diagnosticsEmptyCard;
+  private View connectionTimingCard;
+  private LinearLayout diagnosticsDetails;
   private LinearLayout speakers;
   private Button share;
   private int textColor;
@@ -50,6 +55,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private Slider volume;
   private Button exactVolume;
   private TextView volumeLabel;
+  private TextView volumeHint;
   private TextView systemStatus;
   private TextView modeSelection;
   private TextView captureBackendStatus;
@@ -237,6 +243,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     volumeControls.setOrientation(LinearLayout.VERTICAL);
     volumeLabel = label(getString(R.string.volume, 0), 18);
     volumeControls.addView(volumeLabel);
+    volumeHint = label(getString(R.string.volume_unavailable_hint), 14);
+    volumeControls.addView(volumeHint);
     volume = new Slider(this);
     volume.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     volume.setValueFrom(0);
@@ -286,9 +294,17 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(label(getString(R.string.notes), 14));
     body.addView(button(getString(R.string.licenses), view -> licenses()));
     body = diagnosticsBody;
-    body.addView(label(getString(R.string.diagnostics_intro), 14));
+    diagnosticsEmpty = label(getString(R.string.diagnostics_idle), 16);
+    diagnosticsEmptyCard = card(diagnosticsEmpty);
+    body.addView(diagnosticsEmptyCard);
     connectionTiming = label("", 16);
-    body.addView(card(connectionTiming));
+    connectionTimingCard = card(connectionTiming);
+    body.addView(connectionTimingCard);
+    diagnosticsDetails = new LinearLayout(this);
+    diagnosticsDetails.setOrientation(LinearLayout.VERTICAL);
+    body.addView(diagnosticsDetails);
+    body = diagnosticsDetails;
+    body.addView(label(getString(R.string.diagnostics_intro), 14));
     captureTiming = label("", 16);
     body.addView(card(captureTiming));
     phoneBufferTiming = label("", 16);
@@ -303,6 +319,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(card(networkTiming));
     body.addView(card(label(getString(R.string.diagnostics_unmeasured), 14)));
     syncSettings();
+    updateVolumeControls();
+    updatePipeline();
     setContentView(root);
   }
 
@@ -502,11 +520,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     share.setText(BridgeState.capture == null ? R.string.enable : R.string.stop);
     systemStatus.setText(
         RootConnector.available() ? R.string.system_ready : R.string.system_missing);
-    volumeLabel.setText(getString(R.string.volume, BridgeState.volume));
-    volume.setContentDescription(getString(R.string.volume, BridgeState.volume));
-    volume.setValue(VolumePolicy.apply(BridgeState.volume));
-    volume.setEnabled(BridgeState.connected);
-    exactVolume.setEnabled(BridgeState.connected);
+    updateVolumeControls();
     speakers.removeAllViews();
     for (Receiver receiver : BridgeState.receivers) {
       Button speaker =
@@ -552,6 +566,22 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     else message = getString(BridgeState.status);
     String reason = BridgeState.receiverRejection.message(this, BridgeState.connected);
     status.setText(reason.isEmpty() ? message : message + "\n\n" + reason);
+  }
+
+  private void updateVolumeControls() {
+    boolean connected = BridgeState.connected;
+    String title =
+        connected
+            ? getString(R.string.volume, BridgeState.volume)
+            : getString(R.string.volume_unavailable);
+    volumeLabel.setText(title);
+    volumeLabel.setTextColor(connected ? textColor : ColorUtils.setAlphaComponent(textColor, 97));
+    volumeHint.setVisibility(connected ? View.GONE : View.VISIBLE);
+    volume.setContentDescription(
+        connected ? title : title + ". " + getString(R.string.volume_unavailable_hint));
+    volume.setValue(connected ? VolumePolicy.apply(BridgeState.volume) : 0);
+    volume.setEnabled(connected);
+    exactVolume.setEnabled(connected);
   }
 
   @Override
@@ -629,6 +659,16 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
 
   private void updatePipeline() {
     ConnectionTiming connection = BridgeState.connectionTiming;
+    PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
+    boolean connecting = BridgeState.selected != null && !BridgeState.connected;
+    diagnosticsEmptyCard.setVisibility(t == null ? View.VISIBLE : View.GONE);
+    diagnosticsEmpty.setText(
+        BridgeState.connected
+            ? R.string.diagnostics_waiting
+            : connecting ? R.string.diagnostics_connecting : R.string.diagnostics_idle);
+    diagnosticsDetails.setVisibility(t == null ? View.GONE : View.VISIBLE);
+    connectionTimingCard.setVisibility(
+        connection != null && (BridgeState.connected || connecting) ? View.VISIBLE : View.GONE);
     connectionTiming.setText(
         connection == null
             ? getString(R.string.diagnostics_idle)
@@ -670,14 +710,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     boolean live =
         BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED
             || BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED_SHORT;
-    PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
-    if (t == null) {
-      for (TextView label :
-          new TextView[] {
-            captureTiming, phoneBufferTiming, pipeTiming, senderTiming, handoffTiming, networkTiming
-          }) label.setText(R.string.diagnostics_idle);
-      return;
-    }
+    if (t == null) return;
     String request =
         getString(
             t.capture(9) == 1
@@ -804,18 +837,24 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     button.setText(label);
     button.setAllCaps(false);
     button.setTextSize(16);
-    button.setTextColor(textColor);
+    button.setTextColor(controlColors(textColor, 97));
     button.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
     button.setStrokeWidth(dp(1));
     button.setStrokeColor(
-        ColorStateList.valueOf(
-            MaterialColors.getColor(button, com.google.android.material.R.attr.colorOutline)));
+        controlColors(
+            MaterialColors.getColor(button, com.google.android.material.R.attr.colorOutline), 31));
     button.setPadding(dp(20), dp(12), dp(20), dp(12));
     LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, -2);
     layout.setMargins(0, dp(6), 0, dp(6));
     button.setLayoutParams(layout);
     button.setOnClickListener(listener);
     return button;
+  }
+
+  private ColorStateList controlColors(int color, int disabledAlpha) {
+    return new ColorStateList(
+        new int[][] {{android.R.attr.state_enabled}, {}},
+        new int[] {color, ColorUtils.setAlphaComponent(color, disabledAlpha)});
   }
 
   private MaterialCardView card(View content) {

@@ -73,6 +73,8 @@
     <string name="restore_defaults">標準に戻す</string>
     <string name="apply_settings">適用</string>
     <string name="volume">音量 · %1$d%%</string>
+    <string name="volume_unavailable">音量 · 操作できません</string>
+    <string name="volume_unavailable_hint">スピーカーに接続すると音量を変更できます。</string>
     <string name="system_ready">システムの音声出力と連携しています</string>
     <string name="system_missing">VectorでSystem UIを対象に有効化し、SystemUIを再読み込みしてください。</string>
     <string name="explanation">HomePodと同じWi-Fiに接続してください。Apple Musicのキャスト一覧やシステムの「メディア出力」から選ぶと、音声の転送が始まります。接続時の音量は0%です。</string>
@@ -107,6 +109,8 @@
     <string name="tab_diagnostics">診断</string>
     <string name="diagnostics_intro">接続中は約2秒ごとに更新します。各値は異なる処理を表し、足し合わせても実際に音が届くまでの遅延にはなりません。</string>
     <string name="diagnostics_idle">スピーカーに接続すると現在の時間を表示します。</string>
+    <string name="diagnostics_connecting">スピーカーに接続しています… 準備ができると計測値を表示します。</string>
+    <string name="diagnostics_waiting">接続済みです。計測値を取得しています…</string>
     <string name="diagnostics_unknown">未測定</string>
     <string name="diagnostics_ms">%1$.2f ms</string>
     <string name="capture_standard">通常の取り込み経路</string>

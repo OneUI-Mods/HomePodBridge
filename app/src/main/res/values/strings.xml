@@ -74,6 +74,8 @@
     <string name="restore_defaults">Reset</string>
     <string name="apply_settings">Apply</string>
     <string name="volume">Volume · %1$d%%</string>
+    <string name="volume_unavailable">Volume · Unavailable</string>
+    <string name="volume_unavailable_hint">Connect a speaker to adjust its volume.</string>
     <string name="system_ready">System audio routing is ready</string>
     <string name="system_missing">Enable the module for System UI in Vector, then reload SystemUI.</string>
     <string name="explanation">Connect to the same Wi-Fi as your HomePod. Select it in Apple Music’s Cast chooser or the system media output picker. Each connection starts at 0% volume.</string>
@@ -108,6 +110,8 @@
     <string name="tab_diagnostics">Diagnostics</string>
     <string name="diagnostics_intro">Updates about every two seconds while connected. Each value describes a different operation. These values cannot be added to obtain measured audible delay.</string>
     <string name="diagnostics_idle">Connect a speaker to view live timings.</string>
+    <string name="diagnostics_connecting">Connecting to the speaker… Timings will appear when ready.</string>
+    <string name="diagnostics_waiting">Connected. Waiting for timing measurements…</string>
     <string name="diagnostics_unknown">Not measured</string>
     <string name="diagnostics_ms">%1$.2f ms</string>
     <string name="capture_standard">Standard sink</string>
