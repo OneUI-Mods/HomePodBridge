@@ -8,7 +8,8 @@ public record CaptureScope(
     return switch (mode) {
       case "selected" -> new CaptureScope(false, selectedUid, bridgeUid, false, false);
       case "whole" -> new CaptureScope(true, -1, bridgeUid, false, false);
-      case "test-selected" -> new CaptureScope(false, 0, bridgeUid, true, false);
+      case "test-target-752", "test-target-768", "test-selected" ->
+          new CaptureScope(false, 0, bridgeUid, true, false);
       case "test-whole" -> new CaptureScope(true, -1, bridgeUid, true, false);
       case "test-cycle" -> new CaptureScope(false, 0, bridgeUid, true, true);
       default -> throw new IllegalArgumentException("Unknown capture scope");

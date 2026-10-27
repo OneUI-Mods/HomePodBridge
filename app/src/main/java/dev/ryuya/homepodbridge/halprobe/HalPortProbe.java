@@ -92,8 +92,12 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       java.util.function.BooleanSupplier stopped,
       Ready ready)
       throws Exception {
-    if (target != 2587 && target != 928 && target != 464 && target != 800)
-      throw new IllegalArgumentException();
+    if (target != 2587
+        && target != 928
+        && target != 464
+        && target != 800
+        && target != 752
+        && target != 768) throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
     probe.externalStopped = stopped;
     var baseline = probe.snapshot();
@@ -271,6 +275,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           case 928 -> "brief";
           case 464 -> "minimum";
           case 800 -> "direct";
+          case 752 -> "direct-752";
+          case 768 -> "direct-768";
           default -> throw new IllegalArgumentException();
         };
     return restore ? "restore-" + operation : operation;

@@ -34,6 +34,12 @@ public final class HalCaptureHost {
       int selectedUid = context.getPackageManager().getApplicationInfo(args[2], 0).uid;
       if (selectedUid == bridgeUid) throw new SecurityException("Cannot capture Bridge itself");
       CaptureScope scope = CaptureScope.parse(args[1], selectedUid, bridgeUid);
+      int target =
+          switch (args[1]) {
+            case "test-target-752" -> 752;
+            case "test-target-768" -> 768;
+            default -> 800;
+          };
       try (var socket = new LocalSocket()) {
         socket.connect(
             new LocalSocketAddress("hpb-live-" + args[0], LocalSocketAddress.Namespace.ABSTRACT));
@@ -66,7 +72,7 @@ public final class HalCaptureHost {
               HalPortProbe.inputSession(
                   policy.address,
                   UUID.fromString(args[0]),
-                  800,
+                  target,
                   false,
                   true,
                   scope.zeroOnly(),

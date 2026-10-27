@@ -43,8 +43,8 @@ int main(void) {
     assert(!memcmp(original,fixture+sink-base,256)); // A short write is rolled back under exclusion.
     write_failure=2;assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,1856));
     assert(!memcmp(original,fixture+sink-base,256));write_failure=0;
-    const uint64_t experiment_targets[]={928,464,800};
-    for (size_t i=0;i<3;++i) {
+    const uint64_t experiment_targets[]={928,464,800,752,768};
+    for (size_t i=0;i<5;++i) {
         uint64_t target=experiment_targets[i];
         assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
         assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,target));

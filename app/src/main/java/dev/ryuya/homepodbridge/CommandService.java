@@ -66,6 +66,14 @@ public final class CommandService extends Service {
       commandStatus = "Short packet preference: " + command.endsWith("on");
       return START_NOT_STICKY;
     }
+    if (java.util.List.of("probe-local-hal-steady", "probe-local-hal-752", "probe-local-hal-768")
+        .contains(command)) {
+      int target = command.endsWith("752") ? 752 : command.endsWith("768") ? 768 : 800;
+      commandStatus = "Checking fixed zero-only reserve candidate";
+      commands.execute(
+          () -> commandStatus = "Local HAL: " + LocalHalProbe.run(this, target, false));
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-local-hal")) {
       commandStatus = "Checking zero-only capture without a receiver";
       commands.execute(() -> commandStatus = "Local HAL: " + LocalHalProbe.run(this));

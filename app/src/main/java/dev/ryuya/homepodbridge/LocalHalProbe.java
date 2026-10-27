@@ -12,13 +12,17 @@ import org.json.JSONObject;
  */
 final class LocalHalProbe {
   static String run(Context context) {
+    return run(context, 800, true);
+  }
+
+  static String run(Context context, int target, boolean pulse) {
     if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0)
       return "LOCAL_HAL_BUSY";
     JSONObject result = new JSONObject();
     RootHalInput owner = null;
     boolean startupCleanupSafe = true;
     try {
-      owner = new RootHalInput(context, BridgeState.MUSIC, false, true, true);
+      owner = new RootHalInput(context, BridgeState.MUSIC, false, true, pulse, target);
       PcmPipe pipe =
           new PcmPipe(
               Channels.newChannel(owner.input()), true, System::nanoTime, PcmPipe.HAL_MAGIC);
@@ -55,6 +59,7 @@ final class LocalHalProbe {
           frames * 1_000_000L >= elapsedUs * 44100L * 95 / 100
               && frames * 1_000_000L <= elapsedUs * 44100L * 105 / 100;
       result
+          .put("targetFillFrames", target)
           .put("nonce", owner.nonce)
           .put("frames", frames)
           .put("blocks", blocks)

@@ -30,7 +30,17 @@ final class RootHalInput implements AutoCloseable {
 
   RootHalInput(Context context, String source, boolean whole, boolean zero, boolean pulse)
       throws StartupException {
+    this(context, source, whole, zero, pulse, 800);
+  }
+
+  RootHalInput(
+      Context context, String source, boolean whole, boolean zero, boolean pulse, int testTarget)
+      throws StartupException {
     try {
+      if (testTarget != 800
+          && ((testTarget != 752 && testTarget != 768) || !zero || whole || pulse))
+        throw new SecurityException(
+            "Only fixed self-UID zero tests may change the candidate reserve");
       if (BridgeState.connected
           || BridgeState.volume != 0
           || !source.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")) throw new SecurityException();
@@ -40,6 +50,7 @@ final class RootHalInput implements AutoCloseable {
           zero
               ? (pulse ? "test-cycle" : whole ? "test-whole" : "test-selected")
               : whole ? "whole" : "selected";
+      if (testTarget != 800) mode = "test-target-" + testTarget;
       try (var server = new LocalServerSocket("hpb-live-" + nonce)) {
         process =
             new ProcessBuilder(
