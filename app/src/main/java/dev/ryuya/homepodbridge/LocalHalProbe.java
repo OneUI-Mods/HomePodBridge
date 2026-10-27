@@ -36,7 +36,7 @@ final class LocalHalProbe {
       ByteBuffer pcm = ByteBuffer.allocateDirect(176);
       var transits = new ArrayList<Long>();
       long frames = 0, blocks = 0, pendingSum = 0, active = 0, maximumPending = 0, idleBlocks = 0;
-      long begin = System.nanoTime();
+      long begin = System.nanoTime(), firstActiveAt = -1, steadyIdle = 0;
       while (System.nanoTime() - begin < 10_000_000_000L) {
         if (Thread.currentThread().isInterrupted()
             || BridgeState.capture != null
@@ -53,11 +53,16 @@ final class LocalHalProbe {
         long transit = pipe.transitMicros();
         if (transit >= 0) transits.add(transit);
         long pending = pipe.pendingFrames();
-        if (pending < 0) idleBlocks++;
-        else if (System.nanoTime() - begin >= 500_000_000L) {
-          pendingSum += pending;
-          active++;
-          maximumPending = Math.max(maximumPending, pending);
+        if (pending < 0) {
+          idleBlocks++;
+          if (System.nanoTime() - begin >= 500_000_000L) steadyIdle++;
+        } else {
+          if (firstActiveAt < 0) firstActiveAt = (System.nanoTime() - begin) / 1000;
+          if (System.nanoTime() - begin >= 500_000_000L) {
+            pendingSum += pending;
+            active++;
+            maximumPending = Math.max(maximumPending, pending);
+          }
         }
       }
       long elapsedUs = (System.nanoTime() - begin) / 1000;
@@ -77,6 +82,8 @@ final class LocalHalProbe {
           .put("zeroOnly", true)
           .put("networkStarted", false)
           .put("idleBlocks", idleBlocks)
+          .put("steadyIdleBlocks", steadyIdle)
+          .put("firstActiveUs", firstActiveAt)
           .put("steadyMeanPendingFrames", active == 0 ? -1 : pendingSum / active)
           .put("steadyMaximumPendingFrames", maximumPending)
           .put("medianTransitUs", percentile(transits, 50))
