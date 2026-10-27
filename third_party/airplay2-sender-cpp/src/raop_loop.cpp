@@ -383,6 +383,11 @@ void RaopLoop::udpSend(RaopUdp which, const RaopEndpoint& to, std::span<const ui
     if (u.fd == kBadSock) return;
     sockaddr_in addr{};
     if (!toSockAddr(to.ip, to.port, addr)) return;
+#if defined(__linux__)
+    // Some vendor paths do not wake poll for timestamp-only error-queue records.
+    // Also drain on the existing 1-in-16 audio cadence, without extra packets or busy polling.
+    if(which==RaopUdp::Audio && u.sends%16==0)u.tx.drain(u.fd);
+#endif
     const auto begin=std::chrono::steady_clock::now();
 #if defined(__linux__)
     const auto sent=which==RaopUdp::Audio
