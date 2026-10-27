@@ -22,6 +22,11 @@ public final class SilentProbeSource implements AutoCloseable {
   private AudioTrack track;
   private volatile long writtenFrames;
   private volatile int bufferFrames;
+  private int underruns;
+
+  public synchronized int underruns() {
+    return track == null ? underruns : track.getUnderrunCount();
+  }
 
   public int bufferFrames() {
     return bufferFrames;
@@ -62,6 +67,10 @@ public final class SilentProbeSource implements AutoCloseable {
         track = created;
       }
       byte[] zeros = new byte[periodFrames * 4];
+      if (periodFrames == 96) {
+        int primed = created.write(zeros, 0, zeros.length, AudioTrack.WRITE_NON_BLOCKING);
+        if (primed > 0) writtenFrames += primed / 4;
+      }
       created.play();
       while (!closed.get()) {
         int offset = 0;
@@ -77,6 +86,7 @@ public final class SilentProbeSource implements AutoCloseable {
       // An unsupported source makes diagnostics inconclusive; normal capture is unaffected.
     } finally {
       synchronized (this) {
+        if (created != null) underruns = created.getUnderrunCount();
         track = null;
       }
       if (created != null) {

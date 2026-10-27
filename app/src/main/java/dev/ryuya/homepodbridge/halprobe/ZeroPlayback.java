@@ -36,6 +36,10 @@ final class ZeroPlayback implements AutoCloseable {
     }
   }
 
+  synchronized int underruns() {
+    return sources.stream().mapToInt(SilentProbeSource::underruns).sum();
+  }
+
   synchronized int bufferFrames() {
     return sources.stream().mapToInt(SilentProbeSource::bufferFrames).max().orElse(0);
   }

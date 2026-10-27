@@ -338,6 +338,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                 directSocket));
         report.put("sourceWrittenFrames", source == null ? 0 : source.writtenFrames());
         report.put("sourceBufferFrames", source == null ? 0 : source.bufferFrames());
+        report.put("sourceUnderruns", source == null ? 0 : source.underruns());
       }
     } catch (Exception failure) {
       report.put("failure", failure.getClass().getSimpleName() + ": " + failure.getMessage());

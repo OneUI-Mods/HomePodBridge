@@ -392,3 +392,6 @@ The short-period path is now an explicit default-off tuning preference, effectiv
 
 
 The actual app/socket short-period trial exposed about 1.8% steady idle records despite correct producer throughput in the unclocked diagnostic. A short-only live-reader grace now waits at most one 2.2 ms producer quantum when the last production was within 10 ms, instead of immediately inserting zeros at a slightly early fixed-clock read. It remains availability-gated, checks client/owner death during the wait, and returns to immediate fixed-clock silence when inactive. Legacy 928-frame contexts retain their original behavior. Steady idle count and first-data timing distinguish this issue from source startup or intentional source pauses.
+
+
+One-quantum grace reduced a ten-second app-path trial from 364 to five steady idle blocks. The short-only bound is therefore two producer quanta (4.4 ms); this is tolerance for a late producer, not a configured extra reserve. The zero diagnostic primes its first short block before play and reports AudioTrack underruns separately, so source startup and source starvation cannot be mistaken for a capture-path improvement.

@@ -37,7 +37,7 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
         }
         if(short_period && last_produced>0 && reply.observable.frames-r.captured<frames
             && std::chrono::steady_clock::now()-last_production<std::chrono::milliseconds(10)) {
-            auto grace=std::chrono::steady_clock::now()+std::chrono::microseconds(2200);
+            auto grace=std::chrono::steady_clock::now()+std::chrono::microseconds(4400);
             while(reply.observable.frames-r.captured<frames && std::chrono::steady_clock::now()<grace) {
                 if(!hp_capture_owner_alive(owner_control)){r.error=11;break;}
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
