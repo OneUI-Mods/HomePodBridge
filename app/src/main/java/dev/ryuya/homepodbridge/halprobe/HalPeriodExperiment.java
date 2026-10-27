@@ -64,8 +64,10 @@ final class HalPeriodExperiment implements AutoCloseable {
       if (!query.waitFor(2, TimeUnit.SECONDS) || !pid.matches("[1-9][0-9]{0,6}"))
         throw new SecurityException();
       String base = null;
+      StringBuilder mapped = new StringBuilder();
       for (String line : Files.readAllLines(Path.of("/proc", pid, "maps"))) {
         String[] fields = line.trim().split("\\s+");
+        if (line.contains("audio") && mapped.length() < 3000) mapped.append(line).append(";");
         if (fields.length == 6
             && fields[2].equals("00000000")
             && fields[5].equals(
@@ -76,7 +78,7 @@ final class HalPeriodExperiment implements AutoCloseable {
           base = fields[0].split("-")[0];
         }
       }
-      if (base == null) throw new SecurityException("Pinned module missing");
+      if (base == null) throw new SecurityException("Pinned module missing: " + mapped);
       started =
           new ProcessBuilder(
                   mixer
@@ -112,7 +114,10 @@ final class HalPeriodExperiment implements AutoCloseable {
                         port = Integer.parseInt(fields[3]);
                     boolean allow =
                         !stopping
-                            && ownedConfig(new ReadOnlyHalState().snapshot(), address, id, port);
+                            && (mixer
+                                ? ownedMixer(new ReadOnlyHalState().snapshot(), address, id)
+                                : ownedConfig(
+                                    new ReadOnlyHalState().snapshot(), address, id, port));
                     if (allow) accepted++;
                     process
                         .getOutputStream()
@@ -219,10 +224,11 @@ final class HalPeriodExperiment implements AutoCloseable {
           if (part.contains("  I/O handle: " + io + "\n")) section = part;
         StringBuilder fields = new StringBuilder();
         for (String line : section.split("\n"))
-          if (line.contains("frame count:")
-              || line.contains("Sample rate:")
-              || line.contains("I/O handle:")
-              || line.contains("FastMixer thread")) fields.append(line.trim()).append('\n');
+          if (!line.trim().startsWith("-")
+              && (line.contains("frame count:")
+                  || line.contains("Sample rate:")
+                  || line.contains("I/O handle:")
+                  || line.contains("FastMixer thread"))) fields.append(line.trim()).append('\n');
         result.put("audioFlinger", fields.toString());
       } else dump.destroyForcibly();
     } catch (Exception error) {
