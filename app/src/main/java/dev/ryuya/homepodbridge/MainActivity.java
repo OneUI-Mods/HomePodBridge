@@ -41,6 +41,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView senderTiming;
   private TextView handoffTiming;
   private TextView networkTiming;
+  private TextView connectionTiming;
   private TextView phoneBufferTiming;
   private LinearLayout speakers;
   private Button share;
@@ -286,6 +287,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(button(getString(R.string.licenses), view -> licenses()));
     body = diagnosticsBody;
     body.addView(label(getString(R.string.diagnostics_intro), 14));
+    connectionTiming = label("", 16);
+    body.addView(card(connectionTiming));
     captureTiming = label("", 16);
     body.addView(card(captureTiming));
     phoneBufferTiming = label("", 16);
@@ -625,6 +628,27 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   }
 
   private void updatePipeline() {
+    ConnectionTiming connection = BridgeState.connectionTiming;
+    connectionTiming.setText(
+        connection == null
+            ? getString(R.string.diagnostics_idle)
+            : getString(
+                R.string.diagnostics_connection,
+                millis(
+                    connection.micros(
+                        ConnectionTiming.Stage.SELECTED, ConnectionTiming.Stage.READY)),
+                millis(
+                    connection.micros(
+                        ConnectionTiming.Stage.SELECTED, ConnectionTiming.Stage.WORKER)),
+                millis(
+                    connection.micros(
+                        ConnectionTiming.Stage.WORKER, ConnectionTiming.Stage.NETWORK)),
+                millis(
+                    connection.micros(
+                        ConnectionTiming.Stage.NETWORK, ConnectionTiming.Stage.CAPTURE)),
+                millis(
+                    connection.micros(
+                        ConnectionTiming.Stage.SENDER, ConnectionTiming.Stage.AUTHENTICATED))));
     if (captureBackendStatus != null)
       captureBackendStatus.setText(
           BridgeState.selected == null

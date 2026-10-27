@@ -140,6 +140,7 @@ public:
         return true;
     }
     uint32_t audioPacketFrames() const { return packetFrames_; }
+    bool transportReady() const { return state_ == State::Streaming && !waitingInitialVolume_; }
     void setPresentationLatencyMs(uint32_t milliseconds) {
         requestedLatency_ = latency_ = std::clamp(milliseconds, 10u, 2000u) * 44100u / 1000u;
         if (!independentReceiverTiming_) {

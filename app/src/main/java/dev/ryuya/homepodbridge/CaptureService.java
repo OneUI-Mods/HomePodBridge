@@ -209,6 +209,8 @@ public final class CaptureService extends Service {
     ReceiverRejection.NONE.save(this);
     BridgeState.pipeline = null;
     BridgeState.networkTiming = null;
+    ConnectionTiming connection = new ConnectionTiming();
+    BridgeState.connectionTiming = connection;
     BridgeState.activePhoneTiming = null;
     BridgeState.phonePath = null;
     zeroProbeActive = zeroProbe;
@@ -229,7 +231,8 @@ public final class CaptureService extends Service {
                 zeroProbe,
                 dedicatedHal,
                 testWhole,
-                pulse));
+                pulse,
+                connection));
   }
 
   private void stream(
@@ -240,7 +243,9 @@ public final class CaptureService extends Service {
       boolean zeroProbe,
       boolean forceDedicated,
       boolean testWhole,
-      boolean pulse) {
+      boolean pulse,
+      ConnectionTiming connection) {
+    connection.mark(ConnectionTiming.Stage.WORKER);
     AudioRecord recorder = null;
     RootHalInput zeroHal = null;
     ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
@@ -296,6 +301,7 @@ public final class CaptureService extends Service {
       }
       if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
       networkLease = new NetworkLease(this, networkSettings.priority());
+      connection.mark(ConnectionTiming.Stage.NETWORK);
       PcmPipe rootInput = null;
       if (dedicatedHal && settings.wholeDevice()) {
         try {
@@ -427,6 +433,8 @@ public final class CaptureService extends Service {
         if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
           throw new IllegalStateException("Capture unavailable");
       }
+      connection.mark(ConnectionTiming.Stage.CAPTURE);
+      connection.mark(ConnectionTiming.Stage.SENDER);
       NativeSender.start(
           receiver.host(),
           receiver.port(),
@@ -482,6 +490,11 @@ public final class CaptureService extends Service {
           nextTiming = now + 2000;
         }
         if (!started && state == 2) {
+          long authenticatedAt = NativeSender.preparedAtNanos();
+          connection.markAt(
+              ConnectionTiming.Stage.AUTHENTICATED,
+              authenticatedAt > 0 ? authenticatedAt : System.nanoTime());
+          connection.mark(ConnectionTiming.Stage.READY);
           started = true;
           main.post(
               () -> {
@@ -757,6 +770,8 @@ public final class CaptureService extends Service {
             + " wholeDevice="
             + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
+    if (BridgeState.connectionTiming != null)
+      writer.println(BridgeState.connectionTiming.summary());
     writer.println("networkTiming=" + java.util.Arrays.toString(NativeSender.network()));
     writer.println(
         "wifiRequest="

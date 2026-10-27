@@ -10,7 +10,7 @@ namespace fxchain {
 class TxTiming {
 public:
     struct Sample { int64_t callToDriverUs, schedulerToDriverUs; };
-    void reset() { pending_={}; samples_={}; count_=rejected_=next_=0; }
+    void reset() { pending_={}; samples_={}; count_=rejected_=next_=0;lastSampleAt_=0; }
     void sent(uint32_t id,int64_t realtime,int64_t monotonic) {
         pending_[id % pending_.size()]={id,realtime,monotonic,0,0,realtime>0 && monotonic>0};
     }
@@ -29,9 +29,14 @@ public:
         const int64_t total=p.driver-p.realtime,queued=p.driver-p.scheduler;
         if(total<0 || total>2000000000LL || queued<0 || queued>total) {++rejected_;return;}
         samples_[next_++ % samples_.size()]={total/1000,queued/1000};++count_;
+        lastSampleAt_=monotonic;
     }
     uint64_t count() const {return count_;}
     uint64_t rejected() const {return rejected_;}
+    int64_t recentPercentile(bool scheduler,int percent,int64_t now) const {
+        if(lastSampleAt_<=0 || now<lastSampleAt_ || now-lastSampleAt_>3000000000LL)return -1;
+        return percentile(scheduler,percent);
+    }
     int64_t percentile(bool scheduler,int percent) const {
         const size_t n=std::min<uint64_t>(count_,samples_.size());
         if(!n)return -1;
@@ -45,5 +50,6 @@ private:
     std::array<Pending,256> pending_{};
     std::array<Sample,128> samples_{};
     uint64_t count_=0,rejected_=0,next_=0;
+    int64_t lastSampleAt_=0;
 };
 }

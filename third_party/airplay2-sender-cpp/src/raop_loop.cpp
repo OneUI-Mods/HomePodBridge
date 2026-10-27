@@ -423,8 +423,9 @@ std::array<int64_t,14> RaopLoop::networkStatistics() const {
         result[3]=queued;u.maximumQueue=std::max(u.maximumQueue,int64_t(queued));
     }
     result[4]=u.maximumQueue;result[5]=int64_t(u.tx.timing.count());
-    result[6]=u.tx.timing.percentile(false,50);result[7]=u.tx.timing.percentile(false,95);
-    result[8]=u.tx.timing.percentile(true,95);result[12]=u.tx.active?1:0;
+    const auto mono=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    result[6]=u.tx.timing.recentPercentile(false,50,mono);result[7]=u.tx.timing.recentPercentile(false,95,mono);
+    result[8]=u.tx.timing.recentPercentile(true,95,mono);result[12]=u.tx.active?1:0;
     result[13]=int64_t(u.tx.timing.rejected());
 #endif
     return result;

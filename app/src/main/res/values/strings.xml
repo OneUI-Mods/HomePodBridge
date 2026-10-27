@@ -1,4 +1,5 @@
 <resources>
+    <string name="diagnostics_connection">Connection setup\nTotal: %1$s\nWorker wait: %2$s\nNetwork preparation: %3$s\nAudio path preparation: %4$s\nReceiver handshake and initial mute: %5$s\nStages may overlap. This is connection startup time, not playback latency.</string>
     <string name="network_settings">Network settings</string>
     <string name="network_normal">Normal network priority</string>
     <string name="network_priority">Request audio network priority</string>
@@ -114,7 +115,7 @@
     <string name="capture_fast_fallback">FAST request unavailable; using standard sink</string>
     <string name="diagnostics_capture">Capture\nTimestamp age (estimate): %1$s\nRead wait, last / session max: %2$s / %3$s\nRead block limit / allocated buffer: %4$s / %5$s\n%6$s\nAllocated capacity is not measured delay.</string>
     <string name="diagnostics_pipe">System → app\nCapture read complete → app read complete: %1$s\nPipe write wait, last / session max: %2$s / %3$s</string>
-    <string name="diagnostics_sender">Sender\nQueued PCM (snapshot): %1$s\nInput reserve: %2$s\nALAC encoding, session max: %3$s\nPacket duration: %4$s\nInput shortage, session total: %5$s\nQueue and reserve are buffer amounts, not transit measurements.</string>
+    <string name="diagnostics_sender">Sender\nQueued PCM (snapshot): %1$s\nInput reserve: %2$s\nAudio packet encoding, session max: %3$s\nPacket duration: %4$s\nInput shortage, session total: %5$s\nQueue and reserve are buffer amounts, not transit measurements.</string>
     <string name="diagnostics_handoff">Socket handoff\nTime left before target, last / session min: %1$s / %2$s\nLate packets: %3$d / %4$d\nReceiver target: %5$s\nThis is remaining time, not a measured network delay.</string>
     <string name="diagnostics_unmeasured">Not measured\nWi-Fi one-way transit, receiver clock error, HomePod internal processing, and total audible delay.\nCapture timestamps are estimates reported by Android; vendor implementations may differ.</string>
     <string name="diagnostics_network">Network reference\nControl TCP round-trip (smoothed): %1$s\nRTT deviation estimate: %2$s\nThis is not audio UDP one-way transit or HomePod rendering time.</string>

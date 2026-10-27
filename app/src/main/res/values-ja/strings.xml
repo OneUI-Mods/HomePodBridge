@@ -1,4 +1,5 @@
 <resources>
+    <string name="diagnostics_connection">接続確立\n合計：%1$s\n処理開始待ち：%2$s\nネットワーク準備：%3$s\n音声経路の準備：%4$s\n受信機との接続・初期ミュート確認：%5$s\n各工程は並行する場合があります。接続開始にかかる時間で、再生遅延ではありません。</string>
     <string name="network_settings">ネットワーク設定</string>
     <string name="network_normal">通常のネットワーク優先度</string>
     <string name="network_priority">音声のネットワーク優先を要求</string>
@@ -13,7 +14,7 @@
     <string name="network_wifi_denied">システムがWi-Fi低遅延要求を拒否しました</string>
     <string name="network_wifi_waiting">Wi-Fi要求を保持中（Wi-Fi接続・前面・画面点灯の条件待ち）</string>
     <string name="network_wifi_eligible">Wi-Fi要求を保持中（Wi-Fi接続・前面・画面点灯の条件成立／無線側の適用は未確認）</string>
-    <string name="diagnostics_network_tx">端末内のUDP送信\nアプリ投入→ドライバ 中央値／p95：%1$s／%2$s\nカーネルの送信待ち→ドライバ p95：%3$s\nカーネル送信キュー（バイト）：%4$s\nUDP送信失敗／呼び出し：%5$d／%6$d\nタイムスタンプ標本数：%7$d\n受信機の再送要求／送信投入／保存期間外：%10$d／%11$d／%12$d\n%8$s\n%9$s\nドライバのソフトウェア時刻には、無線の空中時間やHomePod到着までの時間は含みません。往復時間とキュー容量は片道の音声遅延ではありません。</string>
+    <string name="diagnostics_network_tx">端末内のUDP送信\nアプリ投入→ドライバ 中央値／p95：%1$s／%2$s\nカーネルの送信待ち→ドライバ p95：%3$s\nカーネル送信キュー（バイト）：%4$s\nUDP送信失敗／呼び出し：%5$d／%6$d\nタイムスタンプ標本数：%7$d\n受信機の再送要求／送信投入／再送データなし：%10$d／%11$d／%12$d\n%8$s\n%9$s\nドライバのソフトウェア時刻には、無線の空中時間やHomePod到着までの時間は含みません。往復時間とキュー容量は片道の音声遅延ではありません。</string>
     <string name="receiver_request_rejected">HomePodが音声接続の要求を拒否しました（応答 %1$d）。音声設定と受信機のアクセス許可を確認してください。</string>
     <string name="receiver_request_compatibility">HomePodが要求した設定を拒否しました（応答 %1$d）。互換設定で接続中です。要求した待ち時間範囲は適用されていません。</string>
     <string name="receiver_request_last_retry">前回の接続ではHomePodが要求した設定を拒否したため（応答 %1$d）、互換設定で再試行しました。</string>
@@ -113,7 +114,7 @@
     <string name="capture_fast_fallback">FAST要求を利用できないため通常経路を使用</string>
     <string name="diagnostics_capture">取り込み\n時刻からの経過（推定）：%1$s\n読み取り待ち・直近／接続中最大：%2$s／%3$s\n読み取り上限／確保したバッファ容量：%4$s／%5$s\n%6$s\n確保した容量は遅延の測定値ではありません。</string>
     <string name="diagnostics_pipe">システム → アプリ\n取り込み完了 → アプリ読み取り完了：%1$s\n書き込み待ち・直近／接続中最大：%2$s／%3$s</string>
-    <string name="diagnostics_sender">送信処理\n待機中の音声量（現在値）：%1$s\n送信前の予備バッファ：%2$s\nALAC圧縮・接続中最大：%3$s\n1パケットの音声時間：%4$s\n入力不足・接続中累計：%5$s\n音声量と予備バッファは転送時間の測定値ではありません。</string>
+    <string name="diagnostics_sender">送信処理\n待機中の音声量（現在値）：%1$s\n送信前の予備バッファ：%2$s\n音声パケット生成・接続中最大：%3$s\n1パケットの音声時間：%4$s\n入力不足・接続中累計：%5$s\n音声量と予備バッファは転送時間の測定値ではありません。</string>
     <string name="diagnostics_handoff">ソケットへの送信\n目標時刻までの余裕・直近／接続中最小：%1$s／%2$s\n期限超過パケット：%3$d／%4$d\n受信目標：%5$s\n余裕時間はネットワーク遅延の測定値ではありません。</string>
     <string name="diagnostics_unmeasured">未測定の区間\nWi-Fiの片道時間、受信機との時計のずれ、HomePod内部の処理、実際に音が届くまでの総遅延。\n取り込み時刻はAndroidが返す推定値で、端末側の実装によって意味が異なる場合があります。</string>
     <string name="diagnostics_network">ネットワークの参考値\n制御TCPの往復時間（平滑値）：%1$s\n往復時間の変動推定：%2$s\n音声UDPの片道時間やHomePodの再生処理時間ではありません。</string>

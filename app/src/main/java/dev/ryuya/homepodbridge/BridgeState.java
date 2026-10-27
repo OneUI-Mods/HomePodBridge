@@ -37,6 +37,7 @@ final class BridgeState {
   static int[] timing;
   static PipelineTiming pipeline;
   static NetworkTiming networkTiming;
+  static ConnectionTiming connectionTiming;
   static dev.ryuya.homepodbridge.halprobe.PhoneTiming activePhoneTiming;
   static volatile String captureRegistration;
   static volatile OwnedAudioPath.Update phonePath;

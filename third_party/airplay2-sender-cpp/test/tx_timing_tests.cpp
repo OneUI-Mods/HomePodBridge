@@ -17,6 +17,8 @@ int main() {
     CHECK(timing.count()==0);
     timing.stamp(4,false,real+500000,real+2000000,mono+2000000);
     CHECK(timing.count()==1 && timing.percentile(false,95)==500 && timing.percentile(true,95)==400);
+    CHECK(timing.recentPercentile(false,95,mono+1000000000LL)==500);
+    CHECK(timing.recentPercentile(false,95,mono+4000000000LL)==-1);
     timing.stamp(4,false,real+500000,real+2000000,mono+2000000);CHECK(timing.count()==1);
     timing.sent(5,real,mono);
     timing.stamp(5,false,real+200000,real+1000000,mono+1000000);

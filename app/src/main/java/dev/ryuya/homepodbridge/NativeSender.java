@@ -34,6 +34,8 @@ final class NativeSender {
 
   static native long[] network();
 
+  static native long preparedAtNanos();
+
   static native long[] pipeline();
 
   static native void volume(int volume);

@@ -22,6 +22,7 @@ struct Engine {
     std::atomic<bool> stop{false};
     std::atomic<int> state{1}; // connecting, 2=RECORD accepted, negative=failure
     std::atomic<int> volume{-1};
+    std::atomic<jlong> preparedAt{0};
     std::mutex diagnosticMutex;
     std::string diagnostic;
     std::string statistics;
@@ -128,6 +129,8 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                 if (volume >= 0) sender.setVolume(volume);
                 loop.pump(sender, std::chrono::milliseconds(latencyMs <= 100 ? 2 : 20));
                 auto now = std::chrono::steady_clock::now();
+                if(sender.transportReady() && !engine->preparedAt.load())
+                    engine->preparedAt.store(std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
                 if (now >= nextStatistics) {
                     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
                     auto ms = [](uint32_t frames) { return static_cast<jint>((uint64_t(frames) * 1000 + 44099) / 44100); };
@@ -221,6 +224,10 @@ extern "C" JNIEXPORT jint JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_state(JNIEnv*, jclass) {
     auto engine = getEngine();
     return engine ? engine->state.load() : 0;
+}
+extern "C" JNIEXPORT jlong JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_preparedAtNanos(JNIEnv*, jclass) {
+    auto engine=getEngine();return engine?engine->preparedAt.load():0;
 }
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_volume(JNIEnv*, jclass, jint volume) {
