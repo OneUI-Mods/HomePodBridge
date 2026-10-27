@@ -6,12 +6,12 @@
 #include <vector>
 
 namespace fxchain {
-// One independent 352-frame stereo packet; no extra codec lookahead.
+// Independent stereo packets with a 352-frame maximum; 88-frame packets use explicit ALAC sizes.
 class LosslessAlacEncoder {
 public:
     LosslessAlacEncoder();
     ~LosslessAlacEncoder();
-    std::string encode(const int16_t* samples);
+    std::string encode(const int16_t* samples, uint32_t frames = 352);
     std::vector<uint8_t> cookie() const;
 private:
     struct Impl;

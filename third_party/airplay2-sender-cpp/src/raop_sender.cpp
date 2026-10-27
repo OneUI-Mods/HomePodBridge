@@ -99,10 +99,10 @@ struct RaopAp2State {
 
 namespace {
 
-constexpr int      kFramesPerPacket = 352;          // RAOP fixed
+constexpr int      kMaximumFramesPerPacket = 352; // negotiated ALAC maximum; AP1 remains fixed
 constexpr uint32_t kRaopRate        = 44100;        // RAOP fixed
 constexpr int      kChannels        = 2;
-constexpr int      kPayloadBytes    = kFramesPerPacket * kChannels * 2;
+
 constexpr int      kBacklogSize     = 1024;         // power of two
 constexpr int      kMaxPacketsPerTick = 16;         // GUI-stall catch-up cap
 constexpr int      kHandshakeTimeoutMs = 10000;
@@ -280,7 +280,7 @@ RaopSender::RaopSender(RaopIo& io, RaopEvents events, RaopLogSink log)
       log_(std::move(log)),
       clock_([] { return Clock::now(); }) {
     backlog_.resize(kBacklogSize);
-    backlogSeq_.assign(kBacklogSize, -1);
+    backlogSeq_.assign(backlog_.size(), -1);
 
     // HomePod Bridge: a one-shot absolute frame deadline, never now + 8 ms.
     pacer_.repeating        = false;
@@ -475,9 +475,11 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     rawAudioBytes_ = encodedAudioBytes_ = maximumEncodeMicros_ = 0;
     minimumHandoffLeadMicros_ = lastHandoffLeadMicros_ = 0;
     lateHandoffPackets_ = measuredHandoffPackets_ = 0;
-    if (adaptiveInputBuffer_) inputBufferFrames_ = kFramesPerPacket;
+    packetFrames_ = 352; // AP2 may select partial packets once its stream is negotiated.
+    backlog_.resize(kBacklogSize);
+    if (adaptiveInputBuffer_) inputBufferFrames_ = 352;
     inReadFrames_ = 0;
-    backlogSeq_.assign(kBacklogSize, -1);
+    backlogSeq_.assign(backlog_.size(), -1);
     pendingVolumeDb_ = kNoVolume;   // never carry volume between devices
     waitingInitialVolume_ = false;
     if (initialVolumePct_ >= 0) setVolume(initialVolumePct_);
@@ -538,7 +540,7 @@ void RaopSender::stop() {
     releaseSockets_();
     // Free the backlog payloads (~1.4 MB when full).
     for (auto& b : backlog_) std::string().swap(b);
-    backlogSeq_.assign(kBacklogSize, -1);
+    backlogSeq_.assign(backlog_.size(), -1);
     info_("Cast: RAOP session stopped");
 }
 
@@ -617,7 +619,7 @@ void RaopSender::onTcpClosed(RaopTcp ch, const std::string& reason) {
     stopTimers_();
     releaseSockets_();
     for (auto& b : backlog_) std::string().swap(b);
-    backlogSeq_.assign(kBacklogSize, -1);
+    backlogSeq_.assign(backlog_.size(), -1);
     info_("Cast: RAOP connection closed by the device");
     if (wasStarting && events_.launched)
         events_.launched(false, "Connection closed by the device");
@@ -1193,7 +1195,7 @@ void RaopSender::startStreaming_() {
     // setNowPlaying -> sendMetadata_).
     sendMetadata_();
     info_("Cast: RAOP streaming to '{}', RTP {} frames/packet @ {} Hz{}",
-          name_, kFramesPerPacket, kRaopRate,
+          name_, packetFrames_, kRaopRate,
           (ap2_ && ap2_->encryptAudio) ? " (encrypted)" : "");
     if (!waitingInitialVolume_ && events_.launched) events_.launched(true, std::string());
 }
@@ -1973,6 +1975,11 @@ void RaopSender::handleAp2SetupStream_(const std::string& body) {
     info_("Cast: receiver windowMinFrames={} windowMaxFrames={} independent={} reportedMaxFrames={}",
           advertisedReceiverMinimumFrames(), advertisedReceiverMaximumFrames(),
           independentReceiverTiming_, receiverMaximumLatency_);
+    packetFrames_ = shortAudioPackets_ ? 88 : 352;
+    backlog_.assign(shortAudioPackets_ ? 4096 : kBacklogSize, {});
+    backlogSeq_.assign(backlog_.size(), -1);
+    if (adaptiveInputBuffer_) inputBufferFrames_ = 352;
+    info_("Cast: audio packetFrames={} partialAlac={}", packetFrames_, shortAudioPackets_);
     timingPort_ = serverPort_;   // NTP timing rides the same host
     info_("Cast: AirPlay 2 stream SETUP ok, dataPort={} controlPort={}",
           serverPort_, controlPort_);
@@ -2015,16 +2022,16 @@ void RaopSender::onPacerTick_() {
         now_() - clockStart_).count());
     const uint64_t target = elapsedNs * kRaopRate / 1000000000ULL;
     int sentThisTick = 0;
-    while (framesSent_ + kFramesPerPacket <= target
+    while (framesSent_ + packetFrames_ <= target
            && sentThisTick < kMaxPacketsPerTick) {
         sendAudioPacket_();
         ++sentThisTick;
     }
     scheduleAudio_();
     // Retain the catch-up cap without an immediate polling loop on a stale deadline.
-    if (sentThisTick == kMaxPacketsPerTick && framesSent_ + kFramesPerPacket <= target)
+    if (sentThisTick == kMaxPacketsPerTick && framesSent_ + packetFrames_ <= target)
         pacer_.due = now_() + std::chrono::ceil<Clock::duration>(
-            std::chrono::nanoseconds((uint64_t(kFramesPerPacket) * 1000000000ULL + kRaopRate - 1) / kRaopRate));
+            std::chrono::nanoseconds((uint64_t(packetFrames_) * 1000000000ULL + kRaopRate - 1) / kRaopRate));
 }
 
 void RaopSender::startAudioClock_() {
@@ -2037,7 +2044,7 @@ void RaopSender::startAudioClock_() {
 }
 
 void RaopSender::scheduleAudio_() {
-    const uint64_t nanos = ((framesSent_ + kFramesPerPacket) * 1000000000ULL + kRaopRate - 1) / kRaopRate;
+    const uint64_t nanos = ((framesSent_ + packetFrames_) * 1000000000ULL + kRaopRate - 1) / kRaopRate;
     pacer_.due = clockStart_ + std::chrono::ceil<Clock::duration>(std::chrono::nanoseconds(nanos));
     pacer_.active = true;
 }
@@ -2064,9 +2071,10 @@ std::string RaopSender::encodeAlacFrame_(const int16_t* frames, int nFrames) {
     put(1, 3);    // stereo channel-pair element
     put(0, 4);    // unused
     put(0, 12);   // unknown
-    put(0, 1);    // hasSize = 0 -> default frame length (352) from the cookie
+    put(nFrames != 352 ? 1 : 0, 1); // Partial packets must describe their sample count.
     put(0, 2);    // wastedBytes = 0
     put(1, 1);    // isNotCompressed = 1 (uncompressed escape)
+    if (nFrames != 352) put(static_cast<uint32_t>(nFrames), 32);
     for (int i = 0; i < nFrames * kChannels; ++i)
         put(uint16_t(frames[i]), 16);   // 16-bit sample, MSB-first
     put(7, 3);    // END element tag
@@ -2079,8 +2087,9 @@ void RaopSender::setCompressedAudio(bool enabled) {
 }
 
 void RaopSender::sendAudioPacket_() {
-    int16_t frames[kFramesPerPacket * kChannels];
-    fillFrames_(frames, kFramesPerPacket);
+    int16_t frames[kMaximumFramesPerPacket * kChannels];
+    const size_t payloadBytes = size_t(packetFrames_) * kChannels * 2;
+    fillFrames_(frames, packetFrames_);
 
     // 12-byte RTP header (big-endian, shared by AP1 + AP2).
     std::string header;
@@ -2098,17 +2107,17 @@ void RaopSender::sendAudioPacket_() {
     std::string payload;
     if (ap2_ && ap2_->encryptAudio) {
         const auto begin = Clock::now();
-        if (alacEncoder_) payload = alacEncoder_->encode(frames);
+        if (alacEncoder_) payload = alacEncoder_->encode(frames, packetFrames_);
         // Never expand the existing packet or send an invalid codec result.
-        if (payload.empty() || payload.size() > kPayloadBytes + 8)
-            payload = encodeAlacFrame_(frames, kFramesPerPacket);
+        if (payload.empty() || payload.size() > payloadBytes + 8)
+            payload = encodeAlacFrame_(frames, int(packetFrames_));
         maximumEncodeMicros_ = std::max(maximumEncodeMicros_, static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - begin).count()));
-        rawAudioBytes_ += kPayloadBytes;
+        rawAudioBytes_ += payloadBytes;
         encodedAudioBytes_ += payload.size();
     } else {
-        payload.reserve(kPayloadBytes);
-        for (int i = 0; i < kFramesPerPacket * kChannels; ++i) {
+        payload.reserve(payloadBytes);
+        for (int i = 0; i < int(packetFrames_) * kChannels; ++i) {
             const uint16_t s = uint16_t(frames[i]);
             payload += char(s >> 8);
             payload += char(s & 0xFF);
@@ -2135,13 +2144,13 @@ void RaopSender::sendAudioPacket_() {
     if (lastHandoffLeadMicros_ < 0) ++lateHandoffPackets_;
 
     // Retransmit backlog (the receiver asks by seq via type 0x55).
-    const int slot = seq_ & (kBacklogSize - 1);
+    const int slot = seq_ & (backlog_.size() - 1);
     backlog_[slot] = pkt;
     backlogSeq_[slot] = seq_;
 
     firstAudio_ = false;
     seq_ = uint16_t(seq_ + 1);
-    framesSent_ += kFramesPerPacket;
+    framesSent_ += packetFrames_;
 }
 
 size_t RaopSender::fillFrames_(int16_t* dst, size_t want) {
@@ -2175,8 +2184,8 @@ size_t RaopSender::fillFrames_(int16_t* dst, size_t want) {
             if (inputBufferFrames_ > 0) {
                 inputPrimed_ = false;
                 ++rebufferCount_;
-                if (adaptiveInputBuffer_ && inputBufferFrames_ < size_t(kFramesPerPacket * 6)) {
-                    inputBufferFrames_ += kFramesPerPacket;
+                if (adaptiveInputBuffer_ && inputBufferFrames_ < size_t(352 * 6)) {
+                    inputBufferFrames_ += 352;
                     ++adaptiveBufferChanges_;
                 }
             }
@@ -2184,12 +2193,12 @@ size_t RaopSender::fillFrames_(int16_t* dst, size_t want) {
         } else if (adaptiveInputBuffer_) {
             const bool silent = std::all_of(dst, dst + wantSamples, [](int16_t value) { return value == 0; });
             silentInputFrames_ = silent ? silentInputFrames_ + take : 0;
-            if (silentInputFrames_ >= kRaopRate * 2 && inputBufferFrames_ > size_t(kFramesPerPacket)) {
+            if (silentInputFrames_ >= kRaopRate * 2 && inputBufferFrames_ > size_t(352)) {
                 const size_t queued = ring_->availableRead() / kChannels;
-                const size_t excess = queued > size_t(kFramesPerPacket) ? queued - kFramesPerPacket : 0;
+                const size_t excess = queued > size_t(352) ? queued - 352 : 0;
                 if (ring_->tryDiscardZeros(excess * kChannels)) {
                     trimmedSilentFrames_ += excess;
-                    inputBufferFrames_ = kFramesPerPacket;
+                    inputBufferFrames_ = 352;
                     ++adaptiveBufferChanges_;
                 }
             }
@@ -2272,7 +2281,7 @@ void RaopSender::onControlDatagram_(std::span<const uint8_t> dg, const RaopEndpo
     const uint16_t lostCount = uint16_t((uint16_t(dg[6]) << 8) | dg[7]);
     for (uint16_t i = 0; i < lostCount; ++i) {
         const uint16_t s = uint16_t(lostSeq + i);
-        const int slot = s & (kBacklogSize - 1);
+        const int slot = s & (backlog_.size() - 1);
         if (backlogSeq_[slot] != s) continue;   // aged out of backlog
         // pyatv: 0x80 0xD6 + original seq + the FULL original packet.
         std::string resp;

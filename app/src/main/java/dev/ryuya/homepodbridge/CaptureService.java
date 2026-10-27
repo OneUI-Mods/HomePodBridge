@@ -412,6 +412,7 @@ public final class CaptureService extends Service {
           settings.receiverTiming().independent(),
           settings.requestedReceiverMinimumMs(),
           settings.requestedReceiverMaximumMs(),
+          settings.packetFramesForBackend(dedicatedHal) == 88,
           settings.compressedAudio(),
           settings.effectiveAdaptiveBuffer());
       ByteBuffer pcm =

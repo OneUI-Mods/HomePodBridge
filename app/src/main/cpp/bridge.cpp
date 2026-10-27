@@ -13,6 +13,7 @@
 #include "raop_loop.h"
 #include "raop_sender.h"
 #include "ring_buffer.h"
+#include "lossless_alac.h"
 
 namespace {
 struct Engine {
@@ -30,6 +31,8 @@ struct Engine {
 };
 std::mutex engineMutex;
 std::shared_ptr<Engine> current;
+std::mutex codecProbeMutex;
+std::unique_ptr<fxchain::LosslessAlacEncoder> codecProbe;
 
 std::shared_ptr<Engine> getEngine() {
     std::lock_guard<std::mutex> lock(engineMutex);
@@ -57,7 +60,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jboolean compressedAudio, jboolean adaptiveBuffer) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jboolean shortAudioPackets, jboolean compressedAudio, jboolean adaptiveBuffer) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -67,7 +70,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, compressedAudio, adaptiveBuffer] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, shortAudioPackets, compressedAudio, adaptiveBuffer] {
         try {
             if (setpriority(PRIO_PROCESS, 0, -19) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
@@ -90,6 +93,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                                     "HomePodBridge", "%s", message.c_str());
             });
             sender.setStrictReceiverAuth(true);
+            sender.setShortAudioPackets(shortAudioPackets == JNI_TRUE);
             sender.setCompressedAudio(compressedAudio == JNI_TRUE);
             sender.setVolumePolicy(0, std::max(0, std::min(100, static_cast<int>(volumeLimit))));
             sender.setStreamBeforeRecord(false);
@@ -135,9 +139,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         static_cast<jlong>(sender.measuredHandoffPackets()),
                         static_cast<jlong>(sender.inputUnderrunFrames()),
                         static_cast<jlong>(sender.bufferingFrames()),
-                        static_cast<jlong>(engine->backpressure.load()), 352, rtt[0], rtt[1]};
+                        static_cast<jlong>(engine->backpressure.load()), static_cast<jlong>(sender.audioPacketFrames()), rtt[0], rtt[1]};
                     std::copy(std::begin(pipeline), std::end(pipeline), engine->pipeline);
-                    engine->statistics = "queueFrames=" + std::to_string(engine->ring.availableRead() / 2)
+                    engine->statistics = "packetFrames=" + std::to_string(sender.audioPacketFrames())
+                        + " queueFrames=" + std::to_string(engine->ring.availableRead() / 2)
                         + " requestedLatencyMs=" + std::to_string(engine->timing[0])
                         + " targetLatencyMs=" + std::to_string(engine->timing[1])
                         + " receiverMinimumMs=" + std::to_string(engine->timing[2])
@@ -224,4 +229,32 @@ Java_dev_ryuya_homepodbridge_NativeSender_pipeline(JNIEnv* env, jclass) {
     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
     env->SetLongArrayRegion(result, 0, 13, engine->pipeline);
     return result;
+}
+
+// DUMP-protected Java diagnostics use fixed-zero PCM only. No receiver, socket or audio output.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_openZeroCodecProbe(JNIEnv*,jclass) {
+    std::lock_guard<std::mutex> lock(codecProbeMutex);
+    if(codecProbe) return JNI_FALSE;
+    try { codecProbe=std::make_unique<fxchain::LosslessAlacEncoder>();return JNI_TRUE; }
+    catch(...) {return JNI_FALSE;}
+}
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_encodeZeroProbe(JNIEnv* env,jclass,jobject buffer,jint frames) {
+    if(!buffer || (frames!=88 && frames!=352) || env->GetDirectBufferCapacity(buffer)<frames*4) return nullptr;
+    auto* data=static_cast<const int16_t*>(env->GetDirectBufferAddress(buffer));
+    if(!data || reinterpret_cast<uintptr_t>(data)%alignof(int16_t)
+        || std::any_of(data,data+frames*2,[](int16_t sample){return sample!=0;})) return nullptr;
+    std::lock_guard<std::mutex> lock(codecProbeMutex);
+    if(!codecProbe) return nullptr;
+    try {
+        auto start=std::chrono::steady_clock::now();auto encoded=codecProbe->encode(data,static_cast<uint32_t>(frames));
+        if(encoded.empty()) return nullptr;
+        jlong values[]={std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count(),jlong(encoded.size())};
+        auto result=env->NewLongArray(2);if(result) env->SetLongArrayRegion(result,0,2,values);return result;
+    } catch(...) {return nullptr;}
+}
+extern "C" JNIEXPORT void JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_closeZeroCodecProbe(JNIEnv*,jclass) {
+    std::lock_guard<std::mutex> lock(codecProbeMutex);codecProbe.reset();
 }

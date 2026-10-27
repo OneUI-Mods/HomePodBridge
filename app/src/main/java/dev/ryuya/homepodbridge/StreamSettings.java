@@ -14,7 +14,37 @@ record StreamSettings(
     boolean deviceBuffer,
     int deviceBufferFrames,
     boolean dedicatedCapture,
-    ReceiverTiming receiverTiming) {
+    ReceiverTiming receiverTiming,
+    boolean shortAudioPackets) {
+  StreamSettings(
+      boolean wholeDevice,
+      int bufferMs,
+      int blockMs,
+      int latencyMs,
+      boolean lowLatency,
+      boolean highQuality,
+      boolean compressedAudio,
+      boolean adaptiveBuffer,
+      boolean deviceBuffer,
+      int deviceBufferFrames,
+      boolean dedicatedCapture,
+      ReceiverTiming receiverTiming) {
+    this(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        false);
+  }
+
   StreamSettings(
       boolean wholeDevice,
       int bufferMs,
@@ -147,12 +177,14 @@ record StreamSettings(
             preferences.getInt("deviceBufferFrames", 1856),
             preferences.getBoolean("dedicatedCapture", false));
     int target = saved.effectiveLatencyMs();
-    return saved.withReceiverTiming(
-        new ReceiverTiming(
-            preferences.getBoolean("independentReceiverTiming", false),
-            preferences.getInt("receiverMinimumMs", Math.min(target, 250)),
-            preferences.getInt("receiverMaximumMs", target),
-            preferences.getInt("presentationOffsetMs", target)));
+    return saved
+        .withReceiverTiming(
+            new ReceiverTiming(
+                preferences.getBoolean("independentReceiverTiming", false),
+                preferences.getInt("receiverMinimumMs", Math.min(target, 250)),
+                preferences.getInt("receiverMaximumMs", target),
+                preferences.getInt("presentationOffsetMs", target)))
+        .withShortAudioPackets(preferences.getBoolean("shortAudioPackets", false));
   }
 
   void save(Context context) {
@@ -169,6 +201,7 @@ record StreamSettings(
         .putBoolean("adaptiveBuffer", adaptiveBuffer)
         .putBoolean("deviceBuffer", deviceBuffer)
         .putBoolean("dedicatedCapture", dedicatedCapture)
+        .putBoolean("shortAudioPackets", shortAudioPackets)
         .putBoolean("independentReceiverTiming", receiverTiming.independent())
         .putInt("receiverMinimumMs", receiverTiming.minimumMs())
         .putInt("receiverMaximumMs", receiverTiming.maximumMs())
@@ -190,7 +223,8 @@ record StreamSettings(
         deviceBuffer,
         deviceBufferFrames,
         dedicatedCapture,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withProfile(int profile) {
@@ -206,7 +240,8 @@ record StreamSettings(
         deviceBuffer,
         deviceBufferFrames,
         dedicatedCapture,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withCompression(boolean enabled) {
@@ -222,7 +257,8 @@ record StreamSettings(
         deviceBuffer,
         deviceBufferFrames,
         dedicatedCapture,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withBuffers(int buffer, int block, int latency) {
@@ -238,7 +274,8 @@ record StreamSettings(
         deviceBuffer,
         deviceBufferFrames,
         dedicatedCapture,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withAdaptiveBuffer(boolean enabled) {
@@ -254,7 +291,8 @@ record StreamSettings(
         deviceBuffer,
         deviceBufferFrames,
         dedicatedCapture,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withDeviceBuffer(boolean enabled) {
@@ -270,7 +308,8 @@ record StreamSettings(
         enabled,
         deviceBufferFrames,
         dedicatedCapture,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withDeviceBufferFrames(int frames) {
@@ -286,7 +325,8 @@ record StreamSettings(
         deviceBuffer,
         frames,
         dedicatedCapture,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withDedicatedCapture(boolean enabled) {
@@ -302,7 +342,8 @@ record StreamSettings(
         deviceBuffer,
         deviceBufferFrames,
         enabled,
-        receiverTiming);
+        receiverTiming,
+        shortAudioPackets);
   }
 
   StreamSettings withReceiverTiming(ReceiverTiming timing) {
@@ -318,7 +359,37 @@ record StreamSettings(
         deviceBuffer,
         deviceBufferFrames,
         dedicatedCapture,
-        timing);
+        timing,
+        shortAudioPackets);
+  }
+
+  StreamSettings withShortAudioPackets(boolean enabled) {
+    return new StreamSettings(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        enabled);
+  }
+
+  boolean effectiveShortAudioPackets() {
+    return effectiveDedicatedCapture() && shortAudioPackets;
+  }
+
+  int requestedPacketFrames() {
+    return packetFramesForBackend(effectiveDedicatedCapture());
+  }
+
+  int packetFramesForBackend(boolean dedicatedActive) {
+    return dedicatedActive && effectiveShortAudioPackets() ? 88 : 352;
   }
 
   int requestedReceiverMinimumMs() {

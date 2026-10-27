@@ -52,6 +52,20 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("probe-packet-handoff")) {
+      commandStatus = "Checking zero-only packet assembly without network output";
+      commands.execute(() -> commandStatus = "Packet handoff: " + PacketHandoffProbe.run(this));
+      return START_NOT_STICKY;
+    }
+    if (command.equals("short-packets-on") || command.equals("short-packets-off")) {
+      if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0) {
+        commandStatus = "Stop sharing before changing diagnostic packet preference";
+        return START_NOT_STICKY;
+      }
+      StreamSettings.load(this).withShortAudioPackets(command.endsWith("on")).save(this);
+      commandStatus = "Short packet preference: " + command.endsWith("on");
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-local-hal")) {
       commandStatus = "Checking zero-only capture without a receiver";
       commands.execute(() -> commandStatus = "Local HAL: " + LocalHalProbe.run(this));
@@ -246,6 +260,11 @@ public final class CommandService extends Service {
       }
     }
     StreamSettings settings = StreamSettings.load(this);
+    writer.println(
+        "shortAudioPackets="
+            + settings.shortAudioPackets()
+            + " requestedPacketFrames="
+            + settings.requestedPacketFrames());
     writer.println(
         "independentReceiverTiming="
             + settings.receiverTiming().independent()

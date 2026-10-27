@@ -116,4 +116,6 @@
     <string name="capture_block_fixed">取り込み単位：%1$.1f ms（専用経路の固定値）</string>
     <string name="buffer_profile_fixed">プリセットではこの値を使用します。対応する範囲で数値を変更するにはカスタム設定へ切り替えてください。専用経路は低遅延モードでのみ有効です。受信待機と再生時刻の個別設定は別に変更できます。</string>
     <string name="buffer_use_custom">カスタム設定に切り替え</string>
+    <string name="short_audio_packets">短い音声パケット（実験）</string>
+    <string name="short_audio_packets_description">低遅延モードの専用経路で、音声をまとめる単位を約8 msから約2 msにします。音声はロスレスのままです。パケット数が増え、HomePodでの動作は未確認です。再生できない場合はオフに戻してください。標準経路と高音質モードは約8 msを使用します。変更時は音量0%で再接続します。</string>
 </resources>

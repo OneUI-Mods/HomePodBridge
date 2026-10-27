@@ -59,6 +59,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private MaterialSwitch deviceBufferSwitch;
   private MaterialSwitch minimumBufferSwitch;
   private MaterialSwitch dedicatedCaptureSwitch;
+  private MaterialSwitch shortPacketsSwitch;
   private TextView captureBackendStatus;
   private TextView profileSelection;
   private TextView profileDetails;
@@ -332,6 +333,19 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(card(compressionControls));
     body = tuningBody;
     body.addView(label(getString(R.string.tuning_description), 16));
+    LinearLayout packetControls = new LinearLayout(this);
+    packetControls.setOrientation(LinearLayout.VERTICAL);
+    shortPacketsSwitch = new MaterialSwitch(this);
+    shortPacketsSwitch.setText(R.string.short_audio_packets);
+    shortPacketsSwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          StreamSettings.load(this).withShortAudioPackets(enabled).save(this);
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    packetControls.addView(shortPacketsSwitch);
+    packetControls.addView(label(getString(R.string.short_audio_packets_description), 14));
+    body.addView(card(packetControls));
     LinearLayout deviceControls = new LinearLayout(this);
     deviceControls.setOrientation(LinearLayout.VERTICAL);
     deviceBufferSwitch = new MaterialSwitch(this);
@@ -413,6 +427,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     dedicatedCaptureSwitch.setChecked(settings.dedicatedCapture());
     dedicatedCaptureSwitch.setEnabled(settings.lowLatency() && RootConnector.available());
     highQualitySwitch.setChecked(settings.highQuality());
+    shortPacketsSwitch.setChecked(settings.shortAudioPackets());
+    shortPacketsSwitch.setEnabled(settings.effectiveDedicatedCapture());
     compressionSwitch.setChecked(settings.compressedAudio());
     adaptiveBufferSwitch.setChecked(settings.adaptiveBuffer());
     adaptiveBufferSwitch.setEnabled(settings.lowLatency());

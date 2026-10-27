@@ -312,9 +312,13 @@ std::optional<std::vector<int16_t>> decodeAlacUncompressed(const std::string& fr
     if (get(3) != 1u) return std::nullopt;     // stereo channel-pair element
     if (get(4) != 0u) return std::nullopt;
     if (get(12) != 0u) return std::nullopt;
-    if (get(1) != 0u) return std::nullopt;     // hasSize = 0
+    auto hasSize = get(1); if (!hasSize) return std::nullopt;
     if (get(2) != 0u) return std::nullopt;     // wastedBytes
     if (get(1) != 1u) return std::nullopt;     // isNotCompressed
+    if (*hasSize) {
+        auto count = get(32); if (!count || (*count != 88 && *count != 352)) return std::nullopt;
+        nFrames = int(*count);
+    }
     std::vector<int16_t> pcm;
     pcm.reserve(size_t(nFrames) * 2);
     for (int i = 0; i < nFrames * 2; ++i) {
@@ -432,7 +436,7 @@ struct FakeReceiver {
         auto dec = airplay::chacha20Poly1305Decrypt(audioKey, nonce, ctTag, aad);
         if (!dec) return std::nullopt;
         auto uncompressed = decodeAlacUncompressed(strOf(*dec), 352);
-        if (uncompressed) return uncompressed;
+        // Validate partial and full packets with the actual ALAC decoder as well.
         LosslessAlacEncoder format;
         auto cookie = format.cookie();
         ALACDecoder decoder;
@@ -443,8 +447,10 @@ struct FakeReceiver {
         BitBufferInit(&bits, dec->data(), size);
         std::vector<int16_t> pcm(704);
         uint32_t frames = 0;
-        if (decoder.Decode(&bits, reinterpret_cast<uint8_t*>(pcm.data()), 352, 2, &frames) != 0 || frames != 352)
+        if (decoder.Decode(&bits, reinterpret_cast<uint8_t*>(pcm.data()), 352, 2, &frames) != 0 || (frames != 352 && frames != 88))
             return std::nullopt;
+        pcm.resize(frames * 2);
+        if(uncompressed && *uncompressed!=pcm) return std::nullopt;
         return pcm;
     }
 
@@ -1626,6 +1632,63 @@ void testLowLatencyTimeline() {
     }
 }
 
+void testShortAudioPackets() {
+    g_test = "AP2 partial ALAC packets without changing the negotiated maximum";
+    for (bool compressed : {false,true}) {
+        Rig r;
+        r.sender->setVolumePolicy(0,100);
+        REQUIRE(r.sender->setShortAudioPackets(true), "opt in before starting");
+        r.sender->setCompressedAudio(compressed);
+        r.sender->setInputBufferFrames(0);
+        r.sender->setPresentationLatencyMs(50);
+        r.rx.holdVolume=true;
+        runAp2Handshake(r,FakeReceiver::Mode::Ap2Transient,RaopDeviceInfo::Auth::HapTransient);
+        CHECK(!r.launchedOk && r.io.takeUdp().empty(), "short packets cannot precede mute ACK");
+        auto setup=airplay::bplist::decode(bytesOf(r.rx.last("SETUP")->body));
+        REQUIRE(setup && setup->find("streams"), "short packet stream SETUP");
+        CHECK(setup->find("streams")->arr.front().find("spf")->asInt()==352, "negotiated ALAC maximum stays 352");
+        r.sender->onTcpData(RaopTcp::Control,spanOf(r.rx.heldVolumeReply));
+        REQUIRE(r.launchedOk && *r.launchedOk && r.sender->audioPacketFrames()==88, "short packet mode ready");
+        CHECK(!r.sender->setShortAudioPackets(false), "cannot change packet size during a stream");
+        r.io.takeUdp();
+        std::string first;
+        uint16_t firstSeq=0;
+        auto origin=r.now;
+        for(int i=0;i<1100;i++) {
+            std::vector<int16_t> samples(176);
+            for(size_t j=0;j<samples.size();j++) samples[j]=int16_t(i*97+j*31);
+            REQUIRE(r.ring.tryPush(samples), "one short packet queued");
+            r.now=origin+std::chrono::ceil<Clock::duration>(std::chrono::nanoseconds(
+                (uint64_t(i+1)*88*1000000000ULL+44099)/44100));
+            r.sender->tick();
+            auto packets=r.io.takeUdp();
+            packets.erase(std::remove_if(packets.begin(),packets.end(),[](const auto& packet) {
+                return packet.s!=RaopUdp::Audio;
+            }),packets.end());
+            REQUIRE(packets.size()==1, "one packet per approximately 2 ms deadline");
+            auto decoded=r.rx.decodeAudio(packets.front().data);
+            CHECK(decoded && *decoded==samples, "partial compressed/uncompressed ALAC preserves PCM");
+            if(i==0) {first=packets.front().data;firstSeq=be16(first,2);}
+            CHECK(be32(packets.front().data,4)==2205u+uint32_t(i)*88, "partial RTP timestamp increment");
+            if(i<1000) CHECK(packets.size()==1, "bounded short packet pacing");
+        }
+        // Smaller packets retain the original retransmission time span, rather than aging out at 2 s.
+        std::string request(8,'\0');request[0]=char(0x80);request[1]=char(0xD5);
+        request[4]=char(firstSeq>>8);request[5]=char(firstSeq);request[7]=1;
+        r.sender->onUdpDatagram(RaopUdp::Control,spanOf(request),{r.peerIp,r.rx.ap2ControlPort});
+        auto retransmit=r.io.takeUdp();
+        REQUIRE(retransmit.size()==1 && retransmit[0].data.substr(4)==first, "old short packet retransmits intact");
+        r.sender->stop();
+    }
+    {
+        Rig r;REQUIRE(r.sender->setShortAudioPackets(true),"short preference before AP1");
+        r.sender->setAuth(RaopDeviceInfo::Auth::None,false,"box","","");
+        r.sender->start(r.peerIp,5000,"FakeBox");r.connectControl();r.exchange();
+        CHECK(r.sender->audioPacketFrames()==352,"classic RAOP remains 352 frames");
+        r.sender->stop();
+    }
+}
+
 void testIndependentReceiverTiming() {
     using airplay::bplist::Value;
     g_test = "independent receiver window and presentation timeline";
@@ -1928,6 +1991,7 @@ int main() {
     testLowLatencyTimeline();
     testAp2LatencyNegotiation();
     testIndependentReceiverTiming();
+    testShortAudioPackets();
     testCompressedAp2Audio();
     testFrameClockPacing();
     testLocalHandoffLead();

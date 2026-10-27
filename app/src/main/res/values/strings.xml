@@ -117,4 +117,6 @@
     <string name="capture_block_fixed">Capture block: %1$.1f ms (fixed for dedicated capture)</string>
     <string name="buffer_profile_fixed">This preset fixes these values. Switch to custom settings to edit supported values. Dedicated capture is only active in Low latency mode. Independent receiver timing is configured separately.</string>
     <string name="buffer_use_custom">Use custom settings</string>
+    <string name="short_audio_packets">Shorter audio packets (experimental)</string>
+    <string name="short_audio_packets_description">In dedicated Low latency mode, group about 2 ms of audio per packet instead of 8 ms. Audio remains lossless. This increases packet count and is unverified with HomePod. Turn off if playback fails. Standard capture and high quality keep 8 ms packets. Changes reconnect at 0% volume.</string>
 </resources>

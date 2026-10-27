@@ -19,6 +19,7 @@ final class NativeSender {
       boolean independentTiming,
       int receiverMinimumMs,
       int receiverMaximumMs,
+      boolean shortAudioPackets,
       boolean compressedAudio,
       boolean adaptiveBuffer);
 
@@ -35,4 +36,10 @@ final class NativeSender {
   static native void stop();
 
   static native String diagnostic();
+
+  static native boolean openZeroCodecProbe();
+
+  static native long[] encodeZeroProbe(java.nio.ByteBuffer pcm, int frames);
+
+  static native void closeZeroCodecProbe();
 }

@@ -121,6 +121,13 @@ public:
     size_t inputBufferFrames() const { return inputBufferFrames_; }
     uint64_t adaptiveBufferChanges() const { return adaptiveBufferChanges_; }
     uint64_t trimmedSilentFrames() const { return trimmedSilentFrames_; }
+    // Opt-in AP2 partial ALAC frames. Configure only before start; classic RAOP stays at 352.
+    bool setShortAudioPackets(bool enabled) {
+        if (state_ != State::Idle) return false;
+        shortAudioPackets_ = enabled;
+        return true;
+    }
+    uint32_t audioPacketFrames() const { return packetFrames_; }
     void setPresentationLatencyMs(uint32_t milliseconds) {
         requestedLatency_ = latency_ = std::clamp(milliseconds, 10u, 2000u) * 44100u / 1000u;
         if (!independentReceiverTiming_) {
@@ -408,6 +415,8 @@ private:
     uint64_t startTs_ = 0;       // NTP-derived start timestamp (pyatv model)
     uint64_t framesSent_ = 0;    // 44.1 kHz frames put on the wire
     uint32_t requestedLatency_ = 66150, latency_ = 66150;
+    bool shortAudioPackets_ = false;
+    uint32_t packetFrames_ = 352;
     uint32_t requestedReceiverMinimum_ = 11025, requestedReceiverMaximum_ = 66150;
     bool independentReceiverTiming_ = false;
     int32_t receiverMaximumLatency_ = -1;
