@@ -153,4 +153,6 @@
     <string name="capture_backend_period">Dedicated capture active · mixer period %1$.2f ms</string>
     <string name="device_buffer_dedicated_target">Phone buffering\nDedicated reserve target: %1$s\nThe target is not a measured queue delay.</string>
     <string name="manual_saved_summary">Saved manual values: mixer %1$.2f ms · capture reserve %2$.2f ms · before-send buffer %3$d ms · packet %4$d frames</string>
+    <string name="acoustic_title">Playback delay measurement</string>
+    <string name="acoustic_description">Short test sounds play on HomePod. The microphone records briefly for timing.</string>
 </resources>

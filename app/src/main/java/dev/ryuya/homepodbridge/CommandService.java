@@ -13,12 +13,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-/** DUMP-protected command entry point; never launches an activity or starts audible playback. */
+/** DUMP-protected diagnostics; an explicit bounded acoustic command is the only audible test. */
 public final class CommandService extends Service {
   private final ExecutorService commands = Executors.newSingleThreadExecutor();
   private volatile String commandStatus = "Ready";
   private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
   private CommandPlayback playback;
+  private AcousticProbe acoustic;
+  private long acousticEpoch;
 
   @Override
   public void onCreate() {
@@ -52,6 +54,64 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("measure-acoustic")) {
+      int volume = intent.getIntExtra("volume", -1);
+      if (volume < 1 || volume > 25 || BridgeState.capture != null || BridgeState.connected) {
+        commandStatus = "ACOUSTIC_REFUSED busy or invalid volume";
+        return START_NOT_STICKY;
+      }
+      if (acoustic != null && !acoustic.finished()) {
+        commandStatus = "ACOUSTIC_REFUSED microphone busy";
+        return START_NOT_STICKY;
+      }
+      if (acoustic != null) acoustic.clear();
+      try {
+        Notification notification =
+            new Notification.Builder(this, "timing-diagnostics")
+                .setContentTitle(getString(R.string.acoustic_title))
+                .setContentText(getString(R.string.acoustic_description))
+                .setSmallIcon(R.drawable.ic_speaker)
+                .setSound(null)
+                .setVibrate(new long[0])
+                .setDefaults(0)
+                .setOnlyAlertOnce(true)
+                .setOngoing(true)
+                .build();
+        startForeground(
+            2,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        long token = ++acousticEpoch;
+        acoustic =
+            new AcousticProbe(
+                this,
+                volume,
+                value -> {
+                  if (acousticEpoch == token) commandStatus = value;
+                },
+                () -> {
+                  if (acousticEpoch == token) {
+                    playback.close();
+                    startForeground(
+                        2, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+                  }
+                });
+        playback.startAcoustic(acoustic);
+      } catch (RuntimeException failure) {
+        commandStatus =
+            "ACOUSTIC_FAILED " + failure.getClass().getSimpleName() + ": " + failure.getMessage();
+      }
+      return START_NOT_STICKY;
+    }
+    if (command.equals("clear-acoustic")) {
+      ++acousticEpoch;
+      if (acoustic != null) acoustic.clear();
+      playback.close();
+      commandStatus = "ACOUSTIC_CLEARED";
+      return START_NOT_STICKY;
+    }
+
     if (command.equals("short-mixer-on") || command.equals("short-mixer-off")) {
       if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0) {
         commandStatus = "Stop sharing before changing the mixer period";
@@ -318,6 +378,13 @@ public final class CommandService extends Service {
 
   @Override
   protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
+    if (args != null
+        && args.length == 1
+        && (args[0].equals("--acoustic-record") || args[0].equals("--acoustic-summary"))) {
+      if (acoustic == null) writer.println("ACOUSTIC_NONE");
+      else acoustic.dump(writer, args[0].equals("--acoustic-record"));
+      return;
+    }
     writer.println("Command service: " + commandStatus);
     writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
     writer.println(
@@ -393,6 +460,8 @@ public final class CommandService extends Service {
 
   @Override
   public void onDestroy() {
+    ++acousticEpoch;
+    if (acoustic != null) acoustic.clear();
     commands.shutdownNow();
     playback.close();
     CaptureProbe.cancel();

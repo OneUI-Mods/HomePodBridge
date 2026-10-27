@@ -18,6 +18,7 @@ final class CommandPlayback implements AutoCloseable {
   private IBinder ownedLifetime;
   private boolean selectionPending;
   private boolean dedicatedHal;
+  private AcousticProbe acoustic;
   private boolean testWhole, pulse, normal;
 
   CommandPlayback(Context context, Consumer<String> status) {
@@ -33,16 +34,28 @@ final class CommandPlayback implements AutoCloseable {
     start(dedicatedHal, StreamSettings.load(context).wholeDevice(), false, false);
   }
 
+  void startAcoustic(AcousticProbe probe) {
+    start(true, false, false, false, probe);
+  }
+
   void start(boolean dedicatedHal, boolean whole, boolean pulse, boolean normal) {
+    start(dedicatedHal, whole, pulse, normal, null);
+  }
+
+  private void start(
+      boolean dedicatedHal, boolean whole, boolean pulse, boolean normal, AcousticProbe probe) {
     if (BridgeState.capture != null) {
       status.accept("Existing sharing must stop before the test");
+      if (probe != null) probe.close();
       return;
     }
     if (!RootConnector.available()) {
       status.accept("Zero-input transfer requires the system bridge");
+      if (probe != null) probe.close();
       return;
     }
     close();
+    this.acoustic = probe;
     this.dedicatedHal = dedicatedHal;
     this.testWhole = whole;
     this.pulse = pulse;
@@ -104,6 +117,7 @@ final class CommandPlayback implements AutoCloseable {
       ownedService = service;
       CaptureService.ConnectionCallback finished =
           success -> {
+            if (token == epoch && acoustic != null) acoustic.connected(success);
             if (token == epoch)
               status.accept(
                   success
@@ -114,6 +128,7 @@ final class CommandPlayback implements AutoCloseable {
       else if (dedicatedHal) service.selectZeroHalProbe(receiver, finished, testWhole, pulse);
       else service.selectZeroProbe(receiver, finished);
       ownedLifetime = service.lifetime();
+      if (acoustic != null) acoustic.bind(ownedLifetime);
       return;
     }
     if (android.os.SystemClock.elapsedRealtime() >= deadline) {
@@ -127,6 +142,11 @@ final class CommandPlayback implements AutoCloseable {
   @Override
   public void close() {
     ++epoch;
+    if (acoustic != null) {
+      var closing = acoustic;
+      acoustic = null;
+      closing.close();
+    }
     if (discovery != null) {
       discovery.close();
       discovery = null;

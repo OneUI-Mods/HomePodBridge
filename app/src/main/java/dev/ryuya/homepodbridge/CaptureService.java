@@ -498,13 +498,17 @@ public final class CaptureService extends Service {
               break;
             }
           }
+          AcousticProbe acoustic = zeroProbe ? AcousticProbe.forLifetime(connectionLifetime) : null;
           if (zeroProbe) {
             ZeroProbePcm.clear(pcm, read);
+            if (acoustic != null) acoustic.render(pcm, read);
             zeroProbeFrames += read / 4;
           }
           while (!NativeSender.write(pcm, read)
               && generation.get() == token
               && NativeSender.state() == 2) Thread.sleep(2);
+          if (acoustic != null && generation.get() == token && NativeSender.state() == 2)
+            acoustic.accepted();
         }
         if (read == 0) Thread.sleep(settings.lowLatency() ? 1 : 5);
       }

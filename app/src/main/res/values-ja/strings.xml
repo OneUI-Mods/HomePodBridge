@@ -152,4 +152,6 @@
     <string name="capture_backend_period">専用取り込み動作中・ミキサー周期 %1$.2f ms</string>
     <string name="device_buffer_dedicated_target">スマホ側のバッファー\n専用経路の待ち目標：%1$s\n目標値は残量の実測時間とは異なります。</string>
     <string name="manual_saved_summary">保存済みマニュアル：ミキサー %1$.2f ms・取り込み待ち目標 %2$.2f ms・送信前 %3$d ms・パケット %4$dフレーム</string>
+    <string name="acoustic_title">再生遅延を測定中</string>
+    <string name="acoustic_description">短いテスト音をHomePodへ送り、時刻の確認用にマイクを短時間使用します。</string>
 </resources>
