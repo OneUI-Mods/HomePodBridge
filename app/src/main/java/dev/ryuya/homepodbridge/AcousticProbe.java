@@ -12,7 +12,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.json.JSONArray;
@@ -29,12 +28,12 @@ final class AcousticProbe implements AutoCloseable {
   private final Runnable finishedCallback;
   private final Handler main = new Handler(Looper.getMainLooper());
   private final AtomicBoolean stopping = new AtomicBoolean();
-  private final short[] samples = new short[MIC_RATE * MAX_SECONDS];
+  private final AcousticRecording samples = new AcousticRecording(MIC_RATE * MAX_SECONDS);
   private final ArrayList<long[]> anchors = new ArrayList<>();
   private final long[] markers = new long[AcousticSignal.COUNT];
   private final long[][] markerStages = new long[AcousticSignal.COUNT][];
   private volatile IBinder lifetime;
-  private volatile boolean armed, finished, clearRequested;
+  private volatile boolean armed, finished;
   private volatile int sampleCount;
   private volatile String failure;
   private long armedAt, renderedFrames;
@@ -174,18 +173,18 @@ final class AcousticProbe implements AutoCloseable {
       short[] block = new short[480];
       AudioTimestamp timestamp = new AudioTimestamp();
       while (!stopping.get()
-          && sampleCount < samples.length
+          && sampleCount < samples.capacity()
           && System.nanoTime() - startedAt < MAX_SECONDS * 1_000_000_000L) {
         int count =
             mic.read(
                 block,
                 0,
-                Math.min(block.length, samples.length - sampleCount),
+                Math.min(block.length, samples.capacity() - sampleCount),
                 AudioRecord.READ_BLOCKING);
         long readAt = System.nanoTime();
         if (count <= 0) throw new IllegalStateException("Microphone read failed: " + count);
-        System.arraycopy(block, 0, samples, sampleCount, count);
-        sampleCount += count;
+        if (!samples.append(block, count)) break;
+        sampleCount = samples.count();
         int result = mic.getTimestamp(timestamp, AudioTimestamp.TIMEBASE_MONOTONIC);
         if (result == AudioRecord.SUCCESS && timestamp.nanoTime > 0 && timestamp.framePosition > 0)
           anchors.add(
@@ -205,10 +204,7 @@ final class AcousticProbe implements AutoCloseable {
         mic.release();
       }
       current.compareAndSet(this, null);
-      if (clearRequested) {
-        Arrays.fill(samples, (short) 0);
-        sampleCount = 0;
-      }
+      samples.finish();
       finished = true;
       main.post(
           () -> {
@@ -217,11 +213,19 @@ final class AcousticProbe implements AutoCloseable {
               BridgeState.volume = 0;
               BridgeState.publish();
             }
-            status.accept(
-                failure == null
-                    ? "ACOUSTIC_COMPLETE micFrames=" + sampleCount + " anchors=" + anchors.size()
-                    : "ACOUSTIC_FAILED " + failure);
-            finishedCallback.run();
+            // Give the sender worker time to process the mute before orderly teardown.
+            main.postDelayed(
+                () -> {
+                  status.accept(
+                      failure == null
+                          ? "ACOUSTIC_COMPLETE micFrames="
+                              + sampleCount
+                              + " anchors="
+                              + anchors.size()
+                          : "ACOUSTIC_FAILED " + failure);
+                  finishedCallback.run();
+                },
+                ownsConnection() ? 200 : 0);
           });
     }
   }
@@ -251,12 +255,17 @@ final class AcousticProbe implements AutoCloseable {
       return;
     }
     try {
+      short[] captured = samples.snapshot();
+      if (captured == null) {
+        writer.println("ACOUSTIC_CLEARED");
+        return;
+      }
       JSONObject result =
           new JSONObject()
               .put("schema", 1)
               .put("microphoneRate", MIC_RATE)
               .put("source", source)
-              .put("sampleCount", sampleCount)
+              .put("sampleCount", captured.length)
               .put("startedAtNs", startedAt)
               .put("toneFrames", AcousticSignal.TONE_FRAMES)
               .put("outputRate", AcousticSignal.RATE)
@@ -282,8 +291,8 @@ final class AcousticProbe implements AutoCloseable {
       result.put("anchors", stamps).put("tones", tones);
       if (includePcm) {
         ByteBuffer pcm =
-            ByteBuffer.allocate(sampleCount * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
-        for (int i = 0; i < sampleCount; i++) pcm.putShort(samples[i]);
+            ByteBuffer.allocate(captured.length * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        for (short sample : captured) pcm.putShort(sample);
         result.put(
             "pcm16le",
             android.util.Base64.encodeToString(pcm.array(), android.util.Base64.NO_WRAP));
@@ -300,8 +309,7 @@ final class AcousticProbe implements AutoCloseable {
   }
 
   void clear() {
-    clearRequested = true;
     stop();
-    if (finished) Arrays.fill(samples, (short) 0);
+    samples.clear();
   }
 }

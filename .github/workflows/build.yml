@@ -42,3 +42,15 @@ jobs:
           cmake --build build-native --parallel 4
       - name: Run protocol and socket tests
         run: ctest --test-dir build-native --output-on-failure
+
+  acoustic-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Timestamp correction and noise rejection tests
+        run: |
+          python -m pip install -r tools/requirements-acoustic-analysis.txt
+          python tools/test_acoustic_analysis.py
