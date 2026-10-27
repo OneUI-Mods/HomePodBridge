@@ -154,4 +154,6 @@
     <string name="manual_saved_summary">保存済みマニュアル：ミキサー %1$.2f ms・取り込み待ち目標 %2$.2f ms・送信前 %3$d ms・パケット %4$dフレーム</string>
     <string name="acoustic_title">再生遅延を測定中</string>
     <string name="acoustic_description">短いテスト音をHomePodへ送り、時刻の確認用にマイクを短時間使用します。</string>
+    <string name="acoustic_paired_title">スマホとHomePodの遅延を比較中</string>
+    <string name="acoustic_paired_description">スマホとHomePodに別々の短い信号を再生し、同じ録音で比較します。</string>
 </resources>

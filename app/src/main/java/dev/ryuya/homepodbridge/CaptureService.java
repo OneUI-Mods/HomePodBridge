@@ -67,6 +67,10 @@ public final class CaptureService extends Service {
   private String selectedPackage = BridgeState.MUSIC;
   private WholeDeviceVolume wholeDeviceVolume;
 
+  boolean diagnosticAudio() {
+    return zeroProbeActive;
+  }
+
   IBinder lifetime() {
     return lifetime;
   }

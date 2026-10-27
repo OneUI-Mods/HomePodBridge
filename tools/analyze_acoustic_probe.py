@@ -8,7 +8,9 @@ import numpy as np
 
 def analyze(record):
     if record.get("failure"): raise ValueError(record["failure"])
-    if record.get("phoneSpeakerSignal") is not False: raise ValueError("Signal destination unknown")
+    paired=record.get("signalMode")=="paired"
+    phone=record.get("phoneReference",{})
+    if record.get("phoneSpeakerSignal") is not False and not (paired and phone.get("routedDeviceType")==2): raise ValueError("Signal destination unknown")
     rate=int(record["microphoneRate"]);out_rate=int(record["outputRate"])
     x=np.frombuffer(base64.b64decode(record["pcm16le"]),dtype="<i2").astype(np.float64)/32768
     if len(x)!=record["sampleCount"] or len(x)<rate: raise ValueError("Incomplete microphone record")
@@ -61,19 +63,46 @@ def analyze(record):
         arrival=origin+peak*slope
         rows=a[a[:,0]>=peak+1]
         raw_ms=float((rows[0,3]-marker)/1e6) if len(rows) else None
-        results.append({"accepted":bool(accepted),"correctedDelayMs":(arrival-marker)/1e6,
+        results.append({"destination":tone.get("destination","homepod"),"trackFrame":tone.get("trackFrame"),"enqueuedAtNs":marker,"micArrivalNs":arrival,"accepted":bool(accepted),"correctedDelayMs":(arrival-marker)/1e6,
             "sampleReadDelayMs":raw_ms,"correlation":value,"threshold":threshold,"peakProminence":prominence})
-    good=[r["correctedDelayMs"] for r in results if r["accepted"]]
+    good=[r["correctedDelayMs"] for r in results if r["accepted"] and r["destination"]=="homepod"]
     clock_p95=float(np.percentile(residual,95))
     clipping=float(np.mean(np.abs(x)>=32760/32768)*100)
-    return {"reference":"Sender PCM enqueue to microphone hardware timestamp; pre-enqueue capture excluded",
-        "phoneSpeakerSignal":False,"microphoneAudioSource":record.get("source"),"microphoneReadDelayExcluded":True,"adcInternalDelayCalibrated":False,
+    result={"reference":"Sender PCM enqueue to microphone hardware timestamp; pre-enqueue capture excluded",
+        "phoneSpeakerSignal":bool(paired),"microphoneAudioSource":record.get("source"),"microphoneReadDelayExcluded":True,"adcInternalDelayCalibrated":False,
         "microphoneClockResidualP95Ms":clock_p95,"microphoneDeliveryDelayMedianMs":float(np.median(delivery)),
         "microphoneClippedPercent":clipping,"microphoneRms":float(np.sqrt(np.mean(x*x))),"tones":results,
         "matchedTones":len(good),"timingQualityAccepted":len(good)>=2 and clock_p95<=2 and clipping<.1,
         "medianDelayMs":float(np.median(good)) if len(good)>=2 else None,
         "delaySpreadMs":float(max(good)-min(good)) if len(good)>=2 else None,
         "limitation":"Uncalibrated microphone/DSP internal delay remains; this is not total source-to-speaker latency."}
+    if paired:
+        local=[r for r in results if r["accepted"] and r["destination"]=="phone"]
+        comparison={"phoneMatchedTones":len(local),"phoneVolumeRestored":phone.get("volumeRestored"),
+            "phoneEnqueueToMicMedianMs":float(np.median([r["correctedDelayMs"] for r in local])) if local else None,
+            "homepodMinusPhonePathMs":float(np.median(good)-np.median([r["correctedDelayMs"] for r in local])) if len(good)>=2 and len(local)>=2 else None,
+            "phoneDacDownstreamDelayCalibrated":False,"calibrationAccepted":False}
+        try:
+            pa=np.asarray(phone["anchors"],dtype=np.float64)
+            _,unique=np.unique(pa[:,0],return_index=True);pa=pa[np.sort(unique)]
+            if len(pa)<5 or phone.get("failure") or phone.get("underruns",1)!=0:raise ValueError("Phone clock or output continuity unavailable")
+            sub=pa[np.linspace(0,len(pa)-1,min(len(pa),60)).astype(int)]
+            slopes=[(v[1]-u[1])/(v[0]-u[0]) for i,u in enumerate(sub) for v in sub[i+1:] if v[0]-u[0]>phone["rate"]*.25]
+            ps=float(np.median(slopes));po=float(np.median(pa[:,1]-pa[:,0]*ps))
+            if not .99<ps/(1e9/phone["rate"])<1.01:raise ValueError("Phone clock rate invalid")
+            pres=float(np.percentile(np.abs(pa[:,1]-(po+pa[:,0]*ps))/1e6,95))
+            local_output=[(po+r["trackFrame"]*ps-r["enqueuedAtNs"])/1e6 for r in local]
+            mic_residual=[(r["micArrivalNs"]-(po+r["trackFrame"]*ps))/1e6 for r in local]
+            calibrated=len(local)>=2 and len(good)>=2 and pres<=2 and min(local_output,default=-999)>=-2 and min(mic_residual,default=-999)>=-2 and result["timingQualityAccepted"]
+            comparison.update({"phoneClockResidualP95Ms":pres,"phoneEnqueueToReportedPresentationMs":float(np.median(local_output)) if local_output else None,
+                "micPlusPhonePostTimestampDelayEstimateMs":float(np.median(mic_residual)) if mic_residual else None,
+                "homepodDelayUsingPhoneClockEstimateMs":float(np.median(good)-np.median(mic_residual)) if calibrated else None,
+                "calibrationAccepted":bool(calibrated)})
+        except (ValueError,KeyError,IndexError) as error:comparison["calibrationError"]=str(error)
+        result["pairedComparison"]=comparison
+        result["limitation"]="Common mic delay cancels in the paired difference. Phone hardware-clock correction still leaves uncalibrated phone DAC/downstream and acoustic-path differences."
+    return result
+
 
 
 def main():

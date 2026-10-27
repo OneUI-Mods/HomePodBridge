@@ -17,11 +17,15 @@ final class AcousticSignal {
 
   static short sample(int index, int frame) {
     if (index < 0 || index >= COUNT || frame < 0 || frame >= TONE_FRAMES) return 0;
+    return sample(LOW[index], HIGH[index], PHASE_CODE[index], frame);
+  }
+
+  static short sample(int low, int high, int code, int frame) {
+    if (frame < 0 || frame >= TONE_FRAMES) return 0;
     double t = frame / (double) RATE, seconds = TONE_FRAMES / (double) RATE;
-    double phase =
-        2 * Math.PI * (LOW[index] * t + 0.5 * (HIGH[index] - LOW[index]) * t * t / seconds);
+    double phase = 2 * Math.PI * (low * t + 0.5 * (high - low) * t * t / seconds);
     double window = 0.5 - 0.5 * Math.cos(2 * Math.PI * frame / (TONE_FRAMES - 1));
-    int sign = ((PHASE_CODE[index] >> (frame * 16 / TONE_FRAMES)) & 1) == 0 ? -1 : 1;
+    int sign = ((code >> (frame * 16 / TONE_FRAMES)) & 1) == 0 ? -1 : 1;
     return (short) Math.round(32767 * PEAK * window * Math.sin(phase) * sign);
   }
 

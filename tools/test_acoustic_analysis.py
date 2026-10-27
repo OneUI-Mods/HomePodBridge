@@ -32,4 +32,27 @@ class AcousticAnalysisTest(unittest.TestCase):
  def test_missing_microphone_timestamp_is_rejected(self):
   record=self.fixture();record['anchors']=[]
   with self.assertRaises(ValueError):analyze(record)
+ def test_paired_reference_cancels_hidden_microphone_delay(self):
+  record=self.fixture(False);rate=record['microphoneRate'];out=record['outputRate'];origin=1e12
+  pcm=np.frombuffer(base64.b64decode(record['pcm16le']),dtype='<i2').astype(np.float64)/32768
+  all_tones=[]
+  for dest,send,delay,low,high,code in [('phone',.9,.018,1800,4600,0x17D4),('phone',1.5,.018,4300,1500,0xC2B9),('homepod',2.7,.035,1600,3900,0xACE1),('homepod',3.3,.035,2100,4700,0xB4D3),('homepod',3.9,.035,1300,3400,0x69A7)]:
+   n=record['toneFrames'];u=np.arange(n)/out
+   y=np.rint(32767*.12*(.5-.5*np.cos(2*np.pi*np.arange(n)/(n-1)))*np.sin(2*np.pi*(low*u+.5*(high-low)*u*u/(n/out))))/32768
+   y*=np.where((code>>(np.arange(n)*16//n))&1,1,-1)
+   template=np.interp(np.arange(1920)*out/rate,np.arange(n),y);at=round((send+delay)*rate);pcm[at:at+len(template)]+=.35*template
+   tone={'destination':dest,'enqueuedAtNs':int(origin+send*1e9),'lowHz':low,'highHz':high,'phaseCode':code}
+   if dest=='phone':tone['trackFrame']=round((send+delay+.1)*rate)
+   all_tones.append(tone)
+  record['tones']=all_tones
+  for row in record['anchors']:row[2]+=50_000_000;row[3]+=50_000_000
+  record.update({'signalMode':'paired','phoneSpeakerSignal':True,'pcm16le':base64.b64encode(np.rint(pcm*32768).astype('<i2').tobytes()).decode(),
+   'phoneReference':{'routedDeviceType':2,'rate':rate,'underruns':0,'volumeRestored':True,'anchors':[[f,int(origin-.1e9+f*1e9/rate),f+480,0] for f in range(480,rate*6,480)]}})
+  result=analyze(record);paired=result['pairedComparison']
+  self.assertTrue(paired['calibrationAccepted']);self.assertAlmostEqual(paired['homepodMinusPhonePathMs'],17,delta=.15)
+  self.assertAlmostEqual(paired['micPlusPhonePostTimestampDelayEstimateMs'],50,delta=.15)
+  self.assertAlmostEqual(paired['homepodDelayUsingPhoneClockEstimateMs'],35,delta=.15)
+  self.assertFalse(paired['phoneDacDownstreamDelayCalibrated'])
+  record['phoneReference']['underruns']=2
+  self.assertFalse(analyze(record)['pairedComparison']['calibrationAccepted'])
 if __name__=='__main__':unittest.main()

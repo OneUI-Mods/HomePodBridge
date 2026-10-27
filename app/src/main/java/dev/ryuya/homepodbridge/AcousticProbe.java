@@ -24,6 +24,8 @@ final class AcousticProbe implements AutoCloseable {
   private static final int MIC_RATE = 48000, MAX_SECONDS = 6;
   private final Context context;
   private final int volume;
+  private final boolean paired;
+  private PhoneAcousticReference phone;
   private final Consumer<String> status;
   private final Runnable finishedCallback;
   private final Handler main = new Handler(Looper.getMainLooper());
@@ -42,10 +44,16 @@ final class AcousticProbe implements AutoCloseable {
   private long startedAt;
   private Thread recording;
 
-  AcousticProbe(Context context, int volume, Consumer<String> status, Runnable finishedCallback) {
+  AcousticProbe(
+      Context context,
+      int volume,
+      boolean paired,
+      Consumer<String> status,
+      Runnable finishedCallback) {
     if (volume < 1 || volume > 25)
       throw new IllegalArgumentException("Diagnostic volume must be 1..25");
     this.context = context;
+    this.paired = paired;
     this.volume = volume;
     this.status = status;
     this.finishedCallback = finishedCallback;
@@ -138,6 +146,10 @@ final class AcousticProbe implements AutoCloseable {
           AudioRecord.getMinBufferSize(
               MIC_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
       if (minimum <= 0) throw new IllegalStateException("Microphone format unavailable");
+      if (paired) {
+        phone = new PhoneAcousticReference(context);
+        phone.start();
+      }
       mic =
           new AudioRecord.Builder()
               .setAudioSource(source)
@@ -155,6 +167,7 @@ final class AcousticProbe implements AutoCloseable {
       if (mic.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
         throw new IllegalStateException("Microphone did not start");
       startedAt = System.nanoTime();
+      if (phone != null) phone.arm(startedAt);
       main.post(
           () -> {
             if (stopping.get() || !ownsConnection() || !BridgeState.connected) {
@@ -168,7 +181,7 @@ final class AcousticProbe implements AutoCloseable {
             BridgeState.publish();
             armedAt = System.nanoTime() + 750_000_000L;
             armed = true;
-            status.accept("ACOUSTIC_RECORDING volume=" + volume + " phoneSpeakerSignal=false");
+            status.accept("ACOUSTIC_RECORDING volume=" + volume + " phoneSpeakerSignal=" + paired);
           });
       short[] block = new short[480];
       AudioTimestamp timestamp = new AudioTimestamp();
@@ -203,6 +216,7 @@ final class AcousticProbe implements AutoCloseable {
         }
         mic.release();
       }
+      if (phone != null) phone.close();
       current.compareAndSet(this, null);
       samples.finish();
       finished = true;
@@ -269,7 +283,8 @@ final class AcousticProbe implements AutoCloseable {
               .put("startedAtNs", startedAt)
               .put("toneFrames", AcousticSignal.TONE_FRAMES)
               .put("outputRate", AcousticSignal.RATE)
-              .put("phoneSpeakerSignal", false)
+              .put("phoneSpeakerSignal", paired)
+              .put("signalMode", paired ? "paired" : "homepod-only")
               .put("reference", "sender PCM enqueue, not source capture")
               .put("adcInternalDelayCalibrated", false)
               .put("timebase", "MONOTONIC");
@@ -280,6 +295,7 @@ final class AcousticProbe implements AutoCloseable {
         for (int i = 0; i < AcousticSignal.COUNT; i++)
           tones.put(
               new JSONObject()
+                  .put("destination", "homepod")
                   .put("enqueuedAtNs", markers[i])
                   .put(
                       "senderPipeline",
@@ -287,6 +303,12 @@ final class AcousticProbe implements AutoCloseable {
                   .put("phaseCode", AcousticSignal.PHASE_CODE[i])
                   .put("lowHz", AcousticSignal.LOW[i])
                   .put("highHz", AcousticSignal.HIGH[i]));
+      }
+      if (phone != null) {
+        var local = phone.metadata();
+        result.put("phoneReference", local);
+        var localTones = local.getJSONArray("tones");
+        for (int i = 0; i < localTones.length(); i++) tones.put(localTones.getJSONObject(i));
       }
       result.put("anchors", stamps).put("tones", tones);
       if (includePcm) {

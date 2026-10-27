@@ -54,7 +54,8 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
-    if (command.equals("measure-acoustic")) {
+    if (command.equals("measure-acoustic") || command.equals("measure-acoustic-paired")) {
+      boolean paired = command.equals("measure-acoustic-paired");
       int volume = intent.getIntExtra("volume", -1);
       if (volume < 1 || volume > 25 || BridgeState.capture != null || BridgeState.connected) {
         commandStatus = "ACOUSTIC_REFUSED busy or invalid volume";
@@ -68,8 +69,13 @@ public final class CommandService extends Service {
       try {
         Notification notification =
             new Notification.Builder(this, "timing-diagnostics")
-                .setContentTitle(getString(R.string.acoustic_title))
-                .setContentText(getString(R.string.acoustic_description))
+                .setContentTitle(
+                    getString(paired ? R.string.acoustic_paired_title : R.string.acoustic_title))
+                .setContentText(
+                    getString(
+                        paired
+                            ? R.string.acoustic_paired_description
+                            : R.string.acoustic_description))
                 .setSmallIcon(R.drawable.ic_speaker)
                 .setSound(null)
                 .setVibrate(new long[0])
@@ -87,6 +93,7 @@ public final class CommandService extends Service {
             new AcousticProbe(
                 this,
                 volume,
+                paired,
                 value -> {
                   if (acousticEpoch == token) commandStatus = value;
                 },

@@ -63,7 +63,8 @@ final class WholeDeviceVolume implements BridgeState.Observer, AutoCloseable {
 
   @Override
   public void changed() {
-    if (!BridgeState.connected
+    if ((BridgeState.capture != null && BridgeState.capture.diagnosticAudio())
+        || !BridgeState.connected
         || BridgeState.selected == null
         || !StreamSettings.load(context).wholeDevice()) {
       releaseSession();
