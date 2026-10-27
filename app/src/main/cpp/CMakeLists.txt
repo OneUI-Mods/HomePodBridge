@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(homepod_bridge LANGUAGES C CXX)
-add_library(homepod_hal SHARED hal_probe.c)
+add_library(homepod_hal SHARED hal_probe.c output_period_probe.cpp)
+target_link_libraries(homepod_hal PRIVATE dl)
 add_library(homepod_fmq_probe SHARED fmq_probe.cpp)
 target_link_libraries(homepod_fmq_probe PRIVATE android)
 target_compile_options(homepod_fmq_probe PRIVATE -Wall -Wextra -Werror)

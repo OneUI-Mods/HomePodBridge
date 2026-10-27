@@ -52,6 +52,12 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("probe-output-period")) {
+      commandStatus = "Checking private virtual output period without playback";
+      commands.execute(
+          () -> commandStatus = "Output period: " + HalTransportProbe.outputPeriod(this));
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-packet-handoff")) {
       commandStatus = "Checking zero-only packet assembly without network output";
       commands.execute(() -> commandStatus = "Packet handoff: " + PacketHandoffProbe.run(this));

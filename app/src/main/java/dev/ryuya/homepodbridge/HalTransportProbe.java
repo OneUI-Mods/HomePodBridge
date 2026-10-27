@@ -16,6 +16,10 @@ final class HalTransportProbe {
     return execute(context, "metrics", UUID.randomUUID().toString());
   }
 
+  static String outputPeriod(Context context) {
+    return execute(context, "output-period", UUID.randomUUID().toString());
+  }
+
   static String policyInput(Context context, boolean routeOnly) {
     return execute(
         context, routeOnly ? "policy-route" : "policy-input", UUID.randomUUID().toString());
@@ -27,7 +31,8 @@ final class HalTransportProbe {
   }
 
   private static String execute(Context context, String operation, String nonce) {
-    if (BridgeState.connected || BridgeState.volume != 0) return "HAL_PROBE_REFUSED";
+    if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0)
+      return "HAL_PROBE_REFUSED";
     try {
       String apk = context.getApplicationInfo().sourceDir;
       if (!apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk")) return "HAL_PROBE_REFUSED";
