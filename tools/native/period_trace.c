@@ -20,7 +20,7 @@
 #include <unistd.h>
 
 typedef struct { pid_t tid; int stopped, saved, signal; struct user_hwdebug_state original; } task;
-static task tasks[128];static size_t task_count;static uint64_t getter_address;
+static task tasks[128];static size_t task_count;static uint64_t getter_address;static int mixer_mode;
 static uint64_t now_us(void) { struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000000+t.tv_nsec/1000; }
 static void pause_briefly(void) { struct timespec t={0,100000};nanosleep(&t,NULL); }
 static int regset(pid_t tid,int set,unsigned note,void* data,size_t size) {
@@ -70,9 +70,7 @@ static int detach_all(void) {
             siginfo_t info;struct user_pt_regs regs;
             if(ptrace(PTRACE_GETSIGINFO,t->tid,NULL,&info)==0 && info.si_code==TRAP_HWBKPT
                 && regset(t->tid,0,NT_PRSTATUS,&regs,sizeof(regs)) && regs.pc==getter_address) {
-                regs.pc=getter_address+4;regs.pstate&=~(uint64_t)PSR_BTYPE_MASK;
-                if(!regset(t->tid,1,NT_PRSTATUS,&regs,sizeof(regs)))clean=0;
-                else t->signal=0;
+                t->signal=0; // Restored debug state lets the original instruction execute normally.
             }
         }
         if(t->saved && !regset(t->tid,1,NT_ARM_HW_BREAK,&t->original,24))clean=0;
@@ -115,11 +113,33 @@ static int decision(unsigned sequence) {
     }
     return 0;
 }
+static int mixer_load(pid_t tid,uint64_t frames,int change) {
+    struct user_sve_header header={0};
+    struct iovec h={&header,sizeof(header)};
+    int sve=ptrace(PTRACE_GETREGSET,tid,(void*)NT_ARM_SVE,&h)==0;
+    if(sve && (header.flags&SVE_PT_REGS_MASK)==SVE_PT_REGS_SVE) {
+        if(header.size>65536 || header.size<sizeof(header) || !header.vl || header.vl>256)return 0;
+        uint8_t data[65536];struct iovec all={data,header.size};
+        if(ptrace(PTRACE_GETREGSET,tid,(void*)NT_ARM_SVE,&all)!=0)return 0;
+        size_t z0=SVE_PT_SVE_ZREG_OFFSET(header.vl/16,0),z8=SVE_PT_SVE_ZREG_OFFSET(header.vl/16,8);
+        if(z8+header.vl>header.size)return 0;
+        memset(data+z0,0,header.vl);memcpy(data+z0,&frames,8);
+        if(change){double one=1;memset(data+z8,0,header.vl);memcpy(data+z8,&one,8);}
+        return ptrace(PTRACE_SETREGSET,tid,(void*)NT_ARM_SVE,&all)==0;
+    }
+    struct user_fpsimd_state fp;
+    if(!regset(tid,0,NT_PRFPREG,&fp,sizeof(fp)))return 0;
+    fp.vregs[0]=frames;
+    if(change){uint64_t one=UINT64_C(0x3ff0000000000000);fp.vregs[8]=one;}
+    return regset(tid,1,NT_PRFPREG,&fp,sizeof(fp));
+}
 static int run(pid_t pid,uint64_t address,int selftest) {
     static const uint32_t expected[]={0xd503245f,0x528002a0,0xd65f03c0};
     char path[64];snprintf(path,sizeof(path),"/proc/%d/mem",pid);
     int memory=open(path,O_RDONLY|O_CLOEXEC);uint32_t code[3];
-    if(memory<0 || pread(memory,code,sizeof(code),(off_t)address)!=sizeof(code) || memcmp(code,expected,sizeof(code))) {
+    size_t code_size=mixer_mode?4:sizeof(code);
+    uint32_t mixer_code=0xfd413660;
+    if(memory<0 || pread(memory,code,code_size,(off_t)address)!=(ssize_t)code_size || memcmp(code,mixer_mode?&mixer_code:expected,code_size)) {
         if(memory>=0)close(memory);puts("REFUSED getter code");return 1;
     }
     getter_address=address;
@@ -146,14 +166,32 @@ static int run(pid_t pid,uint64_t address,int selftest) {
             siginfo_t info;struct user_pt_regs regs;
             if(ptrace(PTRACE_GETSIGINFO,tid,NULL,&info)!=0 || !regset(tid,0,NT_PRSTATUS,&regs,sizeof(regs))){ok=0;break;}
             if(info.si_code==TRAP_HWBKPT && regs.pc==address) {
-                int32_t config[2]={0};uint64_t pointer=regs.regs[1]&UINT64_C(0x00ffffffffffffff);
-                int valid=pread(memory,config,sizeof(config),(off_t)pointer)==sizeof(config);
+                int32_t config[2]={0};int valid=0;uint64_t frames=0;
+                if(mixer_mode) {
+                    uint64_t object=regs.regs[19]&UINT64_C(0x00ffffffffffffff),normal=1;
+                    int32_t rate=0,type=-1;
+                    valid=pread(memory,&config[0],4,(off_t)(object+0x1eb4))==4
+                        && pread(memory,&rate,4,(off_t)(object+0x264))==4
+                        && pread(memory,&type,4,(off_t)(object+0xc0))==4
+                        && pread(memory,&frames,8,(off_t)(object+0x268))==8
+                        && pread(memory,&normal,8,(off_t)(object+0x25c0))==8
+                        && frames==96 && rate==44100 && type==0 && normal==0;
+                    config[1]=33;
+                } else {
+                    uint64_t pointer=regs.regs[1]&UINT64_C(0x00ffffffffffffff);
+                    valid=pread(memory,config,sizeof(config),(off_t)pointer)==sizeof(config);
+                }
                 ++hits;printf("HIT %u %d %d\n",hits,valid?config[0]:0,valid?config[1]:0);fflush(stdout);
-                int accept=selftest ? (valid && config[0]==123 && config[1]==3) : decision(hits);
-                if(accept && valid && config[0]>0 && (config[1]==3 || config[1]==4)) {
+                int accept=selftest ? (valid && config[0]==123 && config[1]==(mixer_mode?33:3)) : decision(hits);
+                accept=accept && valid && config[0]>0 && (config[1]==3 || config[1]==4 || (mixer_mode && config[1]==33));
+                if(mixer_mode) {
+                    // Emulate exactly the scalar load, preserving FPCR/FPSR and other vector/SVE state.
+                    if(!frames || frames>65536 || !mixer_load(tid,frames,accept)){ok=0;break;}
+                    if(accept)++changed;
+                    regs.pc=address+4;
+                } else if(accept) {
                     regs.regs[0]=2;regs.pc=address+8;++changed;
-                } else regs.pc=address+4; // Original BTI is a no-op; execute the original mov/ret.
-                // Advancing over BTI must reproduce its BTYPE clearing semantics.
+                } else regs.pc=address+4;
                 regs.pstate&=~(uint64_t)PSR_BTYPE_MASK;
                 if(!regset(tid,1,NT_PRSTATUS,&regs,sizeof(regs))){ok=0;break;}
             } else t->signal=sig;
@@ -167,9 +205,19 @@ static int run(pid_t pid,uint64_t address,int selftest) {
 __attribute__((naked,noinline)) static int dummy(void* module __attribute__((unused)),const void* config __attribute__((unused))) {
     __asm__("mov w0,#21\nret");
 }
-static int(*volatile getter)(void*,const void*)=dummy;
+extern char dummy_mixer_point[];
+__attribute__((naked,noinline)) static int dummy_mixer(void* object __attribute__((unused))) {
+    __asm__("sub sp,sp,#32\nstr x19,[sp]\nstr d8,[sp,#8]\nmov x19,x0\nfmov d8,#9.0\n.global dummy_mixer_point\ndummy_mixer_point:\nldr d0,[x19,#0x268]\nucvtf d0,d0\nfmul d0,d8,d0\nfcvtzu d0,d0\nstr d0,[x19,#0x25c0]\nldr x0,[x19,#0x25c0]\nldr d8,[sp,#8]\nldr x19,[sp]\nadd sp,sp,#32\nret");
+}
+static int(*volatile mixer_getter)(void*)=dummy_mixer;
+static int fixture(int id) {
+    if(!mixer_mode){int config[2]={id,3};int(*volatile call)(void*,const void*)=dummy;return call(NULL,config);}
+    _Alignas(16) uint8_t object[0x2600]={0};uint64_t frames=96;int rate=44100;
+    memcpy(object+0x1eb4,&id,4);memcpy(object+0x264,&rate,4);memcpy(object+0x268,&frames,8);
+    return mixer_getter(object);
+}
 static void* dummy_worker(void* unused) {
-    (void)unused;int config[2]={123,3};return (void*)(intptr_t)getter(NULL,config);
+    (void)unused;return (void*)(intptr_t)fixture(123);
 }
 static volatile sig_atomic_t got_signal;
 static void usr1(int signal) { (void)signal;++got_signal; }
@@ -178,26 +226,26 @@ static int selftest(void) {
     pid_t child=fork();if(child<0)return 1;
     if(child==0) {
         close(ready[0]);close(go[1]);char x='r';write(ready[1],&x,1);read(go[0],&x,1);
-        int a[2]={123,3},b[2]={124,3};
         signal(SIGUSR1,usr1);raise(SIGUSR1);
-        int first=getter(NULL,a),second=getter(NULL,b);
+        int first=fixture(123),second=fixture(124);
         pthread_t worker;void* worker_result=NULL;
         if(pthread_create(&worker,NULL,dummy_worker,NULL)!=0)_exit(4);
         pthread_join(worker,&worker_result);
-        read(go[0],&x,1);int restored=getter(NULL,a);
+        read(go[0],&x,1);int restored=fixture(123);
         printf("CHILD first=%d foreign=%d clone=%ld restored=%d signal=%d\n",first,second,(long)worker_result,restored,got_signal);fflush(stdout);
-        _exit(first==2 && second==21 && (intptr_t)worker_result==2 && restored==21 && got_signal==1?0:3);
+        _exit(first==(mixer_mode?96:2) && second==(mixer_mode?864:21) && (intptr_t)worker_result==(mixer_mode?96:2) && restored==(mixer_mode?864:21) && got_signal==1?0:3);
     }
     close(ready[1]);close(go[0]);char x;read(ready[0],&x,1);
     // Let the child run only after all hardware state is installed.
     pid_t notifier=fork();if(notifier==0){usleep(100000);write(go[1],"g",1);_exit(0);}
-    int result=run(child,(uint64_t)(uintptr_t)dummy,1);write(go[1],"r",1);int status=0;pid_t waited=waitpid(child,&status,0);waitpid(notifier,NULL,0);
+    int result=run(child,(uint64_t)(uintptr_t)(mixer_mode?(void*)dummy_mixer_point:(void*)dummy),1);write(go[1],"r",1);int status=0;pid_t waited=waitpid(child,&status,0);waitpid(notifier,NULL,0);
     return result || waited!=child || !WIFEXITED(status) || WEXITSTATUS(status)!=0;
 }
 int main(int argc,char** argv) {
     setvbuf(stdout,NULL,_IOLBF,0);
-    if(argc==2 && !strcmp(argv[1],"selftest"))return selftest();
-    if(getuid()!=0 || argc!=3)return 2;
+    if(argc==2 && (!strcmp(argv[1],"selftest") || !strcmp(argv[1],"selftest-mixer"))){mixer_mode=!strcmp(argv[1],"selftest-mixer");return selftest();}
+    if(getuid()!=0 || (argc!=3 && argc!=4))return 2;
+    mixer_mode=argc==4 && !strcmp(argv[3],"mixer");if(argc==4 && !mixer_mode)return 2;
     char* end;long pid=strtol(argv[1],&end,10);if(*end || pid<=1 || pid>9999999)return 2;
     uint64_t base=strtoull(argv[2],&end,16);if(*end || base<65536 || base%4096)return 2;
     char path[64],text[8192];snprintf(path,sizeof(path),"/proc/%ld/status",pid);
@@ -206,7 +254,7 @@ int main(int argc,char** argv) {
     snprintf(path,sizeof(path),"/proc/%ld/maps",pid);f=fopen(path,"re");if(!f)return 2;int mapped=0;
     while(fgets(text,sizeof(text),f)) {unsigned long long a,offset;char permissions[5];
         if(sscanf(text,"%llx-%*x %4s %llx",&a,permissions,&offset)==3 && a==base && offset==0
-            && strstr(text,"/vendor/lib64/libaudioserviceexampleimpl.so"))mapped=1;}
+            && strstr(text,mixer_mode?"/system/lib64/libaudioflinger.so":"/vendor/lib64/libaudioserviceexampleimpl.so"))mapped=1;}
     fclose(f);if(!mapped)return 2;
-    return run((pid_t)pid,base+0x150518,0);
+    return run((pid_t)pid,base+(mixer_mode?0x145078:0x150518),0);
 }

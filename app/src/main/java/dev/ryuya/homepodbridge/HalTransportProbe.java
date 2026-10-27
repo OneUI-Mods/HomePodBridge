@@ -20,8 +20,9 @@ final class HalTransportProbe {
     return execute(context, "output-period", UUID.randomUUID().toString());
   }
 
-  static String getterPeriod(Context context) {
-    return execute(context, "getter-period", UUID.randomUUID().toString());
+  static String getterPeriod(Context context, boolean mixer) {
+    return execute(
+        context, mixer ? "getter-period-mixer" : "getter-period", UUID.randomUUID().toString());
   }
 
   static String policyInput(Context context, boolean routeOnly) {

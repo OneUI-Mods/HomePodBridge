@@ -24,16 +24,25 @@ final class HalPeriodExperiment implements AutoCloseable {
   private final CountDownLatch ready = new CountDownLatch(1);
   private final StringBuilder transcript = new StringBuilder();
   private volatile boolean stopping;
+  private boolean closed;
   private volatile String failure;
   private volatile int accepted;
 
-  private HalPeriodExperiment(String address) throws Exception {
+  private HalPeriodExperiment(String address, boolean mixer) throws Exception {
     byte[] bytes = Files.readAllBytes(Path.of("/data/local/tmp/homepod-period-trace"));
     if (bytes.length > 1048576
         || !HexFormat.of()
             .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
-            .equals("a1a8831eab9808a9568e3052c9a3a7aa41c8b9e65e598a6005364637a4f6c283"))
+            .equals("867aecfe0054d1e30aa8cdf7921da31c0fc462df4eb2aa6412273f69a8049f7c"))
       throw new SecurityException("Unverified getter trial executable");
+    if (mixer) {
+      byte[] library = Files.readAllBytes(Path.of("/system/lib64/libaudioflinger.so"));
+      if (library.length > 4194304
+          || !HexFormat.of()
+              .formatHex(MessageDigest.getInstance("SHA-256").digest(library))
+              .equals("45cb0b3a2eb1dad87fe3dab123658a60c8e20f0b30c2645bc7a2fe42c9e7f41f"))
+        throw new SecurityException("Unsupported mixer build");
+    }
     directory =
         Files.createTempDirectory(
             Path.of("/data/local/tmp"),
@@ -45,7 +54,11 @@ final class HalPeriodExperiment implements AutoCloseable {
       Files.write(executable, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
       Files.setPosixFilePermissions(executable, PosixFilePermissions.fromString("rwx------"));
       Process query =
-          new ProcessBuilder("dumpsys", "--pid", ReadOnlyHalState.DESCRIPTOR + "/r_submix").start();
+          new ProcessBuilder(
+                  "dumpsys",
+                  "--pid",
+                  mixer ? "media.audio_flinger" : ReadOnlyHalState.DESCRIPTOR + "/r_submix")
+              .start();
       String pid =
           new String(query.getInputStream().readNBytes(128), StandardCharsets.US_ASCII).trim();
       if (!query.waitFor(2, TimeUnit.SECONDS) || !pid.matches("[1-9][0-9]{0,6}"))
@@ -55,14 +68,22 @@ final class HalPeriodExperiment implements AutoCloseable {
         String[] fields = line.trim().split("\\s+");
         if (fields.length == 6
             && fields[2].equals("00000000")
-            && fields[5].equals("/vendor/lib64/libaudioserviceexampleimpl.so")) {
+            && fields[5].equals(
+                mixer
+                    ? "/system/lib64/libaudioflinger.so"
+                    : "/vendor/lib64/libaudioserviceexampleimpl.so")) {
           if (base != null) throw new SecurityException("Ambiguous module");
           base = fields[0].split("-")[0];
         }
       }
       if (base == null) throw new SecurityException("Pinned module missing");
       started =
-          new ProcessBuilder(executable.toString(), pid, base).redirectErrorStream(true).start();
+          new ProcessBuilder(
+                  mixer
+                      ? java.util.List.of(executable.toString(), pid, base, "mixer")
+                      : java.util.List.of(executable.toString(), pid, base))
+              .redirectErrorStream(true)
+              .start();
     } catch (Exception error) {
       if (started != null) started.destroyForcibly();
       Files.deleteIfExists(executable);
@@ -142,7 +163,32 @@ final class HalPeriodExperiment implements AutoCloseable {
     return PeriodRouteGuard.allows(ports, configs, address, id, port);
   }
 
+  private static boolean ownedMixer(JSONObject snapshot, String address, int io) throws Exception {
+    if (io <= 0) return false;
+    JSONArray configs = snapshot.getJSONArray("configs"),
+        patches = snapshot.getJSONArray("patches");
+    for (int i = 0; i < configs.length(); i++) {
+      JSONObject c = configs.getJSONObject(i);
+      if (c.optInt("handle") == io
+          && c.getInt("portId") == 3
+          && ownedConfig(snapshot, address, c.getInt("id"), 3)) {
+        for (int j = 0; j < patches.length(); j++) {
+          JSONObject p = patches.getJSONObject(j);
+          JSONArray sources = p.getJSONArray("sources");
+          if (sources.length() == 1
+              && sources.getInt(0) == c.getInt("id")
+              && p.getInt("minimumFrames") == 96) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   static JSONObject run() throws Exception {
+    return run(false);
+  }
+
+  static JSONObject run(boolean mixer) throws Exception {
     HalPortProbe.rootPreflight();
     ReadOnlyHalState state = new ReadOnlyHalState();
     String baseline = state.snapshot().toString();
@@ -150,14 +196,19 @@ final class HalPeriodExperiment implements AutoCloseable {
     Class<?> activity = Class.forName("android.app.ActivityThread");
     Object thread = activity.getMethod("systemMain").invoke(null);
     Context context = (Context) activity.getMethod("getSystemContext").invoke(thread);
-    HalPeriodExperiment[] owner = {null};
+    HalPeriodExperiment[] owner = {null, null};
     JSONObject result = new JSONObject().put("playbackCreated", false).put("networkStarted", false);
     try (var policy =
         new RegisteredPolicy(
             context,
             new CaptureScope(false, 0, -1, true, false),
-            address -> owner[0] = new HalPeriodExperiment(address))) {
+            address -> {
+              owner[0] = new HalPeriodExperiment(address, false);
+              if (mixer) owner[1] = new HalPeriodExperiment(address, true);
+            })) {
       result.put("active", state.snapshot());
+      if (owner[1] != null) owner[1].close();
+      owner[0].close();
       Process dump = new ProcessBuilder("dumpsys", "media.audio_flinger").start();
       byte[] text = dump.getInputStream().readNBytes(1048577);
       if (dump.waitFor(2, TimeUnit.SECONDS) && text.length <= 1048576) {
@@ -177,6 +228,12 @@ final class HalPeriodExperiment implements AutoCloseable {
     } catch (Exception error) {
       result.put("failure", error.getClass().getSimpleName() + ": " + error.getMessage());
     } finally {
+      if (owner[1] != null) {
+        owner[1].close();
+        result
+            .put("mixerTrace", owner[1].transcript.toString())
+            .put("mixerApprovedCalls", owner[1].accepted);
+      }
       if (owner[0] != null) {
         owner[0].close();
         result
@@ -196,12 +253,16 @@ final class HalPeriodExperiment implements AutoCloseable {
         Thread.sleep(50);
       }
       result.put("resourcesRestoredExactly", restored);
+      if (!restored)
+        result.put("baseline", new JSONObject(baseline)).put("after", state.snapshot());
     }
     return result;
   }
 
   @Override
-  public void close() throws Exception {
+  public synchronized void close() throws Exception {
+    if (closed) return;
+    closed = true;
     stopping = true;
     process.getOutputStream().close();
     if (!process.waitFor(3, TimeUnit.SECONDS)) {

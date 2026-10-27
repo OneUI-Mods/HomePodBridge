@@ -52,9 +52,13 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
-    if (command.equals("probe-hal-period")) {
+    if (command.equals("probe-hal-period") || command.equals("probe-mixer-period")) {
       commandStatus = "Checking owned HAL period without playback";
-      commands.execute(() -> commandStatus = "HAL period: " + HalTransportProbe.getterPeriod(this));
+      commands.execute(
+          () ->
+              commandStatus =
+                  "HAL period: "
+                      + HalTransportProbe.getterPeriod(this, command.equals("probe-mixer-period")));
       return START_NOT_STICKY;
     }
     if (command.equals("probe-output-period")) {
