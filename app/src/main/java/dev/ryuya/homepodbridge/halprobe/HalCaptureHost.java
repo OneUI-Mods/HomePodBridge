@@ -19,7 +19,7 @@ public final class HalCaptureHost {
     String registration = null;
     HalPeriodExperiment[] periods = {null, null};
     try {
-      if (args.length != 3
+      if ((args.length != 3 && args.length != 5)
           || !UUID.fromString(args[0]).toString().equals(args[0])
           || !args[2].matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
           || args[2].length() > 255) throw new SecurityException();
@@ -36,6 +36,11 @@ public final class HalCaptureHost {
       if (selectedUid == bridgeUid) throw new SecurityException("Cannot capture Bridge itself");
       CaptureScope scope = CaptureScope.parse(args[1], selectedUid, bridgeUid);
       boolean shortPeriod = args[1].endsWith("-short");
+      if (args.length == 5 && !shortPeriod) throw new SecurityException();
+      PhoneTiming timing =
+          args.length == 5
+              ? new PhoneTiming(Integer.parseInt(args[3]), Integer.parseInt(args[4]))
+              : PhoneTiming.fastest();
       int target =
           switch (args[1]) {
             case "test-target-752" -> 752;
@@ -73,8 +78,8 @@ public final class HalCaptureHost {
                 address -> {
                   if (shortPeriod) {
                     if (stopped.get()) throw new java.io.IOException("Client stopped");
-                    periods[0] = new HalPeriodExperiment(address, false);
-                    periods[1] = new HalPeriodExperiment(address, true);
+                    periods[0] = new HalPeriodExperiment(address, false, timing);
+                    periods[1] = new HalPeriodExperiment(address, true, timing);
                   }
                 })) {
           registration = policy.address;
@@ -89,7 +94,7 @@ public final class HalCaptureHost {
               };
           if (shortPeriod) {
             result.put(
-                "shortPeriod", HalPeriodExperiment.requireSmallOutput(state, policy.address));
+                "shortPeriod", HalPeriodExperiment.requireOutput(state, policy.address, timing));
             result.put(
                 "capture",
                 HalPortProbe.livePeriodCapture(
@@ -105,7 +110,8 @@ public final class HalCaptureHost {
                       periods[1].close();
                       periods[0].close();
                       if (stopped.get()) throw new java.io.IOException("Client stopped");
-                    }));
+                    },
+                    timing));
           } else {
             result.put(
                 "capture",

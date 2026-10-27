@@ -110,10 +110,15 @@ static int thaw(task* tasks,size_t count) {
 JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     JNIEnv* env,jclass type,jint pid,jlong module,jlong mono,jstring registration,jint operation) {
     (void)type;
-    if (getuid()!=0 || pid<=1 || operation<0 || operation>16) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
-    // Closed per-route transitions; targets below the normal dedicated 800 are zero-only candidates.
+    int from=0,to=0,window=0,valid=operation>=0 && operation<=16;
     const int before[]={0,2587,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96,4096,192};
     const int after[]={0,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96,2587,192,4096};
+    if(valid){from=before[operation];to=after[operation];window=operation>=15;}
+    else if(operation>=10000 && operation<=10800 && hp_manual_reserve(operation-10000)){from=2587;to=operation-10000;valid=1;}
+    else if(operation>=20000 && operation<=20800 && hp_manual_reserve(operation-20000)){from=operation-20000;to=2587;valid=1;}
+    else if(operation>=30000 && operation<=31856 && hp_latency_window(operation-30000)){from=4096;to=operation-30000;window=1;valid=1;}
+    else if(operation>=40000 && operation<=41856 && hp_latency_window(operation-40000)){from=operation-40000;to=4096;window=1;valid=1;}
+    if (getuid()!=0 || pid<=1 || !valid) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
     const char* address=(*env)->GetStringUTFChars(env,registration,NULL);
     if (!address) return NULL;
     memory mem={.fd=-1}; task tasks[256];size_t count=0;uint64_t begin=monotonic_ns();
@@ -130,9 +135,9 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
         error=freeze(pid,tasks,&count,begin+25000000u);
         if (!error) error=hp_find_owned(read_memory,&mem,(uint64_t)module,(uint64_t)mono,address,&owned);
         if (!error && monotonic_ns()>begin+25000000u) error="exclusive interval exceeded";
-        if (!error && operation>=15) error=hp_change_reported_frames(read_memory,write_memory,&mem,&owned,1,before[operation],after[operation]);
-        if (!error && operation>0 && operation<15) error=hp_change_reserve(read_memory,write_memory,&mem,&owned,1,
-            before[operation],after[operation]);
+        if (!error && window) error=hp_change_reported_frames(read_memory,write_memory,&mem,&owned,1,from,to);
+        if (!error && operation>0 && !window) error=hp_change_reserve(read_memory,write_memory,&mem,&owned,1,
+            from,to);
     }
     int detached=thaw(tasks,count);
     if (!detached) raise(SIGALRM);
@@ -140,8 +145,8 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     uint64_t elapsed=(monotonic_ns()-begin)/1000;
     if (!detached) error="detach incomplete";
     if (error) snprintf(report,sizeof(report),"Owned HAL operation refused: %s; maps=%zu tasks=%zu elapsedUs=%llu writeAttempts=%u",error,mem.count,count,(unsigned long long)elapsed,mem.writes);
-    else if (operation>=15) snprintf(report,sizeof(report),"Owned latency window changed: %d -> %d; exact field verified",before[operation],after[operation]);
-    else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu writeAttempts=%u; exact field verified",before[operation],after[operation],count,(unsigned long long)elapsed,mem.writes);
+    else if (window) snprintf(report,sizeof(report),"Owned latency window changed: %d -> %d; exact field verified",from,to);
+    else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu writeAttempts=%u; exact field verified",from,to,count,(unsigned long long)elapsed,mem.writes);
     else snprintf(report,sizeof(report),"Read-only freeze check passed: tasks=%zu elapsedUs=%llu targetFillFrames=%llu; no memory writes",count,(unsigned long long)elapsed,(unsigned long long)owned.target);
     (*env)->ReleaseStringUTFChars(env,registration,address);
     return (*env)->NewStringUTF(env,report);

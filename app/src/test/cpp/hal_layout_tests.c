@@ -61,6 +61,30 @@ int main(void) {
         assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,target));
         assert(!memcmp(original,fixture+sink-base,256));
     }
+    // Every exposed manual reserve and supported producer period: exact writes and restoration.
+    for(uint64_t target=96;target<=800;++target) {
+        assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+        assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,target));
+        for(int ms=2;ms<=21;++ms) {
+            uint64_t window=(uint64_t)((44100*ms/1000+15)/16)*32;
+            assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+            assert(!hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,1,4096,window));
+            assert(hp_u64(fixture+sink-base+0x40)==4096);
+            assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+            int writes=write_calls;
+            assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,target,2587));
+            assert(write_calls==writes);
+            assert(!hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,1,window,4096));
+        }
+        assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+        assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,target,2587));
+        assert(!memcmp(original,fixture+sink-base,256));
+    }
+    assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+    int invalid_calls=write_calls;
+    assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,95));
+    assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,801));
+    assert(write_calls==invalid_calls);
     assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
     assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,96));
     assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));

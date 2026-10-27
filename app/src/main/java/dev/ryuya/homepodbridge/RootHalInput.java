@@ -50,6 +50,17 @@ final class RootHalInput implements AutoCloseable {
     this(context, source, whole, zero, pulse, 800, shortPeriod);
   }
 
+  RootHalInput(
+      Context context,
+      String source,
+      boolean whole,
+      boolean zero,
+      boolean pulse,
+      dev.ryuya.homepodbridge.halprobe.PhoneTiming timing)
+      throws StartupException {
+    this(context, source, whole, zero, pulse, 800, timing != null, timing);
+  }
+
   private RootHalInput(
       Context context,
       String source,
@@ -58,6 +69,27 @@ final class RootHalInput implements AutoCloseable {
       boolean pulse,
       int testTarget,
       boolean shortPeriod)
+      throws StartupException {
+    this(
+        context,
+        source,
+        whole,
+        zero,
+        pulse,
+        testTarget,
+        shortPeriod,
+        shortPeriod ? dev.ryuya.homepodbridge.halprobe.PhoneTiming.fastest() : null);
+  }
+
+  private RootHalInput(
+      Context context,
+      String source,
+      boolean whole,
+      boolean zero,
+      boolean pulse,
+      int testTarget,
+      boolean shortPeriod,
+      dev.ryuya.homepodbridge.halprobe.PhoneTiming timing)
       throws StartupException {
     try {
       if (testTarget != 800
@@ -91,7 +123,10 @@ final class RootHalInput implements AutoCloseable {
                         + " "
                         + mode
                         + " "
-                        + source)
+                        + source
+                        + (shortPeriod
+                            ? " " + timing.periodMs() + " " + timing.reserveFrames()
+                            : ""))
                 .redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")))
                 .start();
         Context app = context.getApplicationContext();

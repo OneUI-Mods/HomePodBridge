@@ -20,7 +20,8 @@
 #include <unistd.h>
 
 typedef struct { pid_t tid; int stopped, saved, signal; struct user_hwdebug_state original; } task;
-static task tasks[128];static size_t task_count;static uint64_t getter_address;static int mixer_mode;
+static task tasks[128];static size_t task_count;static uint64_t getter_address;static int mixer_mode;static int requested_period=2;
+static uint64_t expected_frames(void){return (uint64_t)((44100*requested_period/1000+15)/16)*16;}
 static uint64_t now_us(void) { struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000000+t.tv_nsec/1000; }
 static void pause_briefly(void) { struct timespec t={0,100000};nanosleep(&t,NULL); }
 static int regset(pid_t tid,int set,unsigned note,void* data,size_t size) {
@@ -175,7 +176,7 @@ static int run(pid_t pid,uint64_t address,int selftest) {
                         && pread(memory,&type,4,(off_t)(object+0xc0))==4
                         && pread(memory,&frames,8,(off_t)(object+0x268))==8
                         && pread(memory,&normal,8,(off_t)(object+0x25c0))==8
-                        && frames==96 && rate==44100 && type==0 && normal==0;
+                        && frames==expected_frames() && rate==44100 && type==0 && normal==0;
                     config[1]=33;
                 } else {
                     uint64_t pointer=regs.regs[1]&UINT64_C(0x00ffffffffffffff);
@@ -190,7 +191,7 @@ static int run(pid_t pid,uint64_t address,int selftest) {
                     if(accept)++changed;
                     regs.pc=address+4;
                 } else if(accept) {
-                    regs.regs[0]=2;regs.pc=address+8;++changed;
+                    regs.regs[0]=(uint64_t)requested_period;regs.pc=address+8;++changed;
                 } else regs.pc=address+4;
                 regs.pstate&=~(uint64_t)PSR_BTYPE_MASK;
                 if(!regset(tid,1,NT_PRSTATUS,&regs,sizeof(regs))){ok=0;break;}
@@ -212,7 +213,7 @@ __attribute__((naked,noinline)) static int dummy_mixer(void* object __attribute_
 static int(*volatile mixer_getter)(void*)=dummy_mixer;
 static int fixture(int id) {
     if(!mixer_mode){int config[2]={id,3};int(*volatile call)(void*,const void*)=dummy;return call(NULL,config);}
-    _Alignas(16) uint8_t object[0x2600]={0};uint64_t frames=96;int rate=44100;
+    _Alignas(16) uint8_t object[0x2600]={0};uint64_t frames=expected_frames();int rate=44100;
     memcpy(object+0x1eb4,&id,4);memcpy(object+0x264,&rate,4);memcpy(object+0x268,&frames,8);
     return mixer_getter(object);
 }
@@ -233,7 +234,7 @@ static int selftest(void) {
         pthread_join(worker,&worker_result);
         read(go[0],&x,1);int restored=fixture(123);
         printf("CHILD first=%d foreign=%d clone=%ld restored=%d signal=%d\n",first,second,(long)worker_result,restored,got_signal);fflush(stdout);
-        _exit(first==(mixer_mode?96:2) && second==(mixer_mode?864:21) && (intptr_t)worker_result==(mixer_mode?96:2) && restored==(mixer_mode?864:21) && got_signal==1?0:3);
+        _exit(first==(mixer_mode?(int)expected_frames():requested_period) && second==(mixer_mode?(int)expected_frames()*9:21) && (intptr_t)worker_result==(mixer_mode?(int)expected_frames():requested_period) && restored==(mixer_mode?(int)expected_frames()*9:21) && got_signal==1?0:3);
     }
     close(ready[1]);close(go[0]);char x;read(ready[0],&x,1);
     // Let the child run only after all hardware state is installed.
@@ -243,9 +244,12 @@ static int selftest(void) {
 }
 int main(int argc,char** argv) {
     setvbuf(stdout,NULL,_IOLBF,0);
-    if(argc==2 && (!strcmp(argv[1],"selftest") || !strcmp(argv[1],"selftest-mixer"))){mixer_mode=!strcmp(argv[1],"selftest-mixer");return selftest();}
-    if(getuid()!=0 || (argc!=3 && argc!=4))return 2;
-    mixer_mode=argc==4 && !strcmp(argv[3],"mixer");if(argc==4 && !mixer_mode)return 2;
+    if((argc==2 || argc==3) && (!strcmp(argv[1],"selftest") || !strcmp(argv[1],"selftest-mixer"))){
+        if(argc==3){char* e;long v=strtol(argv[2],&e,10);if(*e || v<2 || v>21)return 2;requested_period=(int)v;}
+        mixer_mode=!strcmp(argv[1],"selftest-mixer");return selftest();}
+    if(getuid()!=0 || argc!=5)return 2;
+    mixer_mode=!strcmp(argv[3],"mixer");if(!mixer_mode && strcmp(argv[3],"hal"))return 2;
+    char* e;long requested=strtol(argv[4],&e,10);if(*e || requested<2 || requested>21)return 2;requested_period=(int)requested;
     char* end;long pid=strtol(argv[1],&end,10);if(*end || pid<=1 || pid>9999999)return 2;
     uint64_t base=strtoull(argv[2],&end,16);if(*end || base<65536 || base%4096)return 2;
     char path[64],text[8192];snprintf(path,sizeof(path),"/proc/%ld/status",pid);

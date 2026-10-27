@@ -16,8 +16,10 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
     constexpr int frames=22;
     std::array<uint8_t,frames*4> pcm{};
     auto begin=std::chrono::steady_clock::now();
-    // Only the verified 96-frame context uses this tolerance. Legacy capture keeps its clock.
-    const bool short_period=q[2].view.capacity==96*4;
+    // Bounded owned producer periods use two-quantum tolerance. Legacy 928 keeps its clock.
+    const int producer_frames=(int)(q[2].view.capacity/4);
+    const bool short_period=producer_frames>=96 && producer_frames<928;
+    const auto producer_quantum=std::chrono::microseconds((producer_frames*1000000LL+44099)/44100);
     int64_t last_produced=reply.observable.frames;
     auto last_production=begin;
     auto note_production=[&] {
@@ -36,8 +38,8 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
             note_production();
         }
         if(short_period && last_produced>0 && reply.observable.frames-r.captured<frames
-            && std::chrono::steady_clock::now()-last_production<std::chrono::milliseconds(10)) {
-            auto grace=std::chrono::steady_clock::now()+std::chrono::microseconds(4400);
+            && std::chrono::steady_clock::now()-last_production<producer_quantum*3) {
+            auto grace=std::chrono::steady_clock::now()+producer_quantum*2;
             while(reply.observable.frames-r.captured<frames && std::chrono::steady_clock::now()<grace) {
                 if(!hp_capture_owner_alive(owner_control)){r.error=11;break;}
                 std::this_thread::sleep_for(std::chrono::microseconds(100));

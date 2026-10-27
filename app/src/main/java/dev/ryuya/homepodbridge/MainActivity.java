@@ -26,7 +26,6 @@ import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.textfield.TextInputEditText;
@@ -52,21 +51,13 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView volumeLabel;
   private TextView systemStatus;
   private TextView modeSelection;
-  private MaterialSwitch lowLatencySwitch;
-  private MaterialSwitch highQualitySwitch;
-  private MaterialSwitch compressionSwitch;
-  private MaterialSwitch adaptiveBufferSwitch;
-  private MaterialSwitch deviceBufferSwitch;
-  private MaterialSwitch minimumBufferSwitch;
-  private MaterialSwitch dedicatedCaptureSwitch;
-  private MaterialSwitch shortMixerSwitch;
-  private MaterialSwitch shortPacketsSwitch;
   private TextView captureBackendStatus;
   private TextView profileSelection;
   private TextView profileDetails;
   private TextView receiverTimingSelection;
+  private TextView manualSummary;
   private TabLayout tabs;
-  private boolean updatingSettings;
+  private Button profileButton;
   private MediaRouter2 router;
   private final MediaRouter2.RouteCallback routes = new MediaRouter2.RouteCallback() {};
 
@@ -274,118 +265,19 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     latencyControls.setOrientation(LinearLayout.VERTICAL);
     profileSelection = label("", 18);
     latencyControls.addView(profileSelection);
-    lowLatencySwitch = new MaterialSwitch(this);
-    lowLatencySwitch.setText(R.string.low_latency_mode);
-    lowLatencySwitch.setChecked(StreamSettings.load(this).lowLatency());
-    lowLatencySwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          selectProfile(enabled ? 1 : 0);
-        });
-    latencyControls.addView(lowLatencySwitch);
-    latencyControls.addView(label(getString(R.string.low_latency_description), 14));
-    dedicatedCaptureSwitch = new MaterialSwitch(this);
-    dedicatedCaptureSwitch.setText(R.string.dedicated_capture);
-    dedicatedCaptureSwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          StreamSettings.load(this).withDedicatedCapture(enabled).save(this);
-          syncSettings();
-          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-        });
-    latencyControls.addView(dedicatedCaptureSwitch);
-    latencyControls.addView(label(getString(R.string.dedicated_capture_description), 14));
-    shortMixerSwitch = new MaterialSwitch(this);
-    shortMixerSwitch.setText(R.string.short_mixer_period);
-    shortMixerSwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          StreamSettings.load(this).withShortMixerPeriod(enabled).save(this);
-          syncSettings();
-          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-        });
-    latencyControls.addView(shortMixerSwitch);
-    latencyControls.addView(label(getString(R.string.short_mixer_period_description), 14));
-    captureBackendStatus = label("", 14);
-    latencyControls.addView(captureBackendStatus);
-    highQualitySwitch = new MaterialSwitch(this);
-    highQualitySwitch.setText(R.string.high_quality_mode);
-    highQualitySwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (!updatingSettings) selectProfile(enabled ? 2 : 0);
-        });
-    latencyControls.addView(highQualitySwitch);
-    latencyControls.addView(label(getString(R.string.high_quality_description), 14));
+    profileButton = button(getString(R.string.profile_choose), view -> chooseProfile());
+    latencyControls.addView(profileButton);
     profileDetails = label("", 14);
     latencyControls.addView(profileDetails);
-    adaptiveBufferSwitch = new MaterialSwitch(this);
-    adaptiveBufferSwitch.setText(R.string.adaptive_buffer);
-    adaptiveBufferSwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          StreamSettings.load(this).withAdaptiveBuffer(enabled).save(this);
-          syncSettings();
-          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-        });
-    latencyControls.addView(adaptiveBufferSwitch);
-    latencyControls.addView(label(getString(R.string.adaptive_buffer_description), 14));
+    captureBackendStatus = label("", 14);
+    latencyControls.addView(captureBackendStatus);
+    latencyControls.addView(label(getString(R.string.profiles_description), 14));
     body.addView(card(latencyControls));
-    LinearLayout compressionControls = new LinearLayout(this);
-    compressionControls.setOrientation(LinearLayout.VERTICAL);
-    compressionSwitch = new MaterialSwitch(this);
-    compressionSwitch.setText(R.string.compressed_audio);
-    compressionSwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          StreamSettings.load(this).withCompression(enabled).save(this);
-          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-        });
-    compressionControls.addView(compressionSwitch);
-    compressionControls.addView(label(getString(R.string.compressed_audio_description), 14));
-    body.addView(card(compressionControls));
     body = tuningBody;
-    body.addView(label(getString(R.string.tuning_description), 16));
-    LinearLayout packetControls = new LinearLayout(this);
-    packetControls.setOrientation(LinearLayout.VERTICAL);
-    shortPacketsSwitch = new MaterialSwitch(this);
-    shortPacketsSwitch.setText(R.string.short_audio_packets);
-    shortPacketsSwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          StreamSettings.load(this).withShortAudioPackets(enabled).save(this);
-          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-        });
-    packetControls.addView(shortPacketsSwitch);
-    packetControls.addView(label(getString(R.string.short_audio_packets_description), 14));
-    body.addView(card(packetControls));
-    LinearLayout deviceControls = new LinearLayout(this);
-    deviceControls.setOrientation(LinearLayout.VERTICAL);
-    deviceBufferSwitch = new MaterialSwitch(this);
-    deviceBufferSwitch.setText(R.string.device_buffer);
-    deviceBufferSwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          StreamSettings.load(this).withDeviceBuffer(enabled).save(this);
-          syncSettings();
-          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-        });
-    deviceControls.addView(deviceBufferSwitch);
-    deviceControls.addView(label(getString(R.string.device_buffer_description), 14));
-    minimumBufferSwitch = new MaterialSwitch(this);
-    minimumBufferSwitch.setText(R.string.device_buffer_faster);
-    minimumBufferSwitch.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          if (updatingSettings) return;
-          StreamSettings.load(this).withDeviceBufferFrames(enabled ? 928 : 1856).save(this);
-          syncSettings();
-          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-        });
-    deviceControls.addView(minimumBufferSwitch);
-    deviceControls.addView(label(getString(R.string.device_buffer_faster_description), 14));
-    body.addView(card(deviceControls));
-    body.addView(button(getString(R.string.buffer_settings), view -> bufferSettings()));
-    body.addView(
-        button(getString(R.string.receiver_timing_settings), view -> receiverTimingSettings()));
+    body.addView(label(getString(R.string.manual_description), 16));
+    body.addView(button(getString(R.string.manual_settings), view -> manualSettings()));
+    manualSummary = label("", 14);
+    body.addView(manualSummary);
     receiverTimingSelection = label("", 14);
     body.addView(receiverTimingSelection);
     body.addView(label(getString(R.string.notes), 14));
@@ -426,31 +318,41 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     return content;
   }
 
-  private void selectProfile(int profile) {
-    StreamSettings.load(this).withProfile(profile).save(this);
+  private void chooseProfile() {
+    var settings = StreamSettings.load(this);
+    new MaterialAlertDialogBuilder(this)
+        .setTitle(R.string.profile_choose)
+        .setSingleChoiceItems(
+            new String[] {
+              getString(R.string.profile_balanced),
+              getString(R.string.low_latency_mode),
+              getString(R.string.high_quality_mode),
+              getString(R.string.profile_manual)
+            },
+            settings.profile(),
+            (dialog, which) -> {
+              applySettings(
+                  which == 3
+                      ? StreamSettings.savedManual(this)
+                      : StreamSettings.load(this).preset(which));
+              dialog.dismiss();
+            })
+        .setNegativeButton(android.R.string.cancel, null)
+        .show();
+  }
+
+  private void manualSettings() {
+    ManualSettingsDialog.show(this, StreamSettings.savedManual(this), this::applySettings);
+  }
+
+  private void applySettings(StreamSettings settings) {
+    settings.save(this);
     syncSettings();
     if (BridgeState.capture != null) BridgeState.capture.reconfigure();
   }
 
   private void syncSettings() {
     StreamSettings settings = StreamSettings.load(this);
-    updatingSettings = true;
-    lowLatencySwitch.setChecked(settings.lowLatency());
-    dedicatedCaptureSwitch.setChecked(settings.dedicatedCapture());
-    dedicatedCaptureSwitch.setEnabled(settings.lowLatency() && RootConnector.available());
-    shortMixerSwitch.setChecked(settings.shortMixerPeriod());
-    shortMixerSwitch.setEnabled(settings.effectiveDedicatedCapture() && RootConnector.available());
-    highQualitySwitch.setChecked(settings.highQuality());
-    shortPacketsSwitch.setChecked(settings.shortAudioPackets());
-    shortPacketsSwitch.setEnabled(settings.effectiveDedicatedCapture());
-    compressionSwitch.setChecked(settings.compressedAudio());
-    adaptiveBufferSwitch.setChecked(settings.adaptiveBuffer());
-    adaptiveBufferSwitch.setEnabled(settings.lowLatency());
-    deviceBufferSwitch.setChecked(settings.deviceBuffer());
-    deviceBufferSwitch.setEnabled(settings.lowLatency() && !settings.effectiveDedicatedCapture());
-    minimumBufferSwitch.setChecked(settings.deviceBufferFrames() == 928);
-    minimumBufferSwitch.setEnabled(
-        settings.effectiveDeviceBuffer() && !settings.effectiveDedicatedCapture());
     profileSelection.setText(
         getString(
             R.string.profile_selected,
@@ -459,7 +361,9 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                     ? R.string.low_latency_mode
                     : settings.highQuality()
                         ? R.string.high_quality_mode
-                        : R.string.profile_custom)));
+                        : settings.manualMode()
+                            ? R.string.profile_manual
+                            : R.string.profile_balanced)));
     if (settings.effectiveAdaptiveBuffer()) {
       profileDetails.setText(
           getString(
@@ -473,6 +377,14 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
               settings.effectiveBufferMs(),
               settings.captureUnitMs(),
               settings.requestedPresentationMs()));
+    var manual = StreamSettings.savedManual(this);
+    manualSummary.setText(
+        getString(
+            R.string.manual_saved_summary,
+            manual.phoneTiming().actualPeriodMs(),
+            manual.phoneTiming().reserveMs(),
+            manual.effectiveBufferMs(),
+            manual.requestedPacketFrames()));
     receiverTimingSelection.setText(
         getString(
             settings.receiverTiming().independent()
@@ -481,7 +393,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
             settings.requestedReceiverMinimumMs(),
             settings.requestedReceiverMaximumMs(),
             settings.requestedPresentationMs()));
-    updatingSettings = false;
   }
 
   @Override
@@ -685,6 +596,12 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                 case DEDICATED_TEST -> R.string.capture_backend_test;
                 case FALLBACK -> R.string.capture_backend_fallback;
               });
+    if (BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED_SHORT
+        && BridgeState.selected != null
+        && BridgeState.activePhoneTiming != null)
+      captureBackendStatus.setText(
+          getString(
+              R.string.capture_backend_period, BridgeState.activePhoneTiming.actualPeriodMs()));
     boolean live =
         BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED
             || BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED_SHORT;
@@ -706,7 +623,14 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     OwnedAudioPath.Update path = BridgeState.phonePath;
     phoneBufferTiming.setText(
         live
-            ? getString(R.string.device_buffer_fast_capture)
+            ? getString(
+                R.string.device_buffer_dedicated_target,
+                framesTime(
+                    BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED_SHORT
+                        ? BridgeState.activePhoneTiming == null
+                            ? 800
+                            : BridgeState.activePhoneTiming.reserveFrames()
+                        : 800))
             : t.halQueuedFrames() >= 0
                 ? getString(R.string.device_buffer_hal_test)
                 : path == null
@@ -872,181 +796,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         .show();
   }
 
-  private void bufferSettings() {
-    StreamSettings settings = StreamSettings.load(this);
-    LinearLayout content = new LinearLayout(this);
-    content.setOrientation(LinearLayout.VERTICAL);
-    content.setPadding(dp(20), 0, dp(20), 0);
-    Slider buffering =
-        settingSlider(
-            content,
-            R.string.buffer_amount,
-            BufferLimits.RESERVE_MIN_MS,
-            BufferLimits.RESERVE_MAX_MS,
-            1,
-            settings.effectiveBufferMs());
-    boolean editable = settings.profile() == 0;
-    buffering.setEnabled(editable);
-    Slider block =
-        settings.effectiveDedicatedCapture()
-            ? null
-            : settingSlider(
-                content,
-                R.string.capture_block,
-                BufferLimits.CAPTURE_MIN_MS,
-                BufferLimits.CAPTURE_MAX_MS,
-                1,
-                settings.effectiveBlockMs());
-    if (block != null) block.setEnabled(editable);
-    else
-      content.addView(label(getString(R.string.capture_block_fixed, settings.captureUnitMs()), 16));
-    Slider latency =
-        settingSlider(
-            content,
-            R.string.receiver_latency,
-            BufferLimits.TIMING_MIN_MS,
-            BufferLimits.TIMING_MAX_MS,
-            1,
-            settings.effectiveLatencyMs());
-    latency.setEnabled(editable && !settings.receiverTiming().independent());
-    if (!editable) content.addView(label(getString(R.string.buffer_profile_fixed), 14));
-    if (settings.receiverTiming().independent())
-      content.addView(label(getString(R.string.receiver_timing_buffer_note), 14));
-    content.addView(label(getString(R.string.buffer_description), 14));
-    ScrollView scroll = new ScrollView(this);
-    scroll.addView(content);
-    var dialog =
-        new MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.buffer_settings)
-            .setView(scroll)
-            .setNeutralButton(
-                editable ? R.string.restore_defaults : R.string.buffer_use_custom,
-                (view, which) -> {
-                  if (editable) saveBufferSettings(150, 10, 1500);
-                  else
-                    saveBufferSettings(
-                        settings.effectiveBufferMs(),
-                        settings.effectiveBlockMs(),
-                        settings.effectiveLatencyMs());
-                })
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(
-                R.string.apply_settings,
-                (view, which) -> {
-                  if (editable)
-                    saveBufferSettings(
-                        Math.round(buffering.getValue()),
-                        Math.round(block.getValue()),
-                        Math.round(latency.getValue()));
-                })
-            .create();
-    dialog.setOnShowListener(
-        shown ->
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setEnabled(editable));
-    dialog.show();
-  }
-
-  private void receiverTimingSettings() {
-    StreamSettings settings = StreamSettings.load(this);
-    ReceiverTiming saved = settings.receiverTiming();
-    LinearLayout content = new LinearLayout(this);
-    content.setOrientation(LinearLayout.VERTICAL);
-    content.setPadding(dp(20), 0, dp(20), 0);
-    MaterialSwitch independent = new MaterialSwitch(this);
-    independent.setText(R.string.receiver_timing_independent);
-    independent.setChecked(saved.independent());
-    content.addView(independent);
-    content.addView(label(getString(R.string.receiver_timing_description), 14));
-    TextInputLayout minimum =
-        timingField(content, R.string.receiver_timing_minimum, saved.minimumMs());
-    TextInputLayout maximum =
-        timingField(content, R.string.receiver_timing_maximum, saved.maximumMs());
-    TextInputLayout presentation =
-        timingField(content, R.string.receiver_timing_presentation, saved.presentationMs());
-    TextInputLayout[] fields = {minimum, maximum, presentation};
-    for (var field : fields) field.setEnabled(saved.independent());
-    independent.setOnCheckedChangeListener(
-        (view, enabled) -> {
-          for (var field : fields) field.setEnabled(enabled);
-        });
-    ScrollView scroll = new ScrollView(this);
-    scroll.addView(content);
-    var dialog =
-        new MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.receiver_timing_settings)
-            .setView(scroll)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setNeutralButton(
-                R.string.receiver_timing_restore,
-                (view, which) ->
-                    saveReceiverTiming(ReceiverTiming.linked(settings.effectiveLatencyMs())))
-            .setPositiveButton(R.string.apply_settings, null)
-            .create();
-    dialog.setOnShowListener(
-        shown ->
-            dialog
-                .getButton(android.content.DialogInterface.BUTTON_POSITIVE)
-                .setOnClickListener(
-                    view -> {
-                      if (!independent.isChecked()) {
-                        saveReceiverTiming(
-                            new ReceiverTiming(
-                                false,
-                                saved.minimumMs(),
-                                saved.maximumMs(),
-                                saved.presentationMs()));
-                        dialog.dismiss();
-                        return;
-                      }
-                      int[] values = new int[3];
-                      boolean valid = true;
-                      for (int i = 0; i < fields.length; i++) {
-                        fields[i].setError(null);
-                        try {
-                          values[i] =
-                              Integer.parseInt(fields[i].getEditText().getText().toString());
-                          if (values[i] < BufferLimits.TIMING_MIN_MS
-                              || values[i] > BufferLimits.TIMING_MAX_MS)
-                            throw new NumberFormatException();
-                        } catch (NumberFormatException invalid) {
-                          fields[i].setError(getString(R.string.receiver_timing_invalid));
-                          valid = false;
-                        }
-                      }
-                      if (!valid) return;
-                      if (values[0] > values[1]) {
-                        maximum.setError(getString(R.string.receiver_timing_order));
-                        return;
-                      }
-                      saveReceiverTiming(
-                          new ReceiverTiming(
-                              independent.isChecked(), values[0], values[1], values[2]));
-                      dialog.dismiss();
-                    }));
-    dialog.show();
-  }
-
-  private TextInputLayout timingField(LinearLayout content, int title, int value) {
-    TextInputLayout field = new TextInputLayout(this);
-    field.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
-    field.setHint(getString(title));
-    field.setSuffixText("ms");
-    TextInputEditText input = new TextInputEditText(field.getContext());
-    input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-    input.setFilters(new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(4)});
-    input.setText(Integer.toString(value));
-    input.selectAll();
-    field.addView(input, new LinearLayout.LayoutParams(-1, -2));
-    content.addView(field);
-    return field;
-  }
-
-  private void saveReceiverTiming(ReceiverTiming timing) {
-    StreamSettings.load(this).withReceiverTiming(timing).save(this);
-    syncSettings();
-    if (BridgeState.capture != null) BridgeState.capture.reconfigure();
-  }
-
   private void updateModeSelection(MaterialButtonToggleGroup group) {
     for (int i = 0; i < group.getChildCount(); i++) {
       MaterialButton mode = (MaterialButton) group.getChildAt(i);
@@ -1063,33 +812,6 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                 StreamSettings.load(this).wholeDevice()
                     ? R.string.mode_whole
                     : R.string.mode_selected)));
-  }
-
-  private Slider settingSlider(
-      LinearLayout content, int title, int min, int max, int step, int value) {
-    TextView heading = label(getString(title, value), 16);
-    content.addView(heading);
-    Slider slider = new Slider(this);
-    slider.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-    slider.setValueFrom(min);
-    slider.setValueTo(max);
-    slider.setStepSize(step);
-    slider.setValue(value);
-    slider.setContentDescription(getString(title, value));
-    slider.setLabelFormatter(number -> Math.round(number) + " ms");
-    slider.addOnChangeListener(
-        (view, number, fromUser) -> {
-          heading.setText(getString(title, Math.round(number)));
-          view.setContentDescription(getString(title, Math.round(number)));
-        });
-    content.addView(slider);
-    return slider;
-  }
-
-  private void saveBufferSettings(int bufferMs, int blockMs, int latencyMs) {
-    StreamSettings.load(this).withBuffers(bufferMs, blockMs, latencyMs).save(this);
-    syncSettings();
-    if (BridgeState.capture != null) BridgeState.capture.reconfigure();
   }
 
   private int dp(int value) {

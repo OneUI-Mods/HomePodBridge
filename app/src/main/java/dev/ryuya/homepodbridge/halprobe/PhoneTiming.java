@@ -1,0 +1,54 @@
+package dev.ryuya.homepodbridge.halprobe;
+
+/** Bounded owned-route parameters. Queue measurements are not configuration values. */
+public record PhoneTiming(int periodMs, int reserveFrames) {
+  public static final int MIN_PERIOD_MS = 2, MAX_PERIOD_MS = 21;
+  public static final int MIN_RESERVE = 96, MAX_RESERVE = 800;
+
+  public PhoneTiming {
+    if (periodMs < MIN_PERIOD_MS
+        || periodMs > MAX_PERIOD_MS
+        || reserveFrames < MIN_RESERVE
+        || reserveFrames > MAX_RESERVE)
+      throw new IllegalArgumentException("Unsupported phone timing");
+  }
+
+  public int periodFrames() {
+    return ((44100 * periodMs / 1000 + 15) / 16) * 16;
+  }
+
+  public int latencyWindowFrames() {
+    return periodFrames() * 2;
+  }
+
+  public double actualPeriodMs() {
+    return periodFrames() * 1000.0 / 44100;
+  }
+
+  public double reserveMs() {
+    return reserveFrames * 1000.0 / 44100;
+  }
+
+  public static PhoneTiming nearest(double actualMs, int reserve) {
+    if (!Double.isFinite(actualMs) || actualMs < 2.18 || actualMs > 21.04)
+      throw new IllegalArgumentException();
+    int best = 2;
+    double distance = Double.POSITIVE_INFINITY;
+    for (int ms = 2; ms <= 21; ms++) {
+      double d = Math.abs(new PhoneTiming(ms, reserve).actualPeriodMs() - actualMs);
+      if (d < distance) {
+        best = ms;
+        distance = d;
+      }
+    }
+    return new PhoneTiming(best, reserve);
+  }
+
+  public static PhoneTiming fastest() {
+    return new PhoneTiming(2, 96);
+  }
+
+  public static PhoneTiming fromStored(int period, int reserve) {
+    return new PhoneTiming(Math.max(2, Math.min(21, period)), Math.max(96, Math.min(800, reserve)));
+  }
+}

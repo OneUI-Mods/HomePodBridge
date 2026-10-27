@@ -36,6 +36,7 @@ final class BridgeState {
   static int volume;
   static int[] timing;
   static PipelineTiming pipeline;
+  static dev.ryuya.homepodbridge.halprobe.PhoneTiming activePhoneTiming;
   static volatile String captureRegistration;
   static volatile OwnedAudioPath.Update phonePath;
   static int status = R.string.idle;

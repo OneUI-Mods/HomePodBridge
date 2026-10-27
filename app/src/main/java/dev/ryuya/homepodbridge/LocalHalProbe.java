@@ -20,6 +20,24 @@ final class LocalHalProbe {
   }
 
   static String run(Context context, int target, boolean pulse, boolean shortPeriod) {
+    return run(
+        context,
+        target,
+        pulse,
+        shortPeriod,
+        dev.ryuya.homepodbridge.halprobe.PhoneTiming.fastest());
+  }
+
+  static String runTiming(Context context, dev.ryuya.homepodbridge.halprobe.PhoneTiming timing) {
+    return run(context, 800, false, true, timing);
+  }
+
+  private static String run(
+      Context context,
+      int target,
+      boolean pulse,
+      boolean shortPeriod,
+      dev.ryuya.homepodbridge.halprobe.PhoneTiming timing) {
     if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0)
       return "LOCAL_HAL_BUSY";
     JSONObject result = new JSONObject();
@@ -28,7 +46,7 @@ final class LocalHalProbe {
     try {
       owner =
           shortPeriod
-              ? new RootHalInput(context, BridgeState.MUSIC, false, true, pulse, true)
+              ? new RootHalInput(context, BridgeState.MUSIC, false, true, pulse, timing)
               : new RootHalInput(context, BridgeState.MUSIC, false, true, pulse, target);
       PcmPipe pipe =
           new PcmPipe(
@@ -71,8 +89,10 @@ final class LocalHalProbe {
           frames * 1_000_000L >= elapsedUs * 44100L * 95 / 100
               && frames * 1_000_000L <= elapsedUs * 44100L * 105 / 100;
       result
-          .put("targetFillFrames", shortPeriod ? 96 : target)
+          .put("targetFillFrames", shortPeriod ? timing.reserveFrames() : target)
           .put("shortMixerPeriod", shortPeriod)
+          .put("requestedPeriodMs", shortPeriod ? timing.periodMs() : 21)
+          .put("producerPeriodFrames", shortPeriod ? timing.periodFrames() : 928)
           .put("nonce", owner.nonce)
           .put("frames", frames)
           .put("blocks", blocks)

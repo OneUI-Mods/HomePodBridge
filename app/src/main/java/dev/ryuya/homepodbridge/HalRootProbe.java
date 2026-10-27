@@ -46,7 +46,8 @@ public final class HalRootProbe {
                       "restore-tiny-period",
                       "latency-window",
                       "restore-latency-window")
-                  .contains(args[1]))
+                  .contains(args[1])
+              && manualOperation(args[1]) < 0)
           || !(args[0].equals("none") || args[0].matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")))
         throw new IOException("Invalid probe context");
       verify(MODULE, MODULE_SHA);
@@ -158,6 +159,7 @@ public final class HalRootProbe {
                       "latency-window",
                       "restore-latency-window")
                   .indexOf(args[1]);
+          if (operation < 0) operation = manualOperation(args[1]);
           System.out.println(
               freezeCheck(Integer.parseInt(pid), base, pipeBase, args[0], operation));
         }
@@ -169,6 +171,25 @@ public final class HalRootProbe {
               + ": "
               + error.getMessage());
     }
+  }
+
+  private static int manualOperation(String value) {
+    var m =
+        java.util.regex.Pattern.compile(
+                "(reserve|restore-reserve|window|restore-window)-([0-9]{2,4})")
+            .matcher(value);
+    if (!m.matches()) return -1;
+    int number = Integer.parseInt(m.group(2));
+    String kind = m.group(1);
+    if (kind.endsWith("reserve")) {
+      if (number < 96 || number > 800) return -1;
+      return (kind.startsWith("restore") ? 20000 : 10000) + number;
+    }
+    boolean supported = false;
+    for (int ms = 2; ms <= 21; ms++)
+      if (new dev.ryuya.homepodbridge.halprobe.PhoneTiming(ms, 96).latencyWindowFrames() == number)
+        supported = true;
+    return supported ? (kind.startsWith("restore") ? 40000 : 30000) + number : -1;
   }
 
   private static void verify(String file, String expected) throws Exception {

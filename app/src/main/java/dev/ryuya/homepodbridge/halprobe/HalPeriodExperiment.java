@@ -37,6 +37,10 @@ final class HalPeriodExperiment implements AutoCloseable {
   private volatile int accepted;
 
   HalPeriodExperiment(String address, boolean mixer) throws Exception {
+    this(address, mixer, PhoneTiming.fastest());
+  }
+
+  HalPeriodExperiment(String address, boolean mixer, PhoneTiming timing) throws Exception {
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException("Installed helper required");
@@ -100,9 +104,12 @@ final class HalPeriodExperiment implements AutoCloseable {
       if (base == null) throw new SecurityException("Pinned module missing");
       started =
           new ProcessBuilder(
-                  mixer
-                      ? java.util.List.of(executable.toString(), pid, base, "mixer")
-                      : java.util.List.of(executable.toString(), pid, base))
+                  java.util.List.of(
+                      executable.toString(),
+                      pid,
+                      base,
+                      mixer ? "mixer" : "hal",
+                      Integer.toString(timing.periodMs())))
               .redirectErrorStream(true)
               .start();
     } catch (Exception error) {
@@ -134,7 +141,11 @@ final class HalPeriodExperiment implements AutoCloseable {
                     boolean allow =
                         !stopping
                             && (mixer
-                                ? ownedMixer(new ReadOnlyHalState().snapshot(), address, id)
+                                ? ownedMixer(
+                                    new ReadOnlyHalState().snapshot(),
+                                    address,
+                                    id,
+                                    timing.periodFrames())
                                 : ownedConfig(
                                     new ReadOnlyHalState().snapshot(), address, id, port));
                     if (allow) accepted++;
@@ -187,7 +198,8 @@ final class HalPeriodExperiment implements AutoCloseable {
     return PeriodRouteGuard.allows(ports, configs, address, id, port);
   }
 
-  private static boolean ownedMixer(JSONObject snapshot, String address, int io) throws Exception {
+  private static boolean ownedMixer(JSONObject snapshot, String address, int io, int frames)
+      throws Exception {
     if (io <= 0) return false;
     JSONArray configs = snapshot.getJSONArray("configs"),
         patches = snapshot.getJSONArray("patches");
@@ -201,7 +213,7 @@ final class HalPeriodExperiment implements AutoCloseable {
           JSONArray sources = p.getJSONArray("sources");
           if (sources.length() == 1
               && sources.getInt(0) == c.getInt("id")
-              && p.getInt("minimumFrames") == 96) return true;
+              && p.getInt("minimumFrames") == frames) return true;
         }
       }
     }
@@ -209,6 +221,11 @@ final class HalPeriodExperiment implements AutoCloseable {
   }
 
   static JSONObject requireSmallOutput(ReadOnlyHalState state, String address) throws Exception {
+    return requireOutput(state, address, PhoneTiming.fastest());
+  }
+
+  static JSONObject requireOutput(ReadOnlyHalState state, String address, PhoneTiming timing)
+      throws Exception {
     int io = OutputPeriodProbe.ownedOutput(state.snapshot(), address);
     Process dump = new ProcessBuilder("dumpsys", "media.audio_flinger").start();
     byte[] bytes = dump.getInputStream().readNBytes(1048577);
@@ -232,7 +249,7 @@ final class HalPeriodExperiment implements AutoCloseable {
         if (text.startsWith("Sample rate: "))
           rate = Integer.parseInt(text.substring(13).split(" ")[0]);
       }
-      if (hal == 96 && normal == 96 && rate == 44100)
+      if (hal == timing.periodFrames() && normal == timing.periodFrames() && rate == 44100)
         return new JSONObject()
             .put("halFrames", hal)
             .put("normalFrames", normal)

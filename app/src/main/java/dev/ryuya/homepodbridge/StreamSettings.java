@@ -16,7 +16,43 @@ record StreamSettings(
     boolean dedicatedCapture,
     ReceiverTiming receiverTiming,
     boolean shortAudioPackets,
-    boolean shortMixerPeriod) {
+    boolean shortMixerPeriod,
+    boolean manualMode,
+    dev.ryuya.homepodbridge.halprobe.PhoneTiming phoneTiming) {
+  StreamSettings(
+      boolean wholeDevice,
+      int bufferMs,
+      int blockMs,
+      int latencyMs,
+      boolean lowLatency,
+      boolean highQuality,
+      boolean compressedAudio,
+      boolean adaptiveBuffer,
+      boolean deviceBuffer,
+      int deviceBufferFrames,
+      boolean dedicatedCapture,
+      ReceiverTiming receiverTiming,
+      boolean shortAudioPackets,
+      boolean shortMixerPeriod) {
+    this(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        shortAudioPackets,
+        shortMixerPeriod,
+        false,
+        dev.ryuya.homepodbridge.halprobe.PhoneTiming.fastest());
+  }
+
   StreamSettings(
       boolean wholeDevice,
       int bufferMs,
@@ -190,11 +226,16 @@ record StreamSettings(
         BufferLimits.clamp(latencyMs, BufferLimits.TIMING_MIN_MS, BufferLimits.TIMING_MAX_MS);
     deviceBufferFrames = deviceBufferFrames == 928 ? 928 : 1856;
     if (lowLatency) highQuality = false;
+    if (lowLatency || highQuality) manualMode = false;
+    if (phoneTiming == null) phoneTiming = dev.ryuya.homepodbridge.halprobe.PhoneTiming.fastest();
     if (receiverTiming == null) receiverTiming = ReceiverTiming.linked(latencyMs);
   }
 
   static StreamSettings load(Context context) {
-    var preferences = context.getSharedPreferences("stream", Context.MODE_PRIVATE);
+    return read(context.getSharedPreferences("stream", Context.MODE_PRIVATE));
+  }
+
+  private static StreamSettings read(android.content.SharedPreferences preferences) {
     var saved =
         new StreamSettings(
             preferences.getBoolean("wholeDevice", false),
@@ -217,12 +258,28 @@ record StreamSettings(
                 preferences.getInt("receiverMaximumMs", target),
                 preferences.getInt("presentationOffsetMs", target)))
         .withShortAudioPackets(preferences.getBoolean("shortAudioPackets", false))
-        .withShortMixerPeriod(preferences.getBoolean("shortMixerPeriod", false));
+        .withShortMixerPeriod(preferences.getBoolean("shortMixerPeriod", false))
+        .withManualMode(preferences.getBoolean("manualMode", false))
+        .withPhoneTiming(
+            dev.ryuya.homepodbridge.halprobe.PhoneTiming.fromStored(
+                preferences.getInt("phonePeriodMs", 2),
+                preferences.getInt("phoneReserveFrames", 96)));
+  }
+
+  static StreamSettings savedManual(Context context) {
+    var current = load(context);
+    var saved = context.getSharedPreferences("manualStream", Context.MODE_PRIVATE);
+    return (saved.contains("manualMode") ? read(saved).withManualMode(true) : current.asManual())
+        .withWholeDevice(current.wholeDevice());
   }
 
   void save(Context context) {
-    context
-        .getSharedPreferences("stream", Context.MODE_PRIVATE)
+    saveTo(context.getSharedPreferences("stream", Context.MODE_PRIVATE));
+    if (manualMode) saveTo(context.getSharedPreferences("manualStream", Context.MODE_PRIVATE));
+  }
+
+  private void saveTo(android.content.SharedPreferences preferences) {
+    preferences
         .edit()
         .putBoolean("wholeDevice", wholeDevice)
         .putInt("bufferMs", bufferMs)
@@ -236,6 +293,9 @@ record StreamSettings(
         .putBoolean("dedicatedCapture", dedicatedCapture)
         .putBoolean("shortAudioPackets", shortAudioPackets)
         .putBoolean("shortMixerPeriod", shortMixerPeriod)
+        .putBoolean("manualMode", manualMode)
+        .putInt("phonePeriodMs", phoneTiming.periodMs())
+        .putInt("phoneReserveFrames", phoneTiming.reserveFrames())
         .putBoolean("independentReceiverTiming", receiverTiming.independent())
         .putInt("receiverMinimumMs", receiverTiming.minimumMs())
         .putInt("receiverMaximumMs", receiverTiming.maximumMs())
@@ -259,7 +319,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withProfile(int profile) {
@@ -277,7 +339,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        profile == 3,
+        phoneTiming);
   }
 
   StreamSettings withCompression(boolean enabled) {
@@ -295,7 +359,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withBuffers(int buffer, int block, int latency) {
@@ -313,7 +379,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withAdaptiveBuffer(boolean enabled) {
@@ -331,7 +399,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withDeviceBuffer(boolean enabled) {
@@ -349,7 +419,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withDeviceBufferFrames(int frames) {
@@ -367,7 +439,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withDedicatedCapture(boolean enabled) {
@@ -385,7 +459,9 @@ record StreamSettings(
         enabled,
         receiverTiming,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withReceiverTiming(ReceiverTiming timing) {
@@ -403,7 +479,9 @@ record StreamSettings(
         dedicatedCapture,
         timing,
         shortAudioPackets,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withShortAudioPackets(boolean enabled) {
@@ -421,7 +499,9 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         enabled,
-        shortMixerPeriod);
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming);
   }
 
   StreamSettings withShortMixerPeriod(boolean enabled) {
@@ -439,11 +519,96 @@ record StreamSettings(
         dedicatedCapture,
         receiverTiming,
         shortAudioPackets,
-        enabled);
+        enabled,
+        manualMode,
+        phoneTiming);
+  }
+
+  StreamSettings withManualMode(boolean enabled) {
+    return new StreamSettings(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        enabled ? false : lowLatency,
+        enabled ? false : highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        shortAudioPackets,
+        shortMixerPeriod,
+        enabled,
+        phoneTiming);
+  }
+
+  StreamSettings withPhoneTiming(dev.ryuya.homepodbridge.halprobe.PhoneTiming timing) {
+    return new StreamSettings(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        shortAudioPackets,
+        shortMixerPeriod,
+        manualMode,
+        timing);
+  }
+
+  dev.ryuya.homepodbridge.halprobe.PhoneTiming effectivePhoneTiming() {
+    return manualMode ? phoneTiming : dev.ryuya.homepodbridge.halprobe.PhoneTiming.fastest();
+  }
+
+  StreamSettings asManual() {
+    return new StreamSettings(
+        wholeDevice,
+        effectiveBufferMs(),
+        effectiveBlockMs(),
+        requestedPresentationMs(),
+        false,
+        false,
+        compressedAudio,
+        false,
+        deviceBuffer,
+        deviceBufferFrames,
+        effectiveDedicatedCapture(),
+        new ReceiverTiming(
+            true,
+            requestedReceiverMinimumMs(),
+            requestedReceiverMaximumMs(),
+            requestedPresentationMs()),
+        effectiveShortAudioPackets(),
+        effectiveShortMixerPeriod(),
+        true,
+        effectiveShortMixerPeriod()
+            ? effectivePhoneTiming()
+            : new dev.ryuya.homepodbridge.halprobe.PhoneTiming(21, 800));
+  }
+
+  StreamSettings preset(int selected) {
+    if (selected == 3) return asManual();
+    if (selected < 0 || selected > 2) throw new IllegalArgumentException();
+    var base = withProfile(selected);
+    if (selected == 0) base = base.withBuffers(150, 10, 1500);
+    return base.withAdaptiveBuffer(false)
+        .withCompression(selected == 1)
+        .withDedicatedCapture(selected == 1)
+        .withShortMixerPeriod(selected == 1)
+        .withShortAudioPackets(false)
+        .withReceiverTiming(ReceiverTiming.linked(selected == 1 ? 50 : 1500));
   }
 
   boolean effectiveShortMixerPeriod() {
-    return effectiveDedicatedCapture() && shortMixerPeriod;
+    return effectiveDedicatedCapture() && (manualMode || shortMixerPeriod);
   }
 
   boolean effectiveShortAudioPackets() {
@@ -473,19 +638,19 @@ record StreamSettings(
   }
 
   boolean effectiveDedicatedCapture() {
-    return lowLatency && dedicatedCapture;
+    return (lowLatency || manualMode) && dedicatedCapture;
   }
 
   boolean effectiveDeviceBuffer() {
-    return lowLatency && deviceBuffer;
+    return (lowLatency || manualMode) && deviceBuffer;
   }
 
   boolean effectiveAdaptiveBuffer() {
-    return lowLatency && adaptiveBuffer;
+    return !manualMode && lowLatency && adaptiveBuffer;
   }
 
   int profile() {
-    return lowLatency ? 1 : highQuality ? 2 : 0;
+    return manualMode ? 3 : lowLatency ? 1 : highQuality ? 2 : 0;
   }
 
   int samplesPerRead() {

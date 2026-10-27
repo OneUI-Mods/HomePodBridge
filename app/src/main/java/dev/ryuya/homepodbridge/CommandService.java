@@ -61,6 +61,33 @@ public final class CommandService extends Service {
       commandStatus = "Short mixer preference: " + command.endsWith("on");
       return START_NOT_STICKY;
     }
+    if (command.equals("check-manual-settings")) {
+      if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0) {
+        commandStatus = "Manual check busy";
+        return START_NOT_STICKY;
+      }
+      commandStatus = ManualSettingsCheck.run(this);
+      return START_NOT_STICKY;
+    }
+    if (command.equals("probe-local-timing-min")
+        || command.equals("probe-local-timing-mid")
+        || command.equals("probe-local-timing-max")) {
+      var timing =
+          command.endsWith("min")
+              ? new dev.ryuya.homepodbridge.halprobe.PhoneTiming(2, 96)
+              : command.endsWith("mid")
+                  ? new dev.ryuya.homepodbridge.halprobe.PhoneTiming(11, 448)
+                  : new dev.ryuya.homepodbridge.halprobe.PhoneTiming(21, 800);
+      commandStatus = "Checking bounded phone timing with fixed zeros";
+      commands.execute(() -> commandStatus = "Local HAL: " + LocalHalProbe.runTiming(this, timing));
+      return START_NOT_STICKY;
+    }
+    if (command.equals("probe-local-manual-timing")) {
+      commandStatus = "Checking manual phone timing with fixed zeros";
+      var timing = StreamSettings.load(this).phoneTiming();
+      commands.execute(() -> commandStatus = "Local HAL: " + LocalHalProbe.runTiming(this, timing));
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-local-short-period")
         || command.equals("probe-local-short-period-cycle")) {
       commandStatus = "Checking the actual short-period app path with fixed zeros";
@@ -338,7 +365,16 @@ public final class CommandService extends Service {
             + settings.deviceBufferFrames()
             + " receiverTargetMs="
             + settings.effectiveLatencyMs());
-    writer.println("shortMixerPeriod=" + StreamSettings.load(this).shortMixerPeriod());
+    writer.println("shortMixerPeriod=" + settings.shortMixerPeriod());
+    writer.println(
+        "manualMode="
+            + settings.manualMode()
+            + " phonePeriodMs="
+            + settings.phoneTiming().periodMs()
+            + " phonePeriodFrames="
+            + settings.phoneTiming().periodFrames()
+            + " phoneReserveFrames="
+            + settings.phoneTiming().reserveFrames());
     CaptureProbe.dump(writer);
     HalInspection.dump(writer, false);
   }

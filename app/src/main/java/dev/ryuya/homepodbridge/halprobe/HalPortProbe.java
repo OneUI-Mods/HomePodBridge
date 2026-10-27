@@ -122,7 +122,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         ready,
         directSocket,
         () -> {},
-        928);
+        928,
+        null);
   }
 
   static JSONObject periodCapture(String address, UUID nonce, Ready afterOpen) throws Exception {
@@ -141,7 +142,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           () -> {},
           null,
           afterOpen,
-          96);
+          96,
+          PhoneTiming.fastest());
     } finally {
       diagnosticScenario.remove();
     }
@@ -158,11 +160,36 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       java.io.FileDescriptor directSocket,
       Ready afterOpen)
       throws Exception {
-    HalPeriodExperiment.requireSmallOutput(new ReadOnlyHalState(), address);
+    return livePeriodCapture(
+        address,
+        nonce,
+        zero,
+        pulse,
+        output,
+        stopped,
+        ready,
+        directSocket,
+        afterOpen,
+        PhoneTiming.fastest());
+  }
+
+  static JSONObject livePeriodCapture(
+      String address,
+      UUID nonce,
+      boolean zero,
+      boolean pulse,
+      java.io.OutputStream output,
+      java.util.function.BooleanSupplier stopped,
+      Ready ready,
+      java.io.FileDescriptor directSocket,
+      Ready afterOpen,
+      PhoneTiming timing)
+      throws Exception {
+    HalPeriodExperiment.requireOutput(new ReadOnlyHalState(), address, timing);
     return inputSession(
         address,
         nonce,
-        96,
+        timing.reserveFrames(),
         false,
         true,
         zero,
@@ -172,7 +199,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         ready,
         directSocket,
         afterOpen,
-        96);
+        timing.periodFrames(),
+        timing);
   }
 
   private static JSONObject inputSession(
@@ -188,16 +216,20 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       Ready ready,
       java.io.FileDescriptor directSocket,
       Ready afterOpen,
-      int sourcePeriodFrames)
+      int sourcePeriodFrames,
+      PhoneTiming phoneTiming)
       throws Exception {
-    if (target == 96 && sourcePeriodFrames != 96) throw new SecurityException();
+    if (phoneTiming != null
+        && (target != phoneTiming.reserveFrames()
+            || sourcePeriodFrames != phoneTiming.periodFrames())) throw new SecurityException();
     if (target != 2587
         && target != 928
         && target != 464
         && target != 800
         && target != 752
         && target != 768
-        && target != 96) throw new IllegalArgumentException();
+        && !(phoneTiming != null && target >= 96 && target <= 800))
+      throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
     probe.externalStopped = stopped;
     var baseline = probe.snapshot();
@@ -311,11 +343,13 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         if (!tuning.contains("Owned reserve changed: 2587 -> " + target + ";"))
           throw new IllegalStateException("Reserve change not confirmed");
       }
-      if (target == 96) {
+      if (phoneTiming != null) {
         latencyWindowAttempted = true;
-        String latency = changePolicyReserve(address, "latency-window");
+        String latency =
+            changePolicyReserve(address, "window-" + phoneTiming.latencyWindowFrames());
         report.put("latencyWindow", latency);
-        if (!latency.contains("Owned latency window changed: 4096 -> 192;"))
+        if (!latency.contains(
+            "Owned latency window changed: 4096 -> " + phoneTiming.latencyWindowFrames() + ";"))
           throw new IllegalStateException("Private latency window not confirmed");
       }
       ready.run();
@@ -346,7 +380,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       if (latencyWindowAttempted) {
         try {
           report.put(
-              "restoreLatencyWindow", changePolicyReserve(address, "restore-latency-window"));
+              "restoreLatencyWindow",
+              changePolicyReserve(address, "restore-window-" + phoneTiming.latencyWindowFrames()));
         } catch (Exception failure) {
           report.put("latencyWindowRestoreFailure", failure.getClass().getSimpleName());
         }
@@ -389,6 +424,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   private static String reserveOperation(int target, boolean restore) {
+    if (target >= 96 && target <= 800) return (restore ? "restore-reserve-" : "reserve-") + target;
     String operation =
         switch (target) {
           case 928 -> "brief";

@@ -9,6 +9,8 @@
 typedef int (*hp_read)(void*, uint64_t, void*, size_t);
 typedef int (*hp_write)(void*, uint64_t, const void*, size_t);
 typedef struct { uint64_t route, sink, target_address, target, reported_frames; } hp_owned_pipe;
+static int hp_manual_reserve(uint64_t n){return n>=96 && n<=800;}
+static int hp_latency_window(uint64_t n){for(int ms=2;ms<=21;ms++)if(n==(uint64_t)((44100*ms/1000+15)/16)*32)return 1;return 0;}
 static uint64_t hp_pointer(uint64_t value) { return value & UINT64_C(0x00ffffffffffffff); }
 static uint64_t hp_u64(const void* bytes) { uint64_t value; memcpy(&value,bytes,8); return value; }
 static uint32_t hp_u32(const void* bytes) { uint32_t value; memcpy(&value,bytes,4); return value; }
@@ -49,15 +51,15 @@ static const char* hp_find_owned(hp_read read, void* ctx, uint64_t module, uint6
         if (!read(ctx,owner,route,144)) return "owned route unavailable";
         if (hp_u32(route)) return "owned route locked";
         if (!route[0x68] || !route[0x72] || hp_u32(route+0x6c)!=1) return "owned stream references";
-        if (hp_u32(route+0x28)!=44100 || hp_u64(route+0x58)!=4 || (hp_u64(route+0x60)!=4096 && hp_u64(route+0x60)!=192))
+        if (hp_u32(route+0x28)!=44100 || hp_u64(route+0x58)!=4 || (hp_u64(route+0x60)!=4096 && !hp_latency_window(hp_u64(route+0x60))))
             return "owned format";
         uint64_t sink=hp_pointer(hp_u64(route+0x80));
         if (!read(ctx,sink,pipe,256)) return "owned pipe unavailable";
         if (hp_pointer(hp_u64(pipe))!=mono+0x8018 || hp_u64(pipe+0x30)!=4
             || hp_u64(pipe+0x40)!=4096 || pipe[0xf0]!=1 || pipe[0xf1]) return "owned pipe identity";
         uint64_t target=hp_u64(pipe+0xe8);
-        if (target!=2587 && target!=1856 && target!=928 && target!=464 && target!=800 && target!=752 && target!=768 && target!=96) return "competing reserve change";
-        if(hp_u64(route+0x60)==192 && target!=96)return "latency window without tiny reserve";
+        if (target!=2587 && target!=1856 && target!=928 && target!=464 && target!=800 && target!=752 && target!=768 && !hp_manual_reserve(target)) return "competing reserve change";
+        if(hp_u64(route+0x60)!=4096 && !hp_manual_reserve(target))return "latency window without tiny reserve";
         result->reported_frames=hp_u64(route+0x60);
         result->route=owner; result->sink=sink; result->target_address=sink+0xe8; result->target=target;
     }
@@ -71,8 +73,8 @@ static const char* hp_change_reserve(hp_read read,hp_write write,void* ctx,const
     uint8_t original[256],expected[256],observed[256];
     if (!exclusive) return "exclusive access required";
     if(owned->reported_frames!=4096)return "restore latency window first";
-    if (!((before==2587 && (after==1856 || after==928 || after==464 || after==800 || after==752 || after==768 || after==96))
-          || ((before==1856 || before==928 || before==464 || before==800 || before==752 || before==768 || before==96) && after==2587)))
+    if (!((before==2587 && (after==1856 || after==928 || after==464 || after==800 || after==752 || after==768 || hp_manual_reserve(after)))
+          || ((before==1856 || before==928 || before==464 || before==800 || before==752 || before==768 || hp_manual_reserve(before)) && after==2587)))
         return "unsupported reserve transition";
     if (owned->target_address!=owned->sink+0xe8 || owned->target!=before) return "stale owned target";
     if (!read(ctx,owned->sink,original,256) || hp_u64(original+0xe8)!=before) return "target changed";
@@ -92,8 +94,8 @@ static const char* hp_change_reserve(hp_read read,hp_write write,void* ctx,const
 static const char* hp_change_reported_frames(hp_read read,hp_write write,void* ctx,
         const hp_owned_pipe* owned,int exclusive,uint64_t before,uint64_t after) {
     uint8_t original[144],expected[144],observed[144];
-    if(!exclusive || owned->target!=96 || owned->reported_frames!=before
-        || !((before==4096 && after==192)||(before==192 && after==4096)))return "unsupported latency window transition";
+    if(!exclusive || !hp_manual_reserve(owned->target) || owned->reported_frames!=before
+        || !((before==4096 && hp_latency_window(after))||(hp_latency_window(before) && after==4096)))return "unsupported latency window transition";
     if(!read(ctx,owned->route,original,144) || hp_u64(original+0x60)!=before)return "stale route metadata";
     memcpy(expected,original,144);memcpy(expected+0x60,&after,8);
     int complete=write(ctx,owned->route+0x60,&after,8);

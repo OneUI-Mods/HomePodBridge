@@ -202,6 +202,7 @@ public final class CaptureService extends Service {
     BridgeState.volume = 0;
     BridgeState.timing = null;
     BridgeState.pipeline = null;
+    BridgeState.activePhoneTiming = null;
     BridgeState.phonePath = null;
     zeroProbeActive = zeroProbe;
     zeroProbeFrames = 0;
@@ -304,7 +305,7 @@ public final class CaptureService extends Service {
                   settings.wholeDevice(),
                   zeroProbe,
                   pulse,
-                  settings.effectiveShortMixerPeriod());
+                  settings.effectiveShortMixerPeriod() ? settings.effectivePhoneTiming() : null);
           activeZeroHal = zeroHal;
           halNonce = zeroHal.nonce;
           rootInput =
@@ -314,6 +315,12 @@ public final class CaptureService extends Service {
                   System::nanoTime,
                   PcmPipe.HAL_MAGIC);
           BridgeState.captureRegistration = zeroHal.registration;
+          main.post(
+              () -> {
+                if (!destroyed && generation.get() == token)
+                  BridgeState.activePhoneTiming =
+                      settings.effectiveShortMixerPeriod() ? settings.effectivePhoneTiming() : null;
+              });
           setBackend(
               token,
               zeroProbe
@@ -698,6 +705,7 @@ public final class CaptureService extends Service {
     BridgeState.selected = null;
     BridgeState.connected = false;
     BridgeState.pipeline = null;
+    BridgeState.activePhoneTiming = null;
     BridgeState.status = R.string.idle;
     BridgeState.publish();
     stopForeground(STOP_FOREGROUND_REMOVE);

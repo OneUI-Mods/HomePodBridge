@@ -15,7 +15,11 @@ public final class SilentProbeSource implements AutoCloseable {
   }
 
   public SilentProbeSource(int periodFrames) {
-    if (periodFrames != 928 && periodFrames != 96) throw new IllegalArgumentException();
+    boolean supported = false;
+    for (int ms = 2; ms <= 21; ms++)
+      if (new dev.ryuya.homepodbridge.halprobe.PhoneTiming(ms, 96).periodFrames() == periodFrames)
+        supported = true;
+    if (!supported) throw new IllegalArgumentException();
     this.periodFrames = periodFrames;
   }
 
@@ -67,7 +71,7 @@ public final class SilentProbeSource implements AutoCloseable {
         track = created;
       }
       byte[] zeros = new byte[periodFrames * 4];
-      if (periodFrames == 96) {
+      {
         int primed = created.write(zeros, 0, zeros.length, AudioTrack.WRITE_NON_BLOCKING);
         if (primed > 0) writtenFrames += primed / 4;
       }
