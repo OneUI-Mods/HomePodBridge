@@ -155,7 +155,7 @@ final class ManualSettingsDialog {
                             backend[0] == 1
                                 ? PhoneTiming.nearest(
                                     number(period, 1.09, 21.04),
-                                    (int) Math.round(number(reserve, 1.46, 18.14) * 44100 / 1000))
+                                    (int) Math.round(number(reserve, 1.45, 18.14) * 44100 / 1000))
                                 : saved.phoneTiming();
                         int standard = backend[0] == 1 ? 0 : integer(standardBuffer, 0, 1856);
                         if (standard != 0 && standard != 928 && standard != 1856)

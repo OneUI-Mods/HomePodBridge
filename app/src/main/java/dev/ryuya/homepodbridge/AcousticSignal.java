@@ -4,7 +4,7 @@ package dev.ryuya.homepodbridge;
 final class AcousticSignal {
   static final int RATE = 44100,
       COUNT = 3,
-      TONE_FRAMES = 1764,
+      TONE_FRAMES = 3528,
       FIRST_FRAME = 88200,
       GAP_FRAMES = 26460;
   static final double PEAK = 0.12;

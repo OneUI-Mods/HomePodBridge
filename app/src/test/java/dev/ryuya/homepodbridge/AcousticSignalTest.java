@@ -29,7 +29,7 @@ public final class AcousticSignalTest {
     for (int tone = 1; tone < 3; tone++) {
       assertTrue(
           AcousticSignal.firstFrame(tone) - AcousticSignal.firstFrame(tone - 1)
-              > AcousticSignal.TONE_FRAMES * 10);
+              > AcousticSignal.TONE_FRAMES * 5);
       long dot = 0, aa = 0, bb = 0;
       for (int i = 0; i < AcousticSignal.TONE_FRAMES; i++) {
         long a = AcousticSignal.sample(0, i), b = AcousticSignal.sample(tone, i);

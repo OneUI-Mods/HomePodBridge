@@ -142,7 +142,7 @@
     <string name="manual_period_help">1.09～21.04 ms。端末が対応する最も近い周期へ丸めます。</string>
     <string name="manual_period_applied">1.09～21.04 ms。適用予定：%1$.2f ms（%2$dフレーム）。</string>
     <string name="manual_reserve">取り込み待ち目標（ms）</string>
-    <string name="manual_reserve_help">1.46～18.14 ms（64～800フレーム）。フレーム単位に丸めます。長いミキサー周期と少ない待ち量の組み合わせでは音が途切れることがあります。</string>
+    <string name="manual_reserve_help">1.45～18.14 ms（64～800フレーム）。フレーム単位に丸めます。長いミキサー周期と少ない待ち量の組み合わせでは音が途切れることがあります。</string>
     <string name="manual_observed_queue">以前の1.18～10.50 msは取り込み時の平均残量の実測です。再生状況や負荷で変わるため、設定する待ち目標とは分けて表示します。</string>
     <string name="manual_dedicated_read">専用経路の読み取り単位：0.50 ms（22フレーム・固定）。</string>
     <string name="manual_standard_buffer">標準経路のスマホバッファー目標（フレーム）</string>

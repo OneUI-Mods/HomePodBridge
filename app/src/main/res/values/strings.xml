@@ -143,7 +143,7 @@
     <string name="manual_period_help">1.09–21.04 ms. Rounded to the closest supported period.</string>
     <string name="manual_period_applied">1.09–21.04 ms. Applied: %1$.2f ms (%2$d frames).</string>
     <string name="manual_reserve">Capture reserve target (ms)</string>
-    <string name="manual_reserve_help">1.46–18.14 ms (64–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
+    <string name="manual_reserve_help">1.45–18.14 ms (64–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
     <string name="manual_observed_queue">The earlier 1.18–10.50 ms values were measured average queued audio. They vary with playback and load; the reserve target is a separate setting.</string>
     <string name="manual_dedicated_read">Dedicated read unit: 0.50 ms (22 frames, fixed).</string>
     <string name="manual_standard_buffer">Standard phone buffer target (frames)</string>
