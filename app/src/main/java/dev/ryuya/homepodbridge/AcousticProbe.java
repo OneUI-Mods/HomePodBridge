@@ -111,6 +111,7 @@ final class AcousticProbe implements AutoCloseable {
   void accepted() {
     if (pending >= 0) {
       synchronized (markers) {
+        markerStages[pending] = NativeSender.pipeline();
         markers[pending] = System.nanoTime() + pendingOffset * 1_000_000_000L / AcousticSignal.RATE;
       }
       pending = -1;
