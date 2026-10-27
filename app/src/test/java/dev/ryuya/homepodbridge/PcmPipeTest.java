@@ -11,6 +11,38 @@ import org.junit.Test;
 
 public final class PcmPipeTest {
   @Test
+  public void availableHalPacketNeedsOneChannelReadWithoutWaitingForAnotherPacket()
+      throws Exception {
+    byte[] raw =
+        ByteBuffer.allocate(112)
+            .putInt(PcmPipe.HAL_MAGIC)
+            .putInt(88)
+            .putLong(1000000L)
+            .putLong(22)
+            .put(new byte[88])
+            .array();
+    int[] reads = {0};
+    var channel =
+        new java.nio.channels.ReadableByteChannel() {
+          public int read(ByteBuffer target) {
+            if (++reads[0] != 1) throw new AssertionError("Blocked for a future record");
+            target.put(raw);
+            return raw.length;
+          }
+
+          public boolean isOpen() {
+            return true;
+          }
+
+          public void close() {}
+        };
+    PcmPipe pipe = new PcmPipe(channel, true, () -> 2000000L, PcmPipe.HAL_MAGIC);
+    assertEquals(88, pipe.read(ByteBuffer.allocateDirect(176)));
+    assertEquals(1, reads[0]);
+    assertEquals(22, pipe.pendingFrames());
+  }
+
+  @Test
   public void halfMillisecondLiveRecordsKeepFramingAndNonzeroPcm() throws Exception {
     byte[] raw =
         ByteBuffer.allocate(224)

@@ -3,6 +3,7 @@
 - Follow the OneUI Mods development and release rules confirmed with the existing One UI mods task. Use SDK 37 and support Android 16/17.
 - Do not hook, patch, repackage, or change Apple Music. The Vector scope is System UI only. Publish receivers through a system media route provider.
 - The user explicitly authorized extending latency work to the Bridge-owned dedicated HAL path. Keep Vector scoped to SystemUI, preserve other routes, and retain the silence restriction. This permission does not authorize global capture-policy or SELinux changes.
+- The user additionally authorized HAL modification, explicitly requiring prevention of unintended activation. Keep modifications restricted to authenticated Bridge-owned virtual routes, bounded values, verified builds and reversible changes; do not activate a global latency override.
 - In selected-app mode, capture only the selected package's USAGE_MEDIA output. The user also requested a switchable whole-device mode for playback and notification sounds across applications; exclude microphone and call audio in that mode. Never change capture policies globally.
 - Keep callbacks, network operations and audio work off the SystemUI main thread. Preserve existing routes on any hook error. Release policies, pipes and sessions on stop or client death.
 - The user authorized physical-device operations for this task. Use GalaxyReload for SystemUI reloads; do not substitute a raw process kill or a device reboot.

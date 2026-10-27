@@ -14,6 +14,7 @@ final class PcmPipe {
   private final boolean halZero;
   private final int halMagic;
   private final ByteBuffer header;
+  private final ByteBuffer availableRecord;
   private final java.util.function.LongSupplier clock;
   private long transitMicros = -1;
   private volatile long pendingFrames = -1;
@@ -50,6 +51,8 @@ final class PcmPipe {
     this.halZero = halZero;
     this.halMagic = magic;
     header = ByteBuffer.allocateDirect(halZero ? 24 : 16);
+    availableRecord = halZero ? ByteBuffer.allocateDirect(200) : null;
+    if (availableRecord != null) availableRecord.limit(0);
   }
 
   long pendingFrames() {
@@ -100,6 +103,21 @@ final class PcmPipe {
   private int fill(ByteBuffer buffer) throws IOException {
     int start = buffer.position();
     while (buffer.hasRemaining()) {
+      if (availableRecord != null) {
+        if (!availableRecord.hasRemaining()) {
+          availableRecord.clear();
+          int read = input.read(availableRecord);
+          availableRecord.flip();
+          if (read < 0) break;
+          if (read == 0) continue;
+        }
+        int end = availableRecord.limit();
+        availableRecord.limit(
+            availableRecord.position() + Math.min(buffer.remaining(), availableRecord.remaining()));
+        buffer.put(availableRecord);
+        availableRecord.limit(end);
+        continue;
+      }
       int read = input.read(buffer);
       if (read < 0) break;
       if (read == 0) continue;
