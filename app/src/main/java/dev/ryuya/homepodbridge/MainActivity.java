@@ -752,7 +752,10 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                 Math.max(0, network.value(0)),
                 Math.max(0, network.value(5)),
                 getString(network.priorityResource()),
-                getString(network.wifiResource())));
+                getString(network.wifiResource()),
+                Math.max(0, network.value(14)),
+                Math.max(0, network.value(15)),
+                Math.max(0, network.value(16))));
   }
 
   private TextView label(String value, int size) {

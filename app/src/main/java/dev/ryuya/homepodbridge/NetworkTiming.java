@@ -3,7 +3,7 @@ package dev.ryuya.homepodbridge;
 /** Independent local TX evidence. No conversion of queue bytes/RTT to one-way audio delay. */
 record NetworkTiming(long[] values, int wifiRequest) {
   long value(int index) {
-    return values != null && values.length == 14 && index >= 0 && index < 14 ? values[index] : -1;
+    return values != null && values.length == 17 && index >= 0 && index < 17 ? values[index] : -1;
   }
 
   long transit(int index) {

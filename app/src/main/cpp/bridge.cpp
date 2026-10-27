@@ -27,7 +27,7 @@ struct Engine {
     std::string statistics;
     jint timing[8] = {0, 0, -1, 0, 0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
     jint rejection[2] = {0, 0}; // receiver stream response / terminal refusal
-    jlong network[14] = {0,0,0,-1,-1,0,-1,-1,-1,0,-1,-1,0,0};
+    jlong network[17] = {0,0,0,-1,-1,0,-1,-1,-1,0,-1,-1,0,0,0,0,0};
     jlong pipeline[13] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1};
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
@@ -153,6 +153,9 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                     std::copy(std::begin(pipeline), std::end(pipeline), engine->pipeline);
                     const auto network=loop.networkStatistics();
                     std::copy(network.begin(),network.end(),engine->network);
+                    engine->network[14]=jlong(sender.requestedResendPackets());
+                    engine->network[15]=jlong(sender.servedResendPackets());
+                    engine->network[16]=jlong(sender.missingResendPackets());
                     engine->statistics = "packetFrames=" + std::to_string(sender.audioPacketFrames())
                         + " queueFrames=" + std::to_string(engine->ring.availableRead() / 2)
                         + " requestedLatencyMs=" + std::to_string(engine->timing[0])
@@ -186,7 +189,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         + " schedulerToDriverP95Us=" + std::to_string(network[8])
                         + " priorityRequested=" + std::to_string(network[9])
                         + " socketTos=" + std::to_string(network[10])
-                        + " socketPriority=" + std::to_string(network[11]);
+                        + " socketPriority=" + std::to_string(network[11])
+                        + " resendRequested=" + std::to_string(sender.requestedResendPackets())
+                        + " resendServed=" + std::to_string(sender.servedResendPackets())
+                        + " resendMissing=" + std::to_string(sender.missingResendPackets());
                     nextStatistics = now + std::chrono::seconds(1);
                 }
             }
@@ -246,9 +252,9 @@ Java_dev_ryuya_homepodbridge_NativeSender_receiverRejection(JNIEnv* env, jclass)
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_network(JNIEnv* env, jclass) {
     auto engine=getEngine();if(!engine)return nullptr;
-    auto result=env->NewLongArray(14);if(!result)return nullptr;
+    auto result=env->NewLongArray(17);if(!result)return nullptr;
     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
-    env->SetLongArrayRegion(result,0,14,engine->network);return result;
+    env->SetLongArrayRegion(result,0,17,engine->network);return result;
 }
 extern "C" JNIEXPORT jstring JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_diagnostic(JNIEnv* env, jclass) {

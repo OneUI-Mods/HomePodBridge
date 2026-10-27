@@ -1681,6 +1681,14 @@ void testShortAudioPackets() {
         r.sender->onUdpDatagram(RaopUdp::Control,spanOf(request),{r.peerIp,r.rx.ap2ControlPort});
         auto retransmit=r.io.takeUdp();
         REQUIRE(retransmit.size()==1 && retransmit[0].data.substr(4)==first, "old short packet retransmits intact");
+        CHECK(r.sender->requestedResendPackets()==1 && r.sender->servedResendPackets()==1
+            && r.sender->missingResendPackets()==0,"receiver request and local handoff counted separately");
+        const uint16_t absent=uint16_t(firstSeq+30000);
+        request[4]=char(absent>>8);request[5]=char(absent);
+        r.sender->onUdpDatagram(RaopUdp::Control,spanOf(request),{r.peerIp,r.rx.ap2ControlPort});
+        CHECK(r.io.takeUdp().empty() && r.sender->requestedResendPackets()==2
+            && r.sender->servedResendPackets()==1 && r.sender->missingResendPackets()==1,
+            "absent retransmit data is reported without invented sends");
         r.sender->stop();
     }
     {

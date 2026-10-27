@@ -9,7 +9,7 @@ public class NetworkTimingTest {
   public void missingAndInsufficientSamplesCannotClaimZeroLatency() {
     assertEquals(-1, new NetworkTiming(null, 0).transit(6));
     assertEquals(-1, new NetworkTiming(new long[13], 0).value(0));
-    long[] data = new long[14];
+    long[] data = new long[17];
     data[5] = 4;
     assertEquals(-1, new NetworkTiming(data, 0).transit(7));
     data[5] = 5;
@@ -20,7 +20,7 @@ public class NetworkTimingTest {
 
   @Test
   public void requestReadbackAndRadioEligibilityStayDistinct() {
-    long[] data = new long[14];
+    long[] data = new long[17];
     data[9] = 1;
     data[10] = 184;
     data[11] = 6;

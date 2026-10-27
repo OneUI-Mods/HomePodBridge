@@ -462,6 +462,7 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     rtspSession_.clear();
     serverPort_ = controlPort_ = timingPort_ = 0;
     framesSent_ = 0;
+    requestedResendPackets_=servedResendPackets_=missingResendPackets_=0;
     latency_ = requestedLatency_;
     receiverMinimumLatency_ = -1;
     receiverMaximumLatency_ = -1;
@@ -2292,10 +2293,11 @@ void RaopSender::onControlDatagram_(std::span<const uint8_t> dg, const RaopEndpo
     // RetransmitRequest: lost_seqno u16 @4, lost_packets u16 @6.
     const uint16_t lostSeq   = uint16_t((uint16_t(dg[4]) << 8) | dg[5]);
     const uint16_t lostCount = uint16_t((uint16_t(dg[6]) << 8) | dg[7]);
+    requestedResendPackets_+=lostCount;
     for (uint16_t i = 0; i < lostCount; ++i) {
         const uint16_t s = uint16_t(lostSeq + i);
         const int slot = s & (backlog_.size() - 1);
-        if (backlogSeq_[slot] != s) continue;   // aged out of backlog
+        if (backlogSeq_[slot] != s) {++missingResendPackets_;continue;} // aged out of backlog
         // pyatv: 0x80 0xD6 + original seq + the FULL original packet.
         std::string resp;
         resp.reserve(4 + backlog_[slot].size());
@@ -2304,6 +2306,7 @@ void RaopSender::onControlDatagram_(std::span<const uint8_t> dg, const RaopEndpo
         be16(resp, s);
         resp += backlog_[slot];
         io_.udpSend(RaopUdp::Control, from, spanOf(resp));
+        ++servedResendPackets_;
     }
 }
 

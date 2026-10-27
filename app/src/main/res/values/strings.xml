@@ -11,7 +11,7 @@
     <string name="network_wifi_unavailable">Wi-Fi low-latency lock: unavailable or not measured</string>
     <string name="network_wifi_waiting">Wi-Fi request held; Wi-Fi/foreground/screen conditions not met</string>
     <string name="network_wifi_eligible">Wi-Fi request held; Wi-Fi/foreground/screen conditions met (radio activation unverified)</string>
-    <string name="diagnostics_network_tx">Local UDP transmission\nApp call → driver, median / p95: %1$s / %2$s\nKernel scheduler → driver, p95: %3$s\nKernel output queue (bytes): %4$s\nUDP send failures / calls: %5$d / %6$d\nTimestamp samples: %7$d\n%8$s\n%9$s\nDriver software timestamps exclude radio airtime and HomePod arrival. RTT and queue bytes are not one-way audio latency.</string>
+    <string name="diagnostics_network_tx">Local UDP transmission\nApp call → driver, median / p95: %1$s / %2$s\nKernel scheduler → driver, p95: %3$s\nKernel output queue (bytes): %4$s\nUDP send failures / calls: %5$d / %6$d\nTimestamp samples: %7$d\nReceiver resend requests / handed off / unavailable: %10$d / %11$d / %12$d\n%8$s\n%9$s\nDriver software timestamps exclude radio airtime and HomePod arrival. RTT and queue bytes are not one-way audio latency.</string>
     <string name="receiver_request_rejected">HomePod rejected the audio connection request (response %1$d). Check the audio settings and receiver access permissions.</string>
     <string name="receiver_request_compatibility">HomePod rejected the requested settings (response %1$d). Connected using compatibility settings; the requested waiting range was not applied.</string>
     <string name="receiver_request_last_retry">Last connection: HomePod rejected the requested settings (response %1$d), and compatibility settings were retried.</string>

@@ -123,6 +123,9 @@ public:
     size_t inputBufferFrames() const { return inputBufferFrames_; }
     uint64_t adaptiveBufferChanges() const { return adaptiveBufferChanges_; }
     uint64_t trimmedSilentFrames() const { return trimmedSilentFrames_; }
+    uint64_t requestedResendPackets() const { return requestedResendPackets_; }
+    uint64_t servedResendPackets() const { return servedResendPackets_; }
+    uint64_t missingResendPackets() const { return missingResendPackets_; }
     // Opt-in AP2 partial ALAC frames. Configure only before start; classic RAOP stays at 352.
     bool setShortAudioPackets(bool enabled) {
         if (state_ != State::Idle) return false;
@@ -423,6 +426,7 @@ private:
     Clock::time_point clockStart_{};     // monotonic pacing reference
     uint64_t startTs_ = 0;       // NTP-derived start timestamp (pyatv model)
     uint64_t framesSent_ = 0;    // 44.1 kHz frames put on the wire
+    uint64_t requestedResendPackets_=0,servedResendPackets_=0,missingResendPackets_=0;
     uint32_t requestedLatency_ = 66150, latency_ = 66150;
     bool shortAudioPackets_ = false;
     uint32_t shortPacketFrames_ = 88;
