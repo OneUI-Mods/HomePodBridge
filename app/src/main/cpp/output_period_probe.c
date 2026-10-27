@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+#ifndef HP_OUTPUT_PERIOD_CLI
 #include <jni.h>
+#else
+#include <stdlib.h>
+typedef long long jlong;
+#endif
 #include <dlfcn.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -26,13 +31,11 @@ static void* platform_library(const char* path) {
 }
 
 // Exact pinned platform ABI, root process only. No global (io=0) parameter call exists here.
-JNIEXPORT jlongArray JNICALL
-Java_dev_ryuya_homepodbridge_halprobe_OutputPeriodProbe_probe(JNIEnv* env,jclass type,jint io) {
-    (void)type;
-    if(getuid()!=0 || sizeof(void*)!=8 || io<=0 || io>1000000) return NULL;
+static void output_period(int io,jlong v[20]) {
+    for(int i=0;i<20;i++) v[i]=-1;
+    if(getuid()!=0 || sizeof(void*)!=8 || io<=0 || io>1000000) return;
     void* base=platform_library("/system/lib64/libaudiobase.so");
     void* utils=platform_library("/system/lib64/libutils.so");
-    jlong v[20];for(int i=0;i<20;i++) v[i]=-1;
     v[18]=(base?1:0)|(utils?2:0);
     if(base && utils) {
         typedef int(*Count)(int,size_t*);
@@ -74,7 +77,23 @@ Java_dev_ryuya_homepodbridge_halprobe_OutputPeriodProbe_probe(JNIEnv* env,jclass
     }
     if(utils) dlclose(utils);
     if(base) dlclose(base);
+}
+#ifndef HP_OUTPUT_PERIOD_CLI
+JNIEXPORT jlongArray JNICALL
+Java_dev_ryuya_homepodbridge_halprobe_OutputPeriodProbe_probe(JNIEnv* env,jclass type,jint io) {
+    (void)type;jlong v[20];output_period(io,v);
     jlongArray result=(*env)->NewLongArray(env,20);
     if(result) (*env)->SetLongArrayRegion(env,result,0,20,v);
     return result;
 }
+
+#else
+int main(int argc,char** argv) {
+    if(getuid()!=0 || argc!=2 || !argv[1][0]) return 2;
+    char* end=NULL;long io=strtol(argv[1],&end,10);
+    if(*end || io<=0 || io>1000000) return 2;
+    jlong values[20];output_period((int)io,values);
+    printf("[");for(int i=0;i<20;i++) printf("%s%lld",i?",":"",values[i]);puts("]");
+    return 0;
+}
+#endif

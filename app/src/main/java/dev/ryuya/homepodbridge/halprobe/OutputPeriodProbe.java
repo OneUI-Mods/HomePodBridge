@@ -36,6 +36,10 @@ final class OutputPeriodProbe {
       if (io != ownedOutput(state.snapshot(), policy.address))
         throw new SecurityException("Owned output changed");
       long[] values = probe(io);
+      if (values != null && values.length == 20 && values[18] == 0) {
+        values = executableProbe(io);
+        result.put("platformExecutable", true);
+      }
       result
           .put("requestedFrames", 88)
           .put("platformResult", values == null ? JSONObject.NULL : new JSONArray(values));
@@ -98,6 +102,56 @@ final class OutputPeriodProbe {
         || !HexFormat.of()
             .formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path)))
             .equals(expected)) throw new SecurityException("Unsupported platform ABI");
+  }
+
+  private static long[] executableProbe(int io) throws Exception {
+    // Provisioned only by command-line development tooling; never accepts a caller path or shell.
+    Path supplied = Path.of("/data/local/tmp/homepod-output-period-probe");
+    if (Files.size(supplied) > 1048576) throw new SecurityException("Unexpected probe size");
+    byte[] bytes = Files.readAllBytes(supplied);
+    if (bytes.length > 1048576
+        || !HexFormat.of()
+            .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+            .equals("2a17b3593bf2c68221d4becd9f120f7c13730791945111a38d24805f462dc431"))
+      throw new SecurityException("Unverified platform executable");
+    Path directory =
+        Files.createTempDirectory(
+            Path.of("/data/local/tmp"),
+            "homepod-period-",
+            java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")));
+    Path executable = directory.resolve("probe");
+    Process child = null;
+    try {
+      Files.write(
+          executable,
+          bytes,
+          java.nio.file.StandardOpenOption.CREATE_NEW,
+          java.nio.file.StandardOpenOption.WRITE);
+      Files.setPosixFilePermissions(
+          executable, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+      child = new ProcessBuilder(executable.toString(), Integer.toString(io)).start();
+      if (!child.waitFor(6, java.util.concurrent.TimeUnit.SECONDS) || child.exitValue() != 0)
+        throw new IllegalStateException("Platform probe incomplete");
+      String text =
+          new String(
+                  child.getInputStream().readNBytes(2049),
+                  java.nio.charset.StandardCharsets.US_ASCII)
+              .trim();
+      if (text.length() > 2048) throw new SecurityException("Invalid platform reply");
+      JSONArray array = new JSONArray(text);
+      if (array.length() != 20) throw new SecurityException("Invalid platform reply");
+      long[] values = new long[20];
+      for (int i = 0; i < values.length; i++) values[i] = array.getLong(i);
+      return values;
+    } finally {
+      if (child != null && child.isAlive()) {
+        child.destroyForcibly();
+        child.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+      }
+      Files.deleteIfExists(executable);
+      Files.deleteIfExists(directory);
+    }
   }
 
   private static native long[] probe(int io);
