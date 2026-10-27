@@ -336,21 +336,21 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       report.put("stream", probe.open(mix, true, connected.minimumFrames));
       report.put("targetFillFrames", target);
       afterOpen.run();
-      if (target != 2587) {
+      if (phoneTiming != null) {
+        tuneAttempted = latencyWindowAttempted = true;
+        String prepared = changePolicyReserve(address, new PhonePreparation(phoneTiming).command());
+        report.put("tuning", prepared);
+        report.put("latencyWindow", prepared);
+        if (!prepared.contains("Owned reserve changed: 2587 -> " + target + ";")
+            || !prepared.contains(
+                "Owned latency window changed: 4096 -> " + phoneTiming.latencyWindowFrames() + ";"))
+          throw new IllegalStateException("Private phone preparation not confirmed");
+      } else if (target != 2587) {
         tuneAttempted = true;
         String tuning = changePolicyReserve(address, reserveOperation(target, false));
         report.put("tuning", tuning);
         if (!tuning.contains("Owned reserve changed: 2587 -> " + target + ";"))
           throw new IllegalStateException("Reserve change not confirmed");
-      }
-      if (phoneTiming != null) {
-        latencyWindowAttempted = true;
-        String latency =
-            changePolicyReserve(address, "window-" + phoneTiming.latencyWindowFrames());
-        report.put("latencyWindow", latency);
-        if (!latency.contains(
-            "Owned latency window changed: 4096 -> " + phoneTiming.latencyWindowFrames() + ";"))
-          throw new IllegalStateException("Private latency window not confirmed");
       }
       ready.run();
       if (live) startupTimeout.cancel(false);

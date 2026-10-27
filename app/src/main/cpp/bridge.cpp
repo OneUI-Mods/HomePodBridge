@@ -23,6 +23,7 @@ struct Engine {
     std::atomic<int> state{1}; // connecting, 2=RECORD accepted, negative=failure
     std::atomic<int> volume{-1};
     std::atomic<jlong> preparedAt{0};
+    std::atomic<bool> inputReady{false};
     std::mutex diagnosticMutex;
     std::string diagnostic;
     std::string statistics;
@@ -64,7 +65,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jint packetFrames, jboolean compressedAudio, jboolean adaptiveBuffer, jboolean networkPriority) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jint packetFrames, jboolean compressedAudio, jboolean adaptiveBuffer, jboolean networkPriority, jboolean awaitCapture) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -74,7 +75,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, packetFrames, compressedAudio, adaptiveBuffer, networkPriority] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, packetFrames, compressedAudio, adaptiveBuffer, networkPriority, awaitCapture] {
         try {
             if (setpriority(PRIO_PROCESS, 0, -19) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
@@ -103,6 +104,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                                     "HomePodBridge", "%s", message.c_str());
             });
             sender.setStrictReceiverAuth(true);
+            sender.setDeferInputUntilReady(awaitCapture == JNI_TRUE);
             if (!sender.setAudioPacketFrames(static_cast<uint32_t>(packetFrames)))
                 throw std::invalid_argument("Unsupported audio packet size");
             sender.setCompressedAudio(compressedAudio == JNI_TRUE);
@@ -125,6 +127,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             sender.start(ip, static_cast<uint16_t>(port), label);
             auto nextStatistics = std::chrono::steady_clock::now();
             while (!engine->stop.load() && engine->state.load() > 0) {
+                if(engine->inputReady.exchange(false))sender.releaseInput();
                 const int volume = engine->volume.exchange(-1);
                 if (volume >= 0) sender.setVolume(volume);
                 loop.pump(sender, std::chrono::milliseconds(latencyMs <= 100 ? 2 : 20));
@@ -228,6 +231,10 @@ Java_dev_ryuya_homepodbridge_NativeSender_state(JNIEnv*, jclass) {
 extern "C" JNIEXPORT jlong JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_preparedAtNanos(JNIEnv*, jclass) {
     auto engine=getEngine();return engine?engine->preparedAt.load():0;
+}
+extern "C" JNIEXPORT void JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_inputReady(JNIEnv*, jclass) {
+    auto engine=getEngine();if(engine)engine->inputReady.store(true);
 }
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_volume(JNIEnv*, jclass, jint volume) {

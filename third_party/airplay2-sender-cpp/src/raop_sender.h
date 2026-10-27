@@ -141,6 +141,11 @@ public:
     }
     uint32_t audioPacketFrames() const { return packetFrames_; }
     bool transportReady() const { return state_ == State::Streaming && !waitingInitialVolume_; }
+    bool setDeferInputUntilReady(bool enabled) {
+        if(state_!=State::Idle)return false;
+        deferInput_=enabled;return true;
+    }
+    void releaseInput();
     void setPresentationLatencyMs(uint32_t milliseconds) {
         requestedLatency_ = latency_ = std::clamp(milliseconds, 10u, 2000u) * 44100u / 1000u;
         if (!independentReceiverTiming_) {
@@ -430,6 +435,7 @@ private:
     uint64_t requestedResendPackets_=0,servedResendPackets_=0,missingResendPackets_=0;
     uint32_t requestedLatency_ = 66150, latency_ = 66150;
     bool shortAudioPackets_ = false;
+    bool deferInput_=false,inputReady_=true;
     uint32_t shortPacketFrames_ = 88;
     uint32_t packetFrames_ = 352;
     uint32_t requestedReceiverMinimum_ = 11025, requestedReceiverMaximum_ = 66150;

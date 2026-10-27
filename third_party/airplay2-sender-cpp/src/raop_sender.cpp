@@ -483,6 +483,7 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     backlogSeq_.assign(backlog_.size(), -1);
     pendingVolumeDb_ = kNoVolume;   // never carry volume between devices
     waitingInitialVolume_ = false;
+    inputReady_ = !deferInput_;
     if (initialVolumePct_ >= 0) setVolume(initialVolumePct_);
 
     // v0.66.x Phase 2/3, reset auth/AP2 state for the new session.
@@ -982,8 +983,10 @@ void RaopSender::handleResponse_(const std::string& method, int code, const Head
             if (code != 200) { fail_("Receiver rejected the initial volume; audio was not started"); return; }
             disarm_(timeout_);
             state_ = State::Streaming;
-            startAudioClock_();
-            if (events_.launched) events_.launched(true, std::string());
+            if(inputReady_) {
+                startAudioClock_();
+                if (events_.launched) events_.launched(true, std::string());
+            }
             return;
         }
         if (code != 200)
@@ -1179,7 +1182,7 @@ void RaopSender::startStreaming_() {
             vh.push_back({"Session", rtspSession_});
         sendRequest_("SET_PARAMETER", rtspUri_(), "text/parameters", body, vh);
     }
-    if (!waitingInitialVolume_) startAudioClock_();
+    if (!waitingInitialVolume_ && inputReady_) startAudioClock_();
     if (airplay2_) {
         // AP2: feedback is an HTTP POST /feedback every 2 s (pyatv
         // FEEDBACK_INTERVAL).
@@ -1198,7 +1201,16 @@ void RaopSender::startStreaming_() {
     info_("Cast: RAOP streaming to '{}', RTP {} frames/packet @ {} Hz{}",
           name_, packetFrames_, kRaopRate,
           (ap2_ && ap2_->encryptAudio) ? " (encrypted)" : "");
-    if (!waitingInitialVolume_ && events_.launched) events_.launched(true, std::string());
+    if (!waitingInitialVolume_ && inputReady_ && events_.launched) events_.launched(true, std::string());
+}
+
+void RaopSender::releaseInput() {
+    if(inputReady_)return;
+    inputReady_=true;
+    if(transportReady()) {
+        startAudioClock_();
+        if(events_.launched)events_.launched(true,std::string());
+    }
 }
 
 // -- v0.66.x Phase 2/3, auth + pairing + AirPlay 2 --------------------

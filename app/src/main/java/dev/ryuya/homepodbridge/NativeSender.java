@@ -22,7 +22,8 @@ final class NativeSender {
       int packetFrames,
       boolean compressedAudio,
       boolean adaptiveBuffer,
-      boolean networkPriority);
+      boolean networkPriority,
+      boolean awaitCapture);
 
   static native boolean write(java.nio.ByteBuffer pcm, int byteCount);
 
@@ -35,6 +36,8 @@ final class NativeSender {
   static native long[] network();
 
   static native long preparedAtNanos();
+
+  static native void inputReady();
 
   static native long[] pipeline();
 

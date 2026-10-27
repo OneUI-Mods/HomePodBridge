@@ -312,6 +312,9 @@ public final class CaptureService extends Service {
         }
         if (!dedicatedHal) setBackend(token, BridgeState.CaptureBackend.FALLBACK);
       }
+      int startingPacketFrames = settings.packetFramesForBackend(dedicatedHal);
+      connection.mark(ConnectionTiming.Stage.SENDER);
+      startSender(receiver, settings, dedicatedHal, networkSettings);
       if (dedicatedHal) {
         try {
           zeroHal =
@@ -434,23 +437,9 @@ public final class CaptureService extends Service {
           throw new IllegalStateException("Capture unavailable");
       }
       connection.mark(ConnectionTiming.Stage.CAPTURE);
-      connection.mark(ConnectionTiming.Stage.SENDER);
-      NativeSender.start(
-          receiver.host(),
-          receiver.port(),
-          receiver.name(),
-          receiver.deviceId(),
-          identity(),
-          BuildConfig.VOLUME_LIMIT,
-          settings.effectiveBufferMs(),
-          settings.requestedPresentationMs(),
-          settings.receiverTiming().independent(),
-          settings.requestedReceiverMinimumMs(),
-          settings.requestedReceiverMaximumMs(),
-          settings.packetFramesForBackend(dedicatedHal),
-          settings.compressedAudio(),
-          settings.effectiveAdaptiveBuffer(),
-          networkSettings.priority());
+      if (startingPacketFrames != settings.packetFramesForBackend(dedicatedHal))
+        startSender(receiver, settings, dedicatedHal, networkSettings);
+      NativeSender.inputReady();
       ByteBuffer pcm =
           ByteBuffer.allocateDirect(settings.samplesPerRead() * 2).order(ByteOrder.LITTLE_ENDIAN);
       long deadline = System.nanoTime() + 20_000_000_000L;
@@ -624,6 +613,30 @@ public final class CaptureService extends Service {
         if (wake.isHeld()) wake.release();
       }
     }
+  }
+
+  private void startSender(
+      Receiver receiver,
+      StreamSettings settings,
+      boolean dedicatedHal,
+      NetworkSettings networkSettings) {
+    NativeSender.start(
+        receiver.host(),
+        receiver.port(),
+        receiver.name(),
+        receiver.deviceId(),
+        identity(),
+        BuildConfig.VOLUME_LIMIT,
+        settings.effectiveBufferMs(),
+        settings.requestedPresentationMs(),
+        settings.receiverTiming().independent(),
+        settings.requestedReceiverMinimumMs(),
+        settings.requestedReceiverMaximumMs(),
+        settings.packetFramesForBackend(dedicatedHal),
+        settings.compressedAudio(),
+        settings.effectiveAdaptiveBuffer(),
+        networkSettings.priority(),
+        true);
   }
 
   void disconnect() {

@@ -47,7 +47,8 @@ public final class HalRootProbe {
                       "latency-window",
                       "restore-latency-window")
                   .contains(args[1])
-              && manualOperation(args[1]) < 0)
+              && manualOperation(args[1]) < 0
+              && dev.ryuya.homepodbridge.halprobe.PhonePreparation.parse(args[1]) == null)
           || !(args[0].equals("none") || args[0].matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")))
         throw new IOException("Invalid probe context");
       verify(MODULE, MODULE_SHA);
@@ -139,6 +140,32 @@ public final class HalRootProbe {
           if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
             throw new IOException("Invalid native helper path");
           System.load(apk + "!/lib/arm64-v8a/libhomepod_hal.so");
+          var preparation = dev.ryuya.homepodbridge.halprobe.PhonePreparation.parse(args[1]);
+          if (preparation != null) {
+            String reserve =
+                freezeCheck(
+                    Integer.parseInt(pid), base, pipeBase, args[0], preparation.reserveOperation());
+            System.out.println(reserve);
+            if (!reserve.contains(
+                "Owned reserve changed: 2587 -> " + preparation.timing().reserveFrames() + ";"))
+              return;
+            String window =
+                freezeCheck(
+                    Integer.parseInt(pid), base, pipeBase, args[0], preparation.windowOperation());
+            System.out.println(window);
+            if (!window.contains(
+                "Owned latency window changed: 4096 -> "
+                    + preparation.timing().latencyWindowFrames()
+                    + ";"))
+              System.out.println(
+                  freezeCheck(
+                      Integer.parseInt(pid),
+                      base,
+                      pipeBase,
+                      args[0],
+                      preparation.rollbackOperation()));
+            return;
+          }
           int operation =
               List.of(
                       "freeze",

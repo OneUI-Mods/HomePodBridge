@@ -1700,6 +1700,38 @@ void testShortAudioPackets() {
     }
 }
 
+void testDeferredCaptureStart() {
+    g_test="parallel handshake waits for capture and acknowledged mute";
+    for(bool inputFirst : {false,true}) {
+        Rig r;r.sender->setVolumePolicy(0,100);
+        REQUIRE(r.sender->setDeferInputUntilReady(true),"defer before start");
+        r.rx.holdVolume=true;
+        runAp2Handshake(r,FakeReceiver::Mode::Ap2Transient,RaopDeviceInfo::Auth::HapTransient);
+        CHECK(!r.launchedOk && r.io.takeUdp().empty(),"no RTP before initial mute acknowledgement");
+        if(inputFirst)r.sender->releaseInput();
+        CHECK(!r.launchedOk && r.io.takeUdp().empty(),"capture readiness cannot bypass mute");
+        r.sender->onTcpData(RaopTcp::Control,spanOf(r.rx.heldVolumeReply));
+        CHECK(r.sender->transportReady(),"receiver handshake independently prepared");
+        if(!inputFirst) {
+            CHECK(!r.launchedOk && r.io.takeUdp().empty(),"prepared receiver emits no audio without capture");
+            r.now+=std::chrono::seconds(3);r.sender->tick();r.io.takeUdp();
+            CHECK(!r.launchedOk,"capture wait cannot claim connected");
+            r.sender->releaseInput();
+        }
+        REQUIRE(r.launchedOk && *r.launchedOk,"both conditions release exactly one connection event");
+        CHECK(r.launchedCount==1,"single ready event");
+        auto packets=r.io.takeUdp();
+        CHECK(packets.size()==1 && packets.front().s==RaopUdp::Control,"release starts fresh sync, no catch-up audio burst");
+        r.sender->releaseInput();CHECK(r.launchedCount==1,"repeated input readiness is idempotent");
+        r.sender->stop();
+    }
+    Rig rejected;rejected.sender->setVolumePolicy(0,100);rejected.sender->setDeferInputUntilReady(true);
+    rejected.rx.rejectVolume=true;
+    runAp2Handshake(rejected,FakeReceiver::Mode::Ap2Transient,RaopDeviceInfo::Auth::HapTransient);
+    rejected.sender->releaseInput();
+    CHECK(rejected.launchedOk && !*rejected.launchedOk && rejected.io.takeUdp().empty(),"mute refusal remains fail-closed when input is ready");
+}
+
 void testZeroReserveStaleSilence() {
     g_test = "zero-reserve short streams discard only stale silence";
     for(uint32_t frames : {44u,88u}) for(bool oldAudio : {false,true}) for(bool reserve : {false,true}) {
@@ -2039,6 +2071,7 @@ int main() {
     testIndependentReceiverTiming();
     testShortAudioPackets();
     testZeroReserveStaleSilence();
+    testDeferredCaptureStart();
     testCompressedAp2Audio();
     testFrameClockPacing();
     testLocalHandoffLead();
