@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <exception>
+#include <stdexcept>
 #include <sys/resource.h>
 #include "raop_loop.h"
 #include "raop_sender.h"
@@ -61,7 +62,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jboolean shortAudioPackets, jboolean compressedAudio, jboolean adaptiveBuffer) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jint packetFrames, jboolean compressedAudio, jboolean adaptiveBuffer) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -71,7 +72,7 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, shortAudioPackets, compressedAudio, adaptiveBuffer] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, packetFrames, compressedAudio, adaptiveBuffer] {
         try {
             if (setpriority(PRIO_PROCESS, 0, -19) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
@@ -99,7 +100,8 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                                     "HomePodBridge", "%s", message.c_str());
             });
             sender.setStrictReceiverAuth(true);
-            sender.setShortAudioPackets(shortAudioPackets == JNI_TRUE);
+            if (!sender.setAudioPacketFrames(static_cast<uint32_t>(packetFrames)))
+                throw std::invalid_argument("Unsupported audio packet size");
             sender.setCompressedAudio(compressedAudio == JNI_TRUE);
             sender.setVolumePolicy(0, std::max(0, std::min(100, static_cast<int>(volumeLimit))));
             sender.setStreamBeforeRecord(false);

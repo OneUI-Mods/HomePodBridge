@@ -143,13 +143,13 @@
     <string name="manual_period_help">1.09–21.04 ms. Rounded to the closest supported period.</string>
     <string name="manual_period_applied">1.09–21.04 ms. Applied: %1$.2f ms (%2$d frames).</string>
     <string name="manual_reserve">Capture reserve target (ms)</string>
-    <string name="manual_reserve_help">1.27–18.14 ms (56–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
+    <string name="manual_reserve_help">1.46–18.14 ms (64–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
     <string name="manual_observed_queue">The earlier 1.18–10.50 ms values were measured average queued audio. They vary with playback and load; the reserve target is a separate setting.</string>
     <string name="manual_dedicated_read">Dedicated read unit: 0.50 ms (22 frames, fixed).</string>
     <string name="manual_standard_buffer">Standard phone buffer target (frames)</string>
     <string name="manual_standard_buffer_help">0: off; 928 or 1856: supported targets.</string>
     <string name="manual_packet">Frames per packet</string>
-    <string name="manual_packet_help">88 (2.00 ms) or 352 (7.98 ms). Standard/fallback capture uses 352. HomePod compatibility with 88 is unverified.</string>
+    <string name="manual_packet_help">44 (1.00 ms), 88 (2.00 ms), or 352 (7.98 ms). Standard/fallback capture uses 352. Smaller packets increase network and CPU load; receiver support varies.</string>
     <string name="manual_receiver">Receiver timing is independent of phone buffering. All three values: 10–2000 ms.</string>
     <string name="manual_integer_range">Range: %1$d–%2$d</string>
     <string name="manual_invalid">Enter a valid value within the displayed range.</string>

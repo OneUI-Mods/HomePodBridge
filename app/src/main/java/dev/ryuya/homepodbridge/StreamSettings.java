@@ -18,7 +18,45 @@ record StreamSettings(
     boolean shortAudioPackets,
     boolean shortMixerPeriod,
     boolean manualMode,
-    dev.ryuya.homepodbridge.halprobe.PhoneTiming phoneTiming) {
+    dev.ryuya.homepodbridge.halprobe.PhoneTiming phoneTiming,
+    int shortPacketFrames) {
+  StreamSettings(
+      boolean wholeDevice,
+      int bufferMs,
+      int blockMs,
+      int latencyMs,
+      boolean lowLatency,
+      boolean highQuality,
+      boolean compressedAudio,
+      boolean adaptiveBuffer,
+      boolean deviceBuffer,
+      int deviceBufferFrames,
+      boolean dedicatedCapture,
+      ReceiverTiming receiverTiming,
+      boolean shortAudioPackets,
+      boolean shortMixerPeriod,
+      boolean manualMode,
+      dev.ryuya.homepodbridge.halprobe.PhoneTiming phoneTiming) {
+    this(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        shortAudioPackets,
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming,
+        88);
+  }
+
   StreamSettings(
       boolean wholeDevice,
       int bufferMs,
@@ -219,6 +257,8 @@ record StreamSettings(
   }
 
   StreamSettings {
+    if (shortPacketFrames != 44 && shortPacketFrames != 88)
+      throw new IllegalArgumentException("Unsupported packet size");
     bufferMs =
         BufferLimits.clamp(bufferMs, BufferLimits.RESERVE_MIN_MS, BufferLimits.RESERVE_MAX_MS);
     blockMs = BufferLimits.clamp(blockMs, BufferLimits.CAPTURE_MIN_MS, BufferLimits.CAPTURE_MAX_MS);
@@ -258,6 +298,7 @@ record StreamSettings(
                 preferences.getInt("receiverMaximumMs", target),
                 preferences.getInt("presentationOffsetMs", target)))
         .withShortAudioPackets(preferences.getBoolean("shortAudioPackets", false))
+        .withShortPacketFrames(preferences.getInt("shortPacketFrames", 88) == 44 ? 44 : 88)
         .withShortMixerPeriod(preferences.getBoolean("shortMixerPeriod", false))
         .withManualMode(preferences.getBoolean("manualMode", false))
         .withPhoneTiming(
@@ -292,6 +333,7 @@ record StreamSettings(
         .putBoolean("deviceBuffer", deviceBuffer)
         .putBoolean("dedicatedCapture", dedicatedCapture)
         .putBoolean("shortAudioPackets", shortAudioPackets)
+        .putInt("shortPacketFrames", shortPacketFrames)
         .putBoolean("shortMixerPeriod", shortMixerPeriod)
         .putBoolean("manualMode", manualMode)
         .putInt("phonePeriodMs", phoneTiming.periodMs())
@@ -321,7 +363,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withProfile(int profile) {
@@ -341,7 +384,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         profile == 3,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withCompression(boolean enabled) {
@@ -361,7 +405,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withBuffers(int buffer, int block, int latency) {
@@ -381,7 +426,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withAdaptiveBuffer(boolean enabled) {
@@ -401,7 +447,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withDeviceBuffer(boolean enabled) {
@@ -421,7 +468,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withDeviceBufferFrames(int frames) {
@@ -441,7 +489,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withDedicatedCapture(boolean enabled) {
@@ -461,7 +510,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withReceiverTiming(ReceiverTiming timing) {
@@ -481,7 +531,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withShortAudioPackets(boolean enabled) {
@@ -501,7 +552,8 @@ record StreamSettings(
         enabled,
         shortMixerPeriod,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withShortMixerPeriod(boolean enabled) {
@@ -521,7 +573,8 @@ record StreamSettings(
         shortAudioPackets,
         enabled,
         manualMode,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withManualMode(boolean enabled) {
@@ -541,7 +594,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         enabled,
-        phoneTiming);
+        phoneTiming,
+        shortPacketFrames);
   }
 
   StreamSettings withPhoneTiming(dev.ryuya.homepodbridge.halprobe.PhoneTiming timing) {
@@ -561,7 +615,8 @@ record StreamSettings(
         shortAudioPackets,
         shortMixerPeriod,
         manualMode,
-        timing);
+        timing,
+        shortPacketFrames);
   }
 
   dev.ryuya.homepodbridge.halprobe.PhoneTiming effectivePhoneTiming() {
@@ -591,7 +646,8 @@ record StreamSettings(
         true,
         effectiveShortMixerPeriod()
             ? effectivePhoneTiming()
-            : new dev.ryuya.homepodbridge.halprobe.PhoneTiming(21, 800));
+            : new dev.ryuya.homepodbridge.halprobe.PhoneTiming(21, 800),
+        shortPacketFrames);
   }
 
   StreamSettings preset(int selected) {
@@ -615,12 +671,33 @@ record StreamSettings(
     return effectiveDedicatedCapture() && shortAudioPackets;
   }
 
+  StreamSettings withShortPacketFrames(int frames) {
+    return new StreamSettings(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        shortAudioPackets,
+        shortMixerPeriod,
+        manualMode,
+        phoneTiming,
+        frames);
+  }
+
   int requestedPacketFrames() {
     return packetFramesForBackend(effectiveDedicatedCapture());
   }
 
   int packetFramesForBackend(boolean dedicatedActive) {
-    return dedicatedActive && effectiveShortAudioPackets() ? 88 : 352;
+    return dedicatedActive && effectiveShortAudioPackets() ? shortPacketFrames : 352;
   }
 
   int requestedReceiverMinimumMs() {

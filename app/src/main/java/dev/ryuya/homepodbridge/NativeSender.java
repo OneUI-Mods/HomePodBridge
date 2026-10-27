@@ -19,7 +19,7 @@ final class NativeSender {
       boolean independentTiming,
       int receiverMinimumMs,
       int receiverMaximumMs,
-      boolean shortAudioPackets,
+      int packetFrames,
       boolean compressedAudio,
       boolean adaptiveBuffer);
 

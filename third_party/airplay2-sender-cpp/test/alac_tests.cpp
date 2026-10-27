@@ -54,7 +54,7 @@ int main() {
     }
     std::printf("ALAC: 1200 exact PCM round trips; %zu/%zu bytes, average %llu us/packet (host CPU)\n",
         encodedBytes, rawBytes, static_cast<unsigned long long>(micros / 1200));
-    for (uint32_t count : {88u,352u}) {
+    for (uint32_t count : {44u,88u,352u}) {
         uint64_t duration=0;
         for(int packet=0;packet<600;packet++) {
             std::vector<int16_t> input(count*2),output(704);

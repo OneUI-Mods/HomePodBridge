@@ -155,6 +155,24 @@ public final class CommandService extends Service {
       commandStatus = ManualSettingsCheck.run(this);
       return START_NOT_STICKY;
     }
+    if (command.equals("manual-packet-size")) {
+      var settings = StreamSettings.load(this);
+      int frames = intent.getIntExtra("frames", -1);
+      if (BridgeState.capture != null
+          || BridgeState.connected
+          || BridgeState.volume != 0
+          || !settings.manualMode()
+          || (frames != 44 && frames != 88 && frames != 352)) {
+        commandStatus = "Packet size requires idle manual mode and 44, 88 or 352 frames";
+        return START_NOT_STICKY;
+      }
+      settings
+          .withShortPacketFrames(frames == 44 ? 44 : 88)
+          .withShortAudioPackets(frames != 352)
+          .save(this);
+      commandStatus = "Manual packet size saved";
+      return START_NOT_STICKY;
+    }
     if (command.equals("manual-phone-timing")) {
       var settings = StreamSettings.load(this);
       if (BridgeState.capture != null

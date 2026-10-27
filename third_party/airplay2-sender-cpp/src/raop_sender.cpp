@@ -1978,8 +1978,8 @@ void RaopSender::handleAp2SetupStream_(const std::string& body) {
     info_("Cast: receiver windowMinFrames={} windowMaxFrames={} independent={} reportedMaxFrames={}",
           advertisedReceiverMinimumFrames(), advertisedReceiverMaximumFrames(),
           independentReceiverTiming_, receiverMaximumLatency_);
-    packetFrames_ = shortAudioPackets_ ? 88 : 352;
-    backlog_.assign(shortAudioPackets_ ? 4096 : kBacklogSize, {});
+    packetFrames_ = shortAudioPackets_ ? shortPacketFrames_ : 352;
+    backlog_.assign(shortAudioPackets_ ? (packetFrames_ == 44 ? 8192 : 4096) : kBacklogSize, {});
     backlogSeq_.assign(backlog_.size(), -1);
     if (adaptiveInputBuffer_) inputBufferFrames_ = 352;
     info_("Cast: audio packetFrames={} partialAlac={}", packetFrames_, shortAudioPackets_);

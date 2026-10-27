@@ -155,13 +155,13 @@ final class ManualSettingsDialog {
                             backend[0] == 1
                                 ? PhoneTiming.nearest(
                                     number(period, 1.09, 21.04),
-                                    (int) Math.round(number(reserve, 1.27, 18.14) * 44100 / 1000))
+                                    (int) Math.round(number(reserve, 1.46, 18.14) * 44100 / 1000))
                                 : saved.phoneTiming();
                         int standard = backend[0] == 1 ? 0 : integer(standardBuffer, 0, 1856);
                         if (standard != 0 && standard != 928 && standard != 1856)
                           throw invalid(standardBuffer, R.string.manual_standard_buffer_help);
-                        int frames = backend[0] == 1 ? integer(packet, 88, 352) : 352;
-                        if (frames != 88 && frames != 352)
+                        int frames = backend[0] == 1 ? integer(packet, 44, 352) : 352;
+                        if (frames != 44 && frames != 88 && frames != 352)
                           throw invalid(packet, R.string.manual_packet_help);
                         int min = integer(minimum, 10, 2000),
                             max = integer(maximum, 10, 2000),
@@ -181,10 +181,11 @@ final class ManualSettingsDialog {
                                 standard == 0 ? 1856 : standard,
                                 backend[0] == 1,
                                 new ReceiverTiming(true, min, max, offset),
-                                frames == 88,
+                                frames != 352,
                                 backend[0] == 1,
                                 true,
-                                timing);
+                                timing,
+                                frames == 44 ? 44 : 88);
                         apply.accept(value);
                         dialog.dismiss();
                       } catch (IllegalArgumentException invalid) {

@@ -182,7 +182,7 @@ public final class HalRootProbe {
     int number = Integer.parseInt(m.group(2));
     String kind = m.group(1);
     if (kind.endsWith("reserve")) {
-      if (number < 56 || number > 800) return -1;
+      if (number < 64 || number > 800) return -1;
       return (kind.startsWith("restore") ? 20000 : 10000) + number;
     }
     boolean supported = false;

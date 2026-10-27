@@ -31,7 +31,7 @@ struct LosslessAlacEncoder::Impl {
 LosslessAlacEncoder::LosslessAlacEncoder() : impl_(std::make_unique<Impl>()) {}
 LosslessAlacEncoder::~LosslessAlacEncoder() = default;
 std::string LosslessAlacEncoder::encode(const int16_t* samples, uint32_t frames) {
-    if (!samples || (frames != 88 && frames != 352)) return {};
+    if (!samples || (frames != 44 && frames != 88 && frames != 352)) return {};
     // Keep the negotiated 352-frame cookie. Short packets carry ALAC's explicit sample count.
     int32_t bytes = static_cast<int32_t>(frames * 4);
     if (impl_->encoder.Encode(impl_->input, impl_->output,

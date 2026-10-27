@@ -34,4 +34,30 @@ public final class ShortPacketSettingsTest {
     assertEquals(base.captureUnitMs(), changed.captureUnitMs(), 0.00001);
     assertEquals(20, changed.requestedPresentationMs());
   }
+
+  @Test
+  public void oneMillisecondPacketsRemainManualAndSurviveCopies() {
+    var settings =
+        new StreamSettings(true, 0, 2, 35, false)
+            .withDedicatedCapture(true)
+            .withManualMode(true)
+            .withShortAudioPackets(true)
+            .withShortPacketFrames(44)
+            .withWholeDevice(false)
+            .withCompression(true)
+            .withAdaptiveBuffer(false)
+            .withDeviceBuffer(false)
+            .withDeviceBufferFrames(928)
+            .withReceiverTiming(new ReceiverTiming(true, 45, 50, 35))
+            .withShortMixerPeriod(true)
+            .withPhoneTiming(new dev.ryuya.homepodbridge.halprobe.PhoneTiming(1, 64))
+            .withBuffers(0, 2, 35)
+            .withProfile(3);
+    assertEquals(44, settings.requestedPacketFrames());
+    assertEquals(44, settings.asManual().requestedPacketFrames());
+    assertEquals(352, settings.packetFramesForBackend(false));
+    assertEquals(352, settings.preset(1).requestedPacketFrames());
+    assertEquals(352, settings.withProfile(2).requestedPacketFrames());
+    assertThrows(IllegalArgumentException.class, () -> settings.withShortPacketFrames(43));
+  }
 }

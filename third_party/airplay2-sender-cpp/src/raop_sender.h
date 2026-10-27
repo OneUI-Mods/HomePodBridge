@@ -127,6 +127,13 @@ public:
     bool setShortAudioPackets(bool enabled) {
         if (state_ != State::Idle) return false;
         shortAudioPackets_ = enabled;
+        shortPacketFrames_ = 88;
+        return true;
+    }
+    bool setAudioPacketFrames(uint32_t frames) {
+        if (state_ != State::Idle || (frames != 44 && frames != 88 && frames != 352)) return false;
+        shortAudioPackets_ = frames != 352;
+        shortPacketFrames_ = frames == 44 ? 44 : 88;
         return true;
     }
     uint32_t audioPacketFrames() const { return packetFrames_; }
@@ -418,6 +425,7 @@ private:
     uint64_t framesSent_ = 0;    // 44.1 kHz frames put on the wire
     uint32_t requestedLatency_ = 66150, latency_ = 66150;
     bool shortAudioPackets_ = false;
+    uint32_t shortPacketFrames_ = 88;
     uint32_t packetFrames_ = 352;
     uint32_t requestedReceiverMinimum_ = 11025, requestedReceiverMaximum_ = 66150;
     bool independentReceiverTiming_ = false;

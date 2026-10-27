@@ -316,7 +316,7 @@ std::optional<std::vector<int16_t>> decodeAlacUncompressed(const std::string& fr
     if (get(2) != 0u) return std::nullopt;     // wastedBytes
     if (get(1) != 1u) return std::nullopt;     // isNotCompressed
     if (*hasSize) {
-        auto count = get(32); if (!count || (*count != 88 && *count != 352)) return std::nullopt;
+        auto count = get(32); if (!count || (*count != 44 && *count != 88 && *count != 352)) return std::nullopt;
         nFrames = int(*count);
     }
     std::vector<int16_t> pcm;
@@ -447,7 +447,7 @@ struct FakeReceiver {
         BitBufferInit(&bits, dec->data(), size);
         std::vector<int16_t> pcm(704);
         uint32_t frames = 0;
-        if (decoder.Decode(&bits, reinterpret_cast<uint8_t*>(pcm.data()), 352, 2, &frames) != 0 || (frames != 352 && frames != 88))
+        if (decoder.Decode(&bits, reinterpret_cast<uint8_t*>(pcm.data()), 352, 2, &frames) != 0 || (frames != 352 && frames != 88 && frames != 44))
             return std::nullopt;
         pcm.resize(frames * 2);
         if(uncompressed && *uncompressed!=pcm) return std::nullopt;
@@ -1636,10 +1636,11 @@ void testLowLatencyTimeline() {
 
 void testShortAudioPackets() {
     g_test = "AP2 partial ALAC packets without changing the negotiated maximum";
-    for (bool compressed : {false,true}) {
+    for (bool compressed : {false,true}) for (uint32_t shortFrames : {44u,88u}) {
         Rig r;
+        CHECK(!r.sender->setAudioPacketFrames(43) && !r.sender->setAudioPacketFrames(0), "invalid packet size rejected before handshake");
         r.sender->setVolumePolicy(0,100);
-        REQUIRE(r.sender->setShortAudioPackets(true), "opt in before starting");
+        REQUIRE(r.sender->setAudioPacketFrames(shortFrames), "opt in before starting");
         r.sender->setCompressedAudio(compressed);
         r.sender->setInputBufferFrames(0);
         r.sender->setPresentationLatencyMs(50);
@@ -1650,28 +1651,28 @@ void testShortAudioPackets() {
         REQUIRE(setup && setup->find("streams"), "short packet stream SETUP");
         CHECK(setup->find("streams")->arr.front().find("spf")->asInt()==352, "negotiated ALAC maximum stays 352");
         r.sender->onTcpData(RaopTcp::Control,spanOf(r.rx.heldVolumeReply));
-        REQUIRE(r.launchedOk && *r.launchedOk && r.sender->audioPacketFrames()==88, "short packet mode ready");
-        CHECK(!r.sender->setShortAudioPackets(false), "cannot change packet size during a stream");
+        REQUIRE(r.launchedOk && *r.launchedOk && r.sender->audioPacketFrames()==shortFrames, "short packet mode ready");
+        CHECK(!r.sender->setAudioPacketFrames(352), "cannot change packet size during a stream");
         r.io.takeUdp();
         std::string first;
         uint16_t firstSeq=0;
         auto origin=r.now;
-        for(int i=0;i<1100;i++) {
-            std::vector<int16_t> samples(176);
+        for(int i=0;i<(shortFrames==44 ? 2200 : 1100);i++) {
+            std::vector<int16_t> samples(shortFrames*2);
             for(size_t j=0;j<samples.size();j++) samples[j]=int16_t(i*97+j*31);
             REQUIRE(r.ring.tryPush(samples), "one short packet queued");
             r.now=origin+std::chrono::ceil<Clock::duration>(std::chrono::nanoseconds(
-                (uint64_t(i+1)*88*1000000000ULL+44099)/44100));
+                (uint64_t(i+1)*shortFrames*1000000000ULL+44099)/44100));
             r.sender->tick();
             auto packets=r.io.takeUdp();
             packets.erase(std::remove_if(packets.begin(),packets.end(),[](const auto& packet) {
                 return packet.s!=RaopUdp::Audio;
             }),packets.end());
-            REQUIRE(packets.size()==1, "one packet per approximately 2 ms deadline");
+            REQUIRE(packets.size()==1, "one packet per 1 or 2 ms deadline");
             auto decoded=r.rx.decodeAudio(packets.front().data);
             CHECK(decoded && *decoded==samples, "partial compressed/uncompressed ALAC preserves PCM");
             if(i==0) {first=packets.front().data;firstSeq=be16(first,2);}
-            CHECK(be32(packets.front().data,4)==2205u+uint32_t(i)*88, "partial RTP timestamp increment");
+            CHECK(be32(packets.front().data,4)==2205u+uint32_t(i)*shortFrames, "partial RTP timestamp increment");
             if(i<1000) CHECK(packets.size()==1, "bounded short packet pacing");
         }
         // Smaller packets retain the original retransmission time span, rather than aging out at 2 s.

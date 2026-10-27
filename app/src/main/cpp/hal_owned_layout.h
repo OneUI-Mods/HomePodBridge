@@ -9,7 +9,7 @@
 typedef int (*hp_read)(void*, uint64_t, void*, size_t);
 typedef int (*hp_write)(void*, uint64_t, const void*, size_t);
 typedef struct { uint64_t route, sink, target_address, target, reported_frames; } hp_owned_pipe;
-static int hp_manual_reserve(uint64_t n){return n>=56 && n<=800;}
+static int hp_manual_reserve(uint64_t n){return n>=64 && n<=800;}
 static int hp_latency_window(uint64_t n){for(int ms=1;ms<=21;ms++)if(n==(uint64_t)((44100*ms/1000+15)/16)*32)return 1;return 0;}
 static uint64_t hp_pointer(uint64_t value) { return value & UINT64_C(0x00ffffffffffffff); }
 static uint64_t hp_u64(const void* bytes) { uint64_t value; memcpy(&value,bytes,8); return value; }
