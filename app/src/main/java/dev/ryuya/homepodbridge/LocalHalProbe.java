@@ -27,7 +27,10 @@ final class LocalHalProbe {
       long frames = 0, blocks = 0, pendingSum = 0, active = 0, maximumPending = 0, idleBlocks = 0;
       long begin = System.nanoTime();
       while (System.nanoTime() - begin < 10_000_000_000L) {
-        if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0)
+        if (Thread.currentThread().isInterrupted()
+            || BridgeState.capture != null
+            || BridgeState.connected
+            || BridgeState.volume != 0)
           throw new java.io.IOException("Sharing changed during zero-only test");
         int read = pipe.read(pcm);
         if (read != BufferLimits.DEDICATED_FRAMES * 4)
@@ -76,8 +79,10 @@ final class LocalHalProbe {
     } finally {
       boolean cleaned = owner == null && startupCleanupSafe;
       if (owner != null) {
+        boolean interrupted = Thread.interrupted();
         owner.close();
         cleaned = owner.awaitCleanup(5000);
+        if (interrupted) Thread.currentThread().interrupt();
       }
       if (!cleaned) CaptureService.blockUnconfirmedHalCleanup();
       try {
