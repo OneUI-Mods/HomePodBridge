@@ -759,6 +759,26 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   private static void runMain(String[] args) throws Exception {
     rootPreflight();
+    if (args.length == 3 && args[0].equals("export-audioserver")) {
+      if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
+        throw new IllegalArgumentException();
+      byte[] bytes = Files.readAllBytes(Path.of("/system/bin/audioserver"));
+      if (bytes.length > 8388608) throw new SecurityException("Unexpected server image size");
+      String sha =
+          java.util.HexFormat.of()
+              .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+      Path output = Path.of("/data/local/tmp/homepod-audioserver-" + sha + ".elf");
+      if (!Files.exists(output, LinkOption.NOFOLLOW_LINKS)) {
+        Files.write(output, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        Files.setPosixFilePermissions(output, PosixFilePermissions.fromString("r--r--r--"));
+      }
+      System.out.println(
+          new JSONObject()
+              .put("bytes", bytes.length)
+              .put("sha256", sha)
+              .put("readOnlyImage", output.toString()));
+      return;
+    }
     if (args.length == 3
         && (args[0].equals("getter-period") || args[0].equals("getter-period-mixer"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))

@@ -25,6 +25,10 @@ final class HalTransportProbe {
         context, mixer ? "getter-period-mixer" : "getter-period", UUID.randomUUID().toString());
   }
 
+  static String exportAudioServer(Context context) {
+    return execute(context, "export-audioserver", UUID.randomUUID().toString());
+  }
+
   static String policyInput(Context context, boolean routeOnly) {
     return execute(
         context, routeOnly ? "policy-route" : "policy-input", UUID.randomUUID().toString());
