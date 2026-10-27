@@ -110,13 +110,23 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_zeroTransfer(
 // Read only the self-UID policy's dedicated virtual input. No output commands or caller PCM.
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
-    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jboolean forward_zero,jboolean live_capture,jboolean sanitize,jint burst_frames,jboolean event_wait) {
+    JNIEnv* env,jclass,jobjectArray fds,jobjectArray grants,jboolean forward_zero,jboolean live_capture,jboolean sanitize,jint burst_frames,jboolean event_wait,jint direct_output,jint owner_control) {
     const bool live=live_capture==JNI_TRUE;
     const int frames=int(burst_frames);
     const bool events=event_wait==JNI_TRUE;
     if((frames!=22 && frames!=44) || (live && frames!=22)) return nullptr;
     const bool forward=forward_zero==JNI_TRUE || live;
-    if(forward) {
+    const bool direct=direct_output>=0;
+    if(direct) {
+        ucred app{},owner{};socklen_t size=sizeof(ucred);
+        int type=0;socklen_t type_size=sizeof(type);
+        if(!live || getuid()!=0 || owner_control<0 || direct_output==owner_control
+            || getsockopt(direct_output,SOL_SOCKET,SO_TYPE,&type,&type_size)!=0 || type!=SOCK_STREAM
+            || getsockopt(direct_output,SOL_SOCKET,SO_PEERCRED,&app,&size)!=0 || app.uid<10000
+            || getsockopt(owner_control,SOL_SOCKET,SO_PEERCRED,&owner,&size)!=0 || owner.uid!=0)
+            return nullptr;
+    } else if(owner_control!=-1) return nullptr;
+    if(forward && !direct) {
         int flags=fcntl(STDOUT_FILENO,F_GETFL);
         if(flags<0 || fcntl(STDOUT_FILENO,F_SETFL,flags|O_NONBLOCK)<0) return nullptr;
         signal(SIGPIPE,SIG_IGN); // Isolated worker only; never changes the audio service's signals.
@@ -133,7 +143,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
         if(!attached || env->ExceptionCheck() || !hp_empty(queues[size_t(i)])) return nullptr;
     }
     if(live) {
-        auto r=hp_live_capture(queues,sanitize==JNI_TRUE);
+        auto r=hp_live_capture(queues,sanitize==JNI_TRUE,direct ? direct_output:STDOUT_FILENO,owner_control);
         jlong values[]={r.error==0?1:0,r.captured,r.cycles,r.elapsed,r.maximum,r.max_pending,
             r.min_pending==INT64_MAX?-1:r.min_pending,r.error,r.observations?r.sum_pending/r.observations:-1,r.sent,r.idle,r.status_queries,r.captured>0?r.total_input_us/(r.captured/22):0};
         auto result=env->NewLongArray(13);if(result) env->SetLongArrayRegion(result,0,13,values);return result;

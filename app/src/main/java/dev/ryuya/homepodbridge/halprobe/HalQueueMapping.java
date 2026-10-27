@@ -37,7 +37,9 @@ public final class HalQueueMapping {
       boolean live,
       boolean sanitize,
       int frames,
-      boolean eventWait);
+      boolean eventWait,
+      int directOutput,
+      int ownerControl);
 
   static JSONObject inspectInChild(
       List<FrozenHalParcel.Stream> streams, String nonce, ProbeScenario scenario) throws Exception {
@@ -51,6 +53,18 @@ public final class HalQueueMapping {
       java.io.OutputStream sink,
       java.util.function.BooleanSupplier stopped)
       throws Exception {
+    return inspectInChild(streams, nonce, scenario, sink, stopped, null);
+  }
+
+  static JSONObject inspectInChild(
+      List<FrozenHalParcel.Stream> streams,
+      String nonce,
+      ProbeScenario scenario,
+      java.io.OutputStream sink,
+      java.util.function.BooleanSupplier stopped,
+      FileDescriptor directSocket)
+      throws Exception {
+    if (directSocket != null && !scenario.live()) throw new SecurityException();
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException();
@@ -70,8 +84,10 @@ public final class HalQueueMapping {
               scenario.workerMode);
       if (scenario == ProbeScenario.POLICY_FORWARD || scenario.live())
         command.redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")));
+      if (directSocket != null)
+        command.redirectOutput(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")));
       child = command.start();
-      if (scenario == ProbeScenario.POLICY_FORWARD || scenario.live()) {
+      if (directSocket == null && (scenario == ProbeScenario.POLICY_FORWARD || scenario.live())) {
         Process producer = child;
         // Keep stdout open until the resource owner's final cleanup and exit.
         forwardedOutput = sink != null ? sink : new java.io.FileOutputStream(FileDescriptor.out);
@@ -163,6 +179,8 @@ public final class HalQueueMapping {
               metadata.writeLong(grant.extent);
             }
           }
+        metadata.writeBoolean(directSocket != null);
+        if (directSocket != null) descriptors.add(directSocket);
         if (descriptors.size() > 48 || bytes.size() > 8192) throw new SecurityException();
         socket.setFileDescriptorsForSend(descriptors.toArray(new FileDescriptor[0]));
         var output = new DataOutputStream(socket.getOutputStream());
@@ -316,6 +334,17 @@ public final class HalQueueMapping {
                 .put("readBytes", result[1])
                 .put("writtenBytes", result[2]));
       }
+      boolean direct = metadata.readBoolean();
+      int directOutput = -1, ownerControl = -1;
+      if (direct) {
+        if (!scenario.live() || next + 1 != incoming.length) throw new SecurityException();
+        var copy = ParcelFileDescriptor.dup(incoming[next++]);
+        owned.add(copy);
+        directOutput = copy.getFd();
+        var control = ParcelFileDescriptor.dup(socket.getFileDescriptor());
+        owned.add(control);
+        ownerControl = control.getFd();
+      }
       if (next != incoming.length || metadata.available() != 0) throw new SecurityException();
       if (scenario.policyInput()) {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
@@ -327,7 +356,9 @@ public final class HalQueueMapping {
                 scenario.live(),
                 scenario == ProbeScenario.LIVE_ZERO,
                 scenario.live() || scenario == ProbeScenario.POLICY_HALF ? 22 : 44,
-                scenario != ProbeScenario.POLICY_POLL);
+                scenario != ProbeScenario.POLICY_POLL,
+                directOutput,
+                ownerControl);
         if (result == null || result.length != (scenario.live() ? 13 : 11))
           throw new SecurityException("Input read unavailable");
         new DataOutputStream(socket.getOutputStream())
@@ -354,6 +385,7 @@ public final class HalQueueMapping {
                     .put("statusQueries", result[scenario.live() ? 11 : 9])
                     .put("meanInputCommandUs", result[scenario.live() ? 12 : 10])
                     .put("eventWait", scenario != ProbeScenario.POLICY_POLL)
+                    .put("directSocket", direct)
                     .put("errorCode", result[7])
                     .toString());
         return;

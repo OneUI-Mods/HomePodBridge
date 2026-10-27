@@ -30,6 +30,24 @@ int main() {
     while(hp_write_zero_packet(packet_pipe[1],1000000,0)) {assert(++written<1024);}
     assert(written>0 && std::chrono::steady_clock::now()-blocked_begin<std::chrono::milliseconds(200));
     assert(close(packet_pipe[0])==0 && close(packet_pipe[1])==0);
+    int stream[2];assert(socketpair(AF_UNIX,SOCK_STREAM|SOCK_CLOEXEC,0,stream)==0);
+    int original_flags=fcntl(stream[0],F_GETFL);assert(!(original_flags&O_NONBLOCK));
+    assert(hp_capture_owner_alive(stream[0]));
+    assert(hp_write_pcm_packet(stream[0],1000000,80,signal.data(),true,false,22,true));
+    assert(read(stream[1],packet.data(),packet.size())==112);
+    assert(std::equal(signal.begin(),signal.begin()+88,packet.begin()+24));
+    assert(fcntl(stream[0],F_GETFL)==original_flags); // Owner's blocking control read is unchanged.
+    int sends=0;auto socket_begin=std::chrono::steady_clock::now();
+    while(hp_write_pcm_packet(stream[0],1000000,-1,nullptr,true,true,22,true)) assert(++sends<10000);
+    assert(sends>0 && std::chrono::steady_clock::now()-socket_begin<std::chrono::milliseconds(250));
+    assert(close(stream[1])==0);
+    assert(!hp_capture_owner_alive(stream[0]));
+    assert(!hp_write_pcm_packet(stream[0],1000000,-1,nullptr,true,true,22,true)); // No SIGPIPE.
+    assert(close(stream[0])==0);
+    int owner_pair[2];assert(socketpair(AF_UNIX,SOCK_STREAM,0,owner_pair)==0);
+    assert(hp_capture_owner_alive(owner_pair[0]));
+    assert(write(owner_pair[1],"x",1)==1 && !hp_capture_owner_alive(owner_pair[0]));
+    assert(close(owner_pair[0])==0 && close(owner_pair[1])==0);
     assert(hp_realtime_frames(44100,1000000));
     assert(hp_realtime_frames(66176,1500764));
     assert(!hp_realtime_frames(41800,1507894)); // Waiting must not disguise slowed playback.

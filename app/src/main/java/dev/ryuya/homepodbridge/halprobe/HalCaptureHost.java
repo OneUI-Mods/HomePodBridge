@@ -85,7 +85,8 @@ public final class HalCaptureHost {
                     ready.writeUTF(args[0]);
                     ready.writeUTF(policy.address);
                     ready.flush();
-                  }));
+                  },
+                  socket.getFileDescriptor()));
         }
       }
     } catch (Throwable failure) {

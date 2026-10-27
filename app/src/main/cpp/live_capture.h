@@ -9,13 +9,15 @@ struct hp_live_result {
 };
 
 // One output clock, including silence while no playback exists. Idle never consumes/pads HAL input.
-inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero_only) {
+inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero_only,
+                                     int output=STDOUT_FILENO,int owner_control=-1) {
     hp_live_result r{};hp_status_reply reply{};int64_t duration=0;
     if(!hp_stream_once(q[0],q[1],2,0,2,&reply,&duration)) {r.error=1;return r;}
     constexpr int frames=22;
     std::array<uint8_t,frames*4> pcm{};
     auto begin=std::chrono::steady_clock::now();
     while(true) {
+        if(!hp_capture_owner_alive(owner_control)) {r.error=11;break;}
         auto offset=std::chrono::seconds(r.sent/44100)
             +std::chrono::nanoseconds((r.sent%44100)*1000000000/44100);
         std::this_thread::sleep_until(begin+offset);
@@ -36,8 +38,8 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
             pcm.fill(0);r.idle+=frames;
         }
         timespec now{};
-        if(clock_gettime(CLOCK_MONOTONIC,&now)!=0 || !hp_write_pcm_packet(STDOUT_FILENO,
-            int64_t(now.tv_sec)*1000000000+now.tv_nsec,pending,pcm.data(),true,zero_only,frames)) {r.error=10;break;}
+        if(clock_gettime(CLOCK_MONOTONIC,&now)!=0 || !hp_write_pcm_packet(output,
+            int64_t(now.tv_sec)*1000000000+now.tv_nsec,pending,pcm.data(),true,zero_only,frames,owner_control>=0)) {r.error=10;break;}
         r.sent+=frames;++r.cycles;
     }
     r.elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();

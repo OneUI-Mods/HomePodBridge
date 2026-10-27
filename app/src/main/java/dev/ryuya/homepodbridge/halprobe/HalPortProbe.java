@@ -92,6 +92,23 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       java.util.function.BooleanSupplier stopped,
       Ready ready)
       throws Exception {
+    return inputSession(
+        address, nonce, target, forwardZero, live, zeroOnly, pulse, sink, stopped, ready, null);
+  }
+
+  static JSONObject inputSession(
+      String address,
+      UUID nonce,
+      int target,
+      boolean forwardZero,
+      boolean live,
+      boolean zeroOnly,
+      boolean pulse,
+      java.io.OutputStream sink,
+      java.util.function.BooleanSupplier stopped,
+      Ready ready,
+      java.io.FileDescriptor directSocket)
+      throws Exception {
     if (target != 2587
         && target != 928
         && target != 464
@@ -226,7 +243,8 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                             ? diagnosticScenario.get()
                             : ProbeScenario.POLICY_INPUT,
                 sink,
-                stopped));
+                stopped,
+                directSocket));
         report.put("sourceWrittenFrames", source == null ? 0 : source.writtenFrames());
       }
     } catch (Exception failure) {
