@@ -43,7 +43,7 @@ int main(void) {
     assert(!memcmp(original,fixture+sink-base,256)); // A short write is rolled back under exclusion.
     write_failure=2;assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,1856));
     assert(!memcmp(original,fixture+sink-base,256));write_failure=0;
-    const uint64_t experiment_targets[]={928,464,800,752,768,96};
+    const uint64_t experiment_targets[]={928,464,800,752,768,96,48};
     for (size_t i=0;i<sizeof(experiment_targets)/sizeof(experiment_targets[0]);++i) {
         uint64_t target=experiment_targets[i];
         assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
@@ -62,10 +62,10 @@ int main(void) {
         assert(!memcmp(original,fixture+sink-base,256));
     }
     // Every exposed manual reserve and supported producer period: exact writes and restoration.
-    for(uint64_t target=96;target<=800;++target) {
+    for(uint64_t target=48;target<=800;++target) {
         assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
         assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,target));
-        for(int ms=2;ms<=21;++ms) {
+        for(int ms=1;ms<=21;++ms) {
             uint64_t window=(uint64_t)((44100*ms/1000+15)/16)*32;
             assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
             assert(!hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,1,4096,window));

@@ -96,7 +96,7 @@ final class ManualSettingsDialog {
           standardBuffer.setEnabled(!dedicated);
           packet.setEnabled(dedicated);
           try {
-            PhoneTiming applied = PhoneTiming.nearest(number(period, 2.18, 21.04), 96);
+            PhoneTiming applied = PhoneTiming.nearest(number(period, 1.09, 21.04), 96);
             period.setHelperText(
                 context.getString(
                     R.string.manual_period_applied,
@@ -154,8 +154,8 @@ final class ManualSettingsDialog {
                         PhoneTiming timing =
                             backend[0] == 1
                                 ? PhoneTiming.nearest(
-                                    number(period, 2.18, 21.04),
-                                    (int) Math.round(number(reserve, 2.18, 18.14) * 44100 / 1000))
+                                    number(period, 1.09, 21.04),
+                                    (int) Math.round(number(reserve, 1.09, 18.14) * 44100 / 1000))
                                 : saved.phoneTiming();
                         int standard = backend[0] == 1 ? 0 : integer(standardBuffer, 0, 1856);
                         if (standard != 0 && standard != 928 && standard != 1856)

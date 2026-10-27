@@ -16,7 +16,7 @@ public final class SilentProbeSource implements AutoCloseable {
 
   public SilentProbeSource(int periodFrames) {
     boolean supported = false;
-    for (int ms = 2; ms <= 21; ms++)
+    for (int ms = 1; ms <= 21; ms++)
       if (new dev.ryuya.homepodbridge.halprobe.PhoneTiming(ms, 96).periodFrames() == periodFrames)
         supported = true;
     if (!supported) throw new IllegalArgumentException();

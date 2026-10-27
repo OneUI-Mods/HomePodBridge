@@ -245,11 +245,11 @@ static int selftest(void) {
 int main(int argc,char** argv) {
     setvbuf(stdout,NULL,_IOLBF,0);
     if((argc==2 || argc==3) && (!strcmp(argv[1],"selftest") || !strcmp(argv[1],"selftest-mixer"))){
-        if(argc==3){char* e;long v=strtol(argv[2],&e,10);if(*e || v<2 || v>21)return 2;requested_period=(int)v;}
+        if(argc==3){char* e;long v=strtol(argv[2],&e,10);if(*e || v<1 || v>21)return 2;requested_period=(int)v;}
         mixer_mode=!strcmp(argv[1],"selftest-mixer");return selftest();}
     if(getuid()!=0 || argc!=5)return 2;
     mixer_mode=!strcmp(argv[3],"mixer");if(!mixer_mode && strcmp(argv[3],"hal"))return 2;
-    char* e;long requested=strtol(argv[4],&e,10);if(*e || requested<2 || requested>21)return 2;requested_period=(int)requested;
+    char* e;long requested=strtol(argv[4],&e,10);if(*e || requested<1 || requested>21)return 2;requested_period=(int)requested;
     char* end;long pid=strtol(argv[1],&end,10);if(*end || pid<=1 || pid>9999999)return 2;
     uint64_t base=strtoull(argv[2],&end,16);if(*end || base<65536 || base%4096)return 2;
     char path[64],text[8192];snprintf(path,sizeof(path),"/proc/%ld/status",pid);

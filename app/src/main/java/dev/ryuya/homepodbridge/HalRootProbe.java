@@ -182,11 +182,11 @@ public final class HalRootProbe {
     int number = Integer.parseInt(m.group(2));
     String kind = m.group(1);
     if (kind.endsWith("reserve")) {
-      if (number < 96 || number > 800) return -1;
+      if (number < 48 || number > 800) return -1;
       return (kind.startsWith("restore") ? 20000 : 10000) + number;
     }
     boolean supported = false;
-    for (int ms = 2; ms <= 21; ms++)
+    for (int ms = 1; ms <= 21; ms++)
       if (new dev.ryuya.homepodbridge.halprobe.PhoneTiming(ms, 96).latencyWindowFrames() == number)
         supported = true;
     return supported ? (kind.startsWith("restore") ? 40000 : 30000) + number : -1;

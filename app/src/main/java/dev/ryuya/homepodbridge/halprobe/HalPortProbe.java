@@ -228,7 +228,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         && target != 800
         && target != 752
         && target != 768
-        && !(phoneTiming != null && target >= 96 && target <= 800))
+        && !(phoneTiming != null && target >= 48 && target <= 800))
       throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
     probe.externalStopped = stopped;
@@ -424,7 +424,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   private static String reserveOperation(int target, boolean restore) {
-    if (target >= 96 && target <= 800) return (restore ? "restore-reserve-" : "reserve-") + target;
+    if (target >= 48 && target <= 800) return (restore ? "restore-reserve-" : "reserve-") + target;
     String operation =
         switch (target) {
           case 928 -> "brief";
@@ -921,7 +921,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         && (args[0].equals("getter-period")
             || args[0].equals("getter-period-mixer")
             || args[0].equals("getter-period-capture")
-            || args[0].matches("getter-period-step-(?:[2-9]|1[0-9]|2[01])"))) {
+            || args[0].matches("getter-period-step-(?:[1-9]|1[0-9]|2[01])"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
       JSONObject result =

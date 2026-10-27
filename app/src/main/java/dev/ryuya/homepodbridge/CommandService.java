@@ -155,12 +155,32 @@ public final class CommandService extends Service {
       commandStatus = ManualSettingsCheck.run(this);
       return START_NOT_STICKY;
     }
+    if (command.equals("manual-phone-timing")) {
+      var settings = StreamSettings.load(this);
+      if (BridgeState.capture != null
+          || BridgeState.connected
+          || BridgeState.volume != 0
+          || !settings.manualMode()) {
+        commandStatus = "Stop sharing and select manual mode before changing phone timing";
+        return START_NOT_STICKY;
+      }
+      try {
+        var timing =
+            new dev.ryuya.homepodbridge.halprobe.PhoneTiming(
+                intent.getIntExtra("period_ms", -1), intent.getIntExtra("reserve_frames", -1));
+        settings.withPhoneTiming(timing).save(this);
+        commandStatus = "Manual phone timing saved";
+      } catch (IllegalArgumentException invalid) {
+        commandStatus = "Invalid manual phone timing";
+      }
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-local-timing-min")
         || command.equals("probe-local-timing-mid")
         || command.equals("probe-local-timing-max")) {
       var timing =
           command.endsWith("min")
-              ? new dev.ryuya.homepodbridge.halprobe.PhoneTiming(2, 96)
+              ? dev.ryuya.homepodbridge.halprobe.PhoneTiming.fastest()
               : command.endsWith("mid")
                   ? new dev.ryuya.homepodbridge.halprobe.PhoneTiming(11, 448)
                   : new dev.ryuya.homepodbridge.halprobe.PhoneTiming(21, 800);

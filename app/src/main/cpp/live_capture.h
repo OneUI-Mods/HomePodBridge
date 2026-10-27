@@ -18,7 +18,7 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
     auto begin=std::chrono::steady_clock::now();
     // Bounded owned producer periods use two-quantum tolerance. Legacy 928 keeps its clock.
     const int producer_frames=(int)(q[2].view.capacity/4);
-    const bool short_period=producer_frames>=96 && producer_frames<928;
+    const bool short_period=producer_frames>=48 && producer_frames<928;
     const auto producer_quantum=std::chrono::microseconds((producer_frames*1000000LL+44099)/44100);
     int64_t last_produced=reply.observable.frames;
     auto last_production=begin;

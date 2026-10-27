@@ -120,8 +120,8 @@
     <string name="short_audio_packets">Shorter audio packets (experimental)</string>
     <string name="short_audio_packets_description">In dedicated Low latency mode, group about 2 ms of audio per packet instead of 8 ms. Audio remains lossless. This increases packet count and is unverified with HomePod. Turn off if playback fails. Standard capture and high quality keep 8 ms packets. Changes reconnect at 0% volume.</string>
     <string name="short_mixer_period">Shorter phone mixer period (experimental)</string>
-    <string name="short_mixer_period_description">Uses a 2.18 ms phone mixer period on compatible rooted Galaxy devices. Requires Low latency and Dedicated capture. Incompatible routes use fallback capture. This does not set the HomePod delay.</string>
-    <string name="capture_backend_short">Dedicated capture active · 2.18 ms phone mixer</string>
+    <string name="short_mixer_period_description">Uses a 1.09 ms phone mixer period on compatible rooted Galaxy devices. Requires Low latency and Dedicated capture. Incompatible routes use fallback capture. This does not set the HomePod delay.</string>
+    <string name="capture_backend_short">Dedicated capture active · 1.09 ms phone mixer</string>
     <string name="profile_choose">Choose playback profile</string>
     <string name="profile_balanced">Standard</string>
     <string name="profile_manual">Fully manual</string>
@@ -137,10 +137,10 @@
     <string name="manual_send_buffer">Before-send buffer (ms)</string>
     <string name="manual_capture_block">Standard capture read unit (ms)</string>
     <string name="manual_period">Phone mixer period (ms)</string>
-    <string name="manual_period_help">2.18–21.04 ms. Rounded to the closest supported period.</string>
-    <string name="manual_period_applied">2.18–21.04 ms. Applied: %1$.2f ms (%2$d frames).</string>
+    <string name="manual_period_help">1.09–21.04 ms. Rounded to the closest supported period.</string>
+    <string name="manual_period_applied">1.09–21.04 ms. Applied: %1$.2f ms (%2$d frames).</string>
     <string name="manual_reserve">Capture reserve target (ms)</string>
-    <string name="manual_reserve_help">2.18–18.14 ms (96–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
+    <string name="manual_reserve_help">1.09–18.14 ms (48–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
     <string name="manual_observed_queue">The earlier 1.18–10.50 ms values were measured average queued audio. They vary with playback and load; the reserve target is a separate setting.</string>
     <string name="manual_dedicated_read">Dedicated read unit: 0.50 ms (22 frames, fixed).</string>
     <string name="manual_standard_buffer">Standard phone buffer target (frames)</string>
