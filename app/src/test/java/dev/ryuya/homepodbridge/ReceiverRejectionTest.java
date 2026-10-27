@@ -6,6 +6,20 @@ import org.junit.Test;
 
 public class ReceiverRejectionTest {
   @Test
+  public void userNoticeDistinguishesRejectionCompatibilityAndLastAttempt() {
+    assertEquals(
+        R.string.receiver_request_rejected,
+        new ReceiverRejection(400, true).messageResource(false));
+    assertEquals(
+        R.string.receiver_request_compatibility,
+        new ReceiverRejection(400, false).messageResource(true));
+    assertEquals(
+        R.string.receiver_request_last_retry,
+        new ReceiverRejection(400, false).messageResource(false));
+    assertEquals(0, ReceiverRejection.NONE.messageResource(false));
+  }
+
+  @Test
   public void receiverReplyDistinguishesRetryAndTerminalRefusal() {
     assertEquals(
         new ReceiverRejection(400, false), ReceiverRejection.fromNative(new int[] {400, 0}));

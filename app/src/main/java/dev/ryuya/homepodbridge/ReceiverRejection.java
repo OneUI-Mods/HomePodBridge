@@ -38,13 +38,16 @@ record ReceiverRejection(int code, boolean terminal) {
   }
 
   String message(Context context, boolean connected) {
-    if (code == 0) return "";
-    return context.getString(
-        terminal
-            ? R.string.receiver_request_rejected
-            : connected
-                ? R.string.receiver_request_compatibility
-                : R.string.receiver_request_last_retry,
-        code);
+    int resource = messageResource(connected);
+    return resource == 0 ? "" : context.getString(resource, code);
+  }
+
+  int messageResource(boolean connected) {
+    if (code == 0) return 0;
+    return terminal
+        ? R.string.receiver_request_rejected
+        : connected
+            ? R.string.receiver_request_compatibility
+            : R.string.receiver_request_last_retry;
   }
 }
