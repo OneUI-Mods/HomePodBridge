@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -49,6 +50,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private View connectionTimingCard;
   private LinearLayout diagnosticsDetails;
   private LinearLayout speakers;
+  private TextView speakerHint;
   private Button share;
   private int textColor;
   private int cardColor;
@@ -248,7 +250,29 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
               MaterialColors.getColor(share, com.google.android.material.R.attr.colorOnPrimary)
             }));
     ((MaterialButton) share).setStrokeWidth(0);
-    body.addView(button(getString(R.string.refresh), view -> refresh()));
+    LinearLayout speakerHeader = new LinearLayout(this);
+    speakerHeader.setGravity(android.view.Gravity.CENTER_VERTICAL);
+    TextView speakerTitle = label(getString(R.string.speaker_section), 18);
+    speakerTitle.setTypeface(null, Typeface.BOLD);
+    androidx.core.view.ViewCompat.setAccessibilityHeading(speakerTitle, true);
+    speakerHeader.addView(speakerTitle, new LinearLayout.LayoutParams(0, -2, 1));
+    MaterialButton search = new MaterialButton(this);
+    search.setText(R.string.speaker_search);
+    search.setContentDescription(getString(R.string.refresh));
+    search.setAllCaps(false);
+    search.setTextColor(
+        controlColors(MaterialColors.getColor(search, androidx.appcompat.R.attr.colorPrimary), 97));
+    search.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
+    search.setStrokeWidth(0);
+    search.setMinHeight(dp(48));
+    search.setIconResource(R.drawable.ic_search);
+    search.setIconSize(dp(18));
+    search.setIconTint(search.getTextColors());
+    search.setOnClickListener(view -> refresh());
+    speakerHeader.addView(search, new LinearLayout.LayoutParams(-2, -2));
+    body.addView(speakerHeader);
+    speakerHint = label("", 14);
+    body.addView(speakerHint);
     speakers = new LinearLayout(this);
     speakers.setOrientation(LinearLayout.VERTICAL);
     body.addView(speakers);
@@ -334,6 +358,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     syncSettings();
     updateVolumeControls();
     updatePipeline();
+    updateSpeakers();
     setContentView(root);
   }
 
@@ -468,6 +493,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
           routes,
           new RouteDiscoveryPreference.Builder(List.of(HomePodRoutes.FEATURE), true).build());
     }
+    HomePodRoutes.ensureDiscovery();
     if (BridgeState.receivers.isEmpty()) {
       BridgeState.status = R.string.searching;
       changed();
@@ -571,36 +597,98 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
             ? R.string.system_connecting
             : RootConnector.available() ? R.string.system_ready : R.string.system_missing);
     updateVolumeControls();
+    updateSpeakers();
+  }
+
+  private void updateSpeakers() {
+    boolean ready = BridgeState.capture != null && !awaitingSystemBridge;
+    speakerHint.setText(ready ? R.string.speaker_choose_hint : R.string.speaker_enable_hint);
+    speakerHint.setVisibility(
+        BridgeState.receivers.isEmpty() || BridgeState.selected != null ? View.GONE : View.VISIBLE);
     speakers.removeAllViews();
+    if (BridgeState.receivers.isEmpty()) {
+      speakers.addView(card(label(getString(R.string.speaker_empty), 16)));
+      return;
+    }
     for (Receiver receiver : BridgeState.receivers) {
-      Button speaker =
-          button(
-              receiver.name(),
-              view -> {
-                if (BridgeState.capture == null) {
-                  toast(R.string.route_not_ready);
-                  requestSharing();
-                  return;
-                }
-                if (HomePodRoutes.available()) {
-                  HomePodRoutes.selectFromSystem(BridgeState.MUSIC, receiver.id());
-                } else {
-                  BridgeState.capture.select(
-                      receiver,
-                      success -> {
-                        if (!success) {
-                          String reason = BridgeState.receiverRejection.message(this, false);
-                          android.widget.Toast.makeText(
-                                  this,
-                                  reason.isEmpty() ? getString(R.string.connection_failed) : reason,
-                                  android.widget.Toast.LENGTH_LONG)
-                              .show();
-                        }
-                      });
-                }
-              });
-      speaker.setSelected(receiver.equals(BridgeState.selected));
-      speakers.addView(speaker);
+      boolean selected =
+          receiver.id().equals(BridgeState.selected == null ? null : BridgeState.selected.id());
+      boolean connected = selected && BridgeState.connected;
+      LinearLayout row = new LinearLayout(this);
+      row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+      ImageView icon = new ImageView(this);
+      icon.setImageResource(R.drawable.ic_speaker);
+      icon.setImageTintList(ColorStateList.valueOf(textColor));
+      icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      LinearLayout.LayoutParams iconLayout = new LinearLayout.LayoutParams(dp(32), dp(32));
+      iconLayout.setMarginEnd(dp(16));
+      row.addView(icon, iconLayout);
+      LinearLayout details = new LinearLayout(this);
+      details.setOrientation(LinearLayout.VERTICAL);
+      TextView name = label(receiver.name(), 18);
+      name.setTypeface(null, Typeface.BOLD);
+      name.setPadding(0, dp(8), 0, dp(2));
+      details.addView(name);
+      TextView state =
+          label(
+              getString(
+                  connected
+                      ? R.string.speaker_connected
+                      : selected ? R.string.speaker_connecting : R.string.speaker_available),
+              14);
+      state.setPadding(0, 0, 0, dp(8));
+      if (selected)
+        state.setTextColor(MaterialColors.getColor(state, androidx.appcompat.R.attr.colorPrimary));
+      details.addView(state);
+      LinearLayout.LayoutParams detailsLayout = new LinearLayout.LayoutParams(0, -2, 1);
+      detailsLayout.setMarginEnd(dp(12));
+      row.addView(details, detailsLayout);
+      if (!selected) {
+        Button connect =
+            button(getString(R.string.speaker_connect), view -> connectSpeaker(receiver));
+        connect.setContentDescription(
+            getString(R.string.speaker_connect_description, receiver.name()));
+        connect.setEnabled(ready);
+        connect.setMinWidth(dp(64));
+        connect.setMinHeight(dp(48));
+        connect.setPadding(dp(12), dp(8), dp(12), dp(8));
+        row.addView(connect, new LinearLayout.LayoutParams(-2, -2));
+      } else if (connected) {
+        ImageView check = new ImageView(this);
+        check.setImageResource(R.drawable.ic_check);
+        check.setImageTintList(
+            ColorStateList.valueOf(
+                MaterialColors.getColor(check, androidx.appcompat.R.attr.colorPrimary)));
+        check.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(check, new LinearLayout.LayoutParams(dp(24), dp(24)));
+      }
+      MaterialCardView device = card(row);
+      if (selected) {
+        device.setStrokeWidth(dp(2));
+        device.setStrokeColor(
+            MaterialColors.getColor(device, androidx.appcompat.R.attr.colorPrimary));
+      }
+      speakers.addView(device);
+    }
+  }
+
+  private void connectSpeaker(Receiver receiver) {
+    if (BridgeState.capture == null || awaitingSystemBridge) return;
+    if (HomePodRoutes.available()) {
+      HomePodRoutes.selectFromSystem(BridgeState.MUSIC, receiver.id());
+    } else {
+      BridgeState.capture.select(
+          receiver,
+          success -> {
+            if (!success) {
+              String reason = BridgeState.receiverRejection.message(this, false);
+              Toast.makeText(
+                      this,
+                      reason.isEmpty() ? getString(R.string.connection_failed) : reason,
+                      Toast.LENGTH_LONG)
+                  .show();
+            }
+          });
     }
   }
 

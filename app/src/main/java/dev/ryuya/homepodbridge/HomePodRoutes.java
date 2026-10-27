@@ -22,6 +22,10 @@ public final class HomePodRoutes extends MediaRoute2ProviderService
     return active != null && !active.destroyed;
   }
 
+  static void ensureDiscovery() {
+    if (available() && active.discovery != null) active.discovery.start();
+  }
+
   static void selectFromSystem(String packageName, String routeId) {
     if (available()) active.onCreateSession(REQUEST_ID_NONE, packageName, routeId, null);
   }
