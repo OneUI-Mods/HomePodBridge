@@ -465,6 +465,7 @@ public final class CommandService extends Service {
     writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
     writer.println("networkPriorityPreference=" + NetworkSettings.load(this).priority());
     writer.println("networkTiming=" + java.util.Arrays.toString(NativeSender.network()));
+    writer.println("senderPipeline=" + java.util.Arrays.toString(NativeSender.pipeline()));
     writer.println(
         "wifiRequest="
             + (BridgeState.networkTiming == null ? -1 : BridgeState.networkTiming.wifiRequest()));
