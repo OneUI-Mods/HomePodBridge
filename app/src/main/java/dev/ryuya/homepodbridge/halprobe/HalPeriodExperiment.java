@@ -32,7 +32,7 @@ final class HalPeriodExperiment implements AutoCloseable {
     if (bytes.length > 1048576
         || !HexFormat.of()
             .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
-            .equals("f768e043022b65ced5df7524f7084d7a7d5ad36b01cb889ad5703b427c7904aa"))
+            .equals("a1a8831eab9808a9568e3052c9a3a7aa41c8b9e65e598a6005364637a4f6c283"))
       throw new SecurityException("Unverified getter trial executable");
     directory =
         Files.createTempDirectory(
@@ -186,7 +186,12 @@ final class HalPeriodExperiment implements AutoCloseable {
       }
       boolean restored = false;
       for (int i = 0; i < 60; i++) {
-        restored = baseline.equals(state.snapshot().toString());
+        try {
+          restored = baseline.equals(state.snapshot().toString());
+        } catch (Exception unavailable) {
+          result.put("moduleUnavailable", true);
+          break;
+        }
         if (restored) break;
         Thread.sleep(50);
       }

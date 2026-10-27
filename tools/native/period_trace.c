@@ -70,7 +70,7 @@ static int detach_all(void) {
             siginfo_t info;struct user_pt_regs regs;
             if(ptrace(PTRACE_GETSIGINFO,t->tid,NULL,&info)==0 && info.si_code==TRAP_HWBKPT
                 && regset(t->tid,0,NT_PRSTATUS,&regs,sizeof(regs)) && regs.pc==getter_address) {
-                regs.pc=getter_address+4;
+                regs.pc=getter_address+4;regs.pstate&=~(uint64_t)PSR_BTYPE_MASK;
                 if(!regset(t->tid,1,NT_PRSTATUS,&regs,sizeof(regs)))clean=0;
                 else t->signal=0;
             }
@@ -153,6 +153,8 @@ static int run(pid_t pid,uint64_t address,int selftest) {
                 if(accept && valid && config[0]>0 && (config[1]==3 || config[1]==4)) {
                     regs.regs[0]=2;regs.pc=address+8;++changed;
                 } else regs.pc=address+4; // Original BTI is a no-op; execute the original mov/ret.
+                // Advancing over BTI must reproduce its BTYPE clearing semantics.
+                regs.pstate&=~(uint64_t)PSR_BTYPE_MASK;
                 if(!regset(tid,1,NT_PRSTATUS,&regs,sizeof(regs))){ok=0;break;}
             } else t->signal=sig;
         } else t->signal=sig;
@@ -163,10 +165,11 @@ static int run(pid_t pid,uint64_t address,int selftest) {
     return ok && clean ? 0:1;
 }
 __attribute__((naked,noinline)) static int dummy(void* module __attribute__((unused)),const void* config __attribute__((unused))) {
-    __asm__("bti c\nmov w0,#21\nret");
+    __asm__("mov w0,#21\nret");
 }
+static int(*volatile getter)(void*,const void*)=dummy;
 static void* dummy_worker(void* unused) {
-    (void)unused;int config[2]={123,3};return (void*)(intptr_t)dummy(NULL,config);
+    (void)unused;int config[2]={123,3};return (void*)(intptr_t)getter(NULL,config);
 }
 static volatile sig_atomic_t got_signal;
 static void usr1(int signal) { (void)signal;++got_signal; }
@@ -177,11 +180,11 @@ static int selftest(void) {
         close(ready[0]);close(go[1]);char x='r';write(ready[1],&x,1);read(go[0],&x,1);
         int a[2]={123,3},b[2]={124,3};
         signal(SIGUSR1,usr1);raise(SIGUSR1);
-        int first=dummy(NULL,a),second=dummy(NULL,b);
+        int first=getter(NULL,a),second=getter(NULL,b);
         pthread_t worker;void* worker_result=NULL;
         if(pthread_create(&worker,NULL,dummy_worker,NULL)!=0)_exit(4);
         pthread_join(worker,&worker_result);
-        read(go[0],&x,1);int restored=dummy(NULL,a);
+        read(go[0],&x,1);int restored=getter(NULL,a);
         printf("CHILD first=%d foreign=%d clone=%ld restored=%d signal=%d\n",first,second,(long)worker_result,restored,got_signal);fflush(stdout);
         _exit(first==2 && second==21 && (intptr_t)worker_result==2 && restored==21 && got_signal==1?0:3);
     }
