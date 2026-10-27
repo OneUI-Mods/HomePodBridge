@@ -359,35 +359,40 @@ public final class HalQueueMapping {
                 scenario != ProbeScenario.POLICY_POLL,
                 directOutput,
                 ownerControl);
-        if (result == null || result.length != (scenario.live() ? 13 : 11))
+        if (result == null || result.length != (scenario.live() ? 13 : 16))
           throw new SecurityException("Input read unavailable");
-        new DataOutputStream(socket.getOutputStream())
-            .writeUTF(
-                new JSONObject()
-                    .put("mappedQueues", 3)
-                    .put(
-                        "framesPerBurst",
-                        scenario.live() || scenario == ProbeScenario.POLICY_HALF ? 22 : 44)
-                    .put("passed", result[0] == 1)
-                    .put("capturedFrames", result[1])
-                    .put("cycles", result[2])
-                    .put("elapsedUs", result[3])
-                    .put(
-                        "effectiveFramesPerSecond",
-                        result[3] > 0 ? result[1] * 1000000 / result[3] : 0)
-                    .put("availabilityGated", true)
-                    .put("maximumInputCommandUs", result[4])
-                    .put("maximumPendingFrames", result[5])
-                    .put("minimumPendingFrames", result[6])
-                    .put("meanPendingFrames", result[8])
-                    .put("sentFrames", scenario.live() ? result[9] : result[1])
-                    .put("idleFrames", scenario.live() ? result[10] : 0)
-                    .put("statusQueries", result[scenario.live() ? 11 : 9])
-                    .put("meanInputCommandUs", result[scenario.live() ? 12 : 10])
-                    .put("eventWait", scenario != ProbeScenario.POLICY_POLL)
-                    .put("directSocket", direct)
-                    .put("errorCode", result[7])
-                    .toString());
+        JSONObject report =
+            new JSONObject()
+                .put("mappedQueues", 3)
+                .put(
+                    "framesPerBurst",
+                    scenario.live() || scenario == ProbeScenario.POLICY_HALF ? 22 : 44)
+                .put("passed", result[0] == 1)
+                .put("capturedFrames", result[1])
+                .put("cycles", result[2])
+                .put("elapsedUs", result[3])
+                .put(
+                    "effectiveFramesPerSecond", result[3] > 0 ? result[1] * 1000000 / result[3] : 0)
+                .put("availabilityGated", true)
+                .put("maximumInputCommandUs", result[4])
+                .put("maximumPendingFrames", result[5])
+                .put("minimumPendingFrames", result[6])
+                .put("meanPendingFrames", result[8])
+                .put("sentFrames", scenario.live() ? result[9] : result[1])
+                .put("idleFrames", scenario.live() ? result[10] : 0)
+                .put("statusQueries", result[scenario.live() ? 11 : 9])
+                .put("meanInputCommandUs", result[scenario.live() ? 12 : 10])
+                .put("eventWait", scenario != ProbeScenario.POLICY_POLL)
+                .put("directSocket", direct)
+                .put("errorCode", result[7]);
+        if (!scenario.live())
+          report
+              .put("producerEvents", result[11])
+              .put("producerStepMedianFrames", result[12])
+              .put("producerStepP95Frames", result[13])
+              .put("producerIntervalMedianUs", result[14])
+              .put("producerIntervalP95Us", result[15]);
+        new DataOutputStream(socket.getOutputStream()).writeUTF(report.toString());
         return;
       }
       if (scenario == ProbeScenario.EXIT_MAP) {

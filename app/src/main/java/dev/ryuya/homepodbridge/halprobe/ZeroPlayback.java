@@ -10,10 +10,16 @@ final class ZeroPlayback implements AutoCloseable {
   private final java.util.List<SilentProbeSource> sources = new ArrayList<>();
   private final java.util.concurrent.ScheduledExecutorService timer =
       Executors.newSingleThreadScheduledExecutor();
+  private final int periodFrames;
   private SilentProbeSource current;
   private boolean closed;
 
   ZeroPlayback(boolean pulse) {
+    this(pulse, 928);
+  }
+
+  ZeroPlayback(boolean pulse, int periodFrames) {
+    this.periodFrames = periodFrames;
     toggle();
     if (pulse) timer.scheduleAtFixedRate(this::toggle, 3, 3, TimeUnit.SECONDS);
   }
@@ -24,7 +30,7 @@ final class ZeroPlayback implements AutoCloseable {
       current.close();
       current = null;
     } else {
-      current = new SilentProbeSource();
+      current = new SilentProbeSource(periodFrames);
       sources.add(current);
       current.start();
     }

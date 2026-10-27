@@ -201,10 +201,10 @@ final class HalPeriodExperiment implements AutoCloseable {
   }
 
   static JSONObject run() throws Exception {
-    return run(false);
+    return run(false, false);
   }
 
-  static JSONObject run(boolean mixer) throws Exception {
+  static JSONObject run(boolean mixer, boolean capture) throws Exception {
     HalPortProbe.rootPreflight();
     ReadOnlyHalState state = new ReadOnlyHalState();
     String baseline = state.snapshot().toString();
@@ -213,7 +213,8 @@ final class HalPeriodExperiment implements AutoCloseable {
     Object thread = activity.getMethod("systemMain").invoke(null);
     Context context = (Context) activity.getMethod("getSystemContext").invoke(thread);
     HalPeriodExperiment[] owner = {null, null};
-    JSONObject result = new JSONObject().put("playbackCreated", false).put("networkStarted", false);
+    JSONObject result =
+        new JSONObject().put("playbackCreated", capture).put("networkStarted", false);
     try (var policy =
         new RegisteredPolicy(
             context,
@@ -223,8 +224,20 @@ final class HalPeriodExperiment implements AutoCloseable {
               if (mixer) owner[1] = new HalPeriodExperiment(address, true);
             })) {
       result.put("active", state.snapshot());
-      if (owner[1] != null) owner[1].close();
-      owner[0].close();
+      if (capture)
+        result.put(
+            "capture",
+            HalPortProbe.periodCapture(
+                policy.address,
+                java.util.UUID.randomUUID(),
+                () -> {
+                  if (owner[1] != null) owner[1].close();
+                  owner[0].close();
+                }));
+      else {
+        if (owner[1] != null) owner[1].close();
+        owner[0].close();
+      }
       Process dump = new ProcessBuilder("dumpsys", "media.audio_flinger").start();
       byte[] text = dump.getInputStream().readNBytes(1048577);
       if (dump.waitFor(2, TimeUnit.SECONDS) && text.length <= 1048576) {

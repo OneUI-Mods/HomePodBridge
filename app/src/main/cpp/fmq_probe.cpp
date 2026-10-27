@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "fmq_mapped_queue.h"
 #include <array>
+#include <vector>
 #include <cerrno>
 #include "fmq_control.h"
 #include "fmq_zero_transfer.h"
@@ -151,6 +152,19 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     hp_status_reply response{};int64_t duration=0;
     int error=0,cycles=0;int64_t captured=0,maximum=0,max_pending=0,min_pending=INT64_MAX,sum_pending=0;
     int64_t queries=0,total_input_us=0;
+    std::array<uint32_t,4097> producer_steps{};uint64_t producer_events=0;
+    int64_t previous_produced=0,previous_produced_at=0;std::vector<int64_t> producer_intervals;
+    auto observe_producer=[&] {
+        if(response.observable.frames<=previous_produced)return;
+        int64_t stamp=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        int64_t step=response.observable.frames-previous_produced;
+        if(cycles>100 && step>0 && step<=4096) {
+            ++producer_steps[size_t(step)];++producer_events;
+            if(previous_produced_at>0 && producer_intervals.size()<8192)producer_intervals.push_back(stamp-previous_produced_at);
+        }
+        previous_produced=response.observable.frames;previous_produced_at=stamp;
+    };
+
     if(!hp_stream_once(queues[0],queues[1],2,0,2,&response,&duration,events)) error=1;
     std::array<uint8_t,176> input{};
     auto begin=std::chrono::steady_clock::now();
@@ -162,12 +176,14 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
             if(events && response.observable.frames-captured>=frames) break;
             ++queries;
             if(!hp_input_position(queues[0],queues[1],&response,events)) {error=7;break;}
+            observe_producer();
             if(response.observable.frames-captured>=frames) break;
             if(std::chrono::steady_clock::now()-available_begin>=std::chrono::milliseconds(50)) {error=8;break;}
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
         if(error) break;
         if(!hp_empty(queues[2]) || !hp_stream_once(queues[0],queues[1],3,frames*4,3,&response,&duration,events)) {error=2;break;}
+        observe_producer();
         maximum=std::max(maximum,duration);total_input_us+=duration;
         if(!queues[2].view.transfer(input.data(),size_t(frames*4),false)) {error=3;break;}
         if(std::any_of(input.begin(),input.begin()+frames*4,[](uint8_t value){return value!=0;})) {error=4;break;}
@@ -185,9 +201,17 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     for(auto& queue:queues) if(!hp_empty(queue)) error=6;
     auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
     if(error==0 && !hp_realtime_frames(captured,elapsed)) error=9;
+    auto step_percentile=[&](unsigned percent) {
+        uint64_t sum=0,rank=(producer_events*percent+99)/100;
+        for(size_t i=1;i<producer_steps.size();i++){sum+=producer_steps[i];if(sum>=rank && rank>0)return jlong(i);}
+        return jlong(-1);
+    };
+    std::sort(producer_intervals.begin(),producer_intervals.end());
+    auto interval_percentile=[&](unsigned percent){return producer_intervals.empty()?jlong(-1):jlong(producer_intervals[std::min(producer_intervals.size()-1,producer_intervals.size()*percent/100)]);};
     jlong values[]={error==0 && cycles>100 ? 1:0,captured,cycles,elapsed,maximum,max_pending,
-        min_pending==INT64_MAX ? -1:min_pending,error,cycles>100 ? sum_pending/(cycles-100):-1,queries,cycles?total_input_us/cycles:0};
-    auto result=env->NewLongArray(11);
-    if(result) env->SetLongArrayRegion(result,0,11,values);
+        min_pending==INT64_MAX ? -1:min_pending,error,cycles>100 ? sum_pending/(cycles-100):-1,queries,cycles?total_input_us/cycles:0,
+        jlong(producer_events),step_percentile(50),step_percentile(95),interval_percentile(50),interval_percentile(95)};
+    auto result=env->NewLongArray(16);
+    if(result) env->SetLongArrayRegion(result,0,16,values);
     return result;
 }

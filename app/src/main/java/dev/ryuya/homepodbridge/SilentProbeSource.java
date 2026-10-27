@@ -8,6 +8,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Explicit capture-only benchmark source: every byte is zero, never caller-provided audio. */
 public final class SilentProbeSource implements AutoCloseable {
   private final AtomicBoolean closed = new AtomicBoolean();
+  private final int periodFrames;
+
+  public SilentProbeSource() {
+    this(928);
+  }
+
+  public SilentProbeSource(int periodFrames) {
+    if (periodFrames != 928 && periodFrames != 96) throw new IllegalArgumentException();
+    this.periodFrames = periodFrames;
+  }
+
   private AudioTrack track;
   private volatile long writtenFrames;
 
@@ -37,14 +48,14 @@ public final class SilentProbeSource implements AutoCloseable {
                       .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                       .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                       .build())
-              .setBufferSizeInBytes(928 * 4 * 2)
+              .setBufferSizeInBytes(periodFrames * 4 * 2)
               .setTransferMode(AudioTrack.MODE_STREAM)
               .build();
       synchronized (this) {
         if (closed.get()) return;
         track = created;
       }
-      byte[] zeros = new byte[928 * 4];
+      byte[] zeros = new byte[periodFrames * 4];
       created.play();
       while (!closed.get()) {
         int offset = 0;

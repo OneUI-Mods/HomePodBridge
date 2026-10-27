@@ -52,6 +52,12 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("probe-period-capture")) {
+      commandStatus = "Checking fixed-zero input with a short owned mixer period";
+      commands.execute(
+          () -> commandStatus = "HAL period: " + HalTransportProbe.periodCapture(this));
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-export-audioserver")) {
       commandStatus = "Reading the fixed system audio server image";
       commands.execute(

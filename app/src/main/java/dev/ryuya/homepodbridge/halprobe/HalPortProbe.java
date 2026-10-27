@@ -109,12 +109,57 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       Ready ready,
       java.io.FileDescriptor directSocket)
       throws Exception {
+    return inputSession(
+        address,
+        nonce,
+        target,
+        forwardZero,
+        live,
+        zeroOnly,
+        pulse,
+        sink,
+        stopped,
+        ready,
+        directSocket,
+        () -> {},
+        928);
+  }
+
+  static JSONObject periodCapture(String address, UUID nonce, Ready afterOpen) throws Exception {
+    diagnosticScenario.set(ProbeScenario.POLICY_HALF);
+    try {
+      return inputSession(
+          address, nonce, 96, false, false, true, false, null, () -> false, () -> {}, null,
+          afterOpen, 96);
+    } finally {
+      diagnosticScenario.remove();
+    }
+  }
+
+  private static JSONObject inputSession(
+      String address,
+      UUID nonce,
+      int target,
+      boolean forwardZero,
+      boolean live,
+      boolean zeroOnly,
+      boolean pulse,
+      java.io.OutputStream sink,
+      java.util.function.BooleanSupplier stopped,
+      Ready ready,
+      java.io.FileDescriptor directSocket,
+      Ready afterOpen,
+      int sourcePeriodFrames)
+      throws Exception {
+    if (target == 96 && (!zeroOnly || live || sourcePeriodFrames != 96))
+      throw new SecurityException();
     if (target != 2587
         && target != 928
         && target != 464
         && target != 800
         && target != 752
-        && target != 768) throw new IllegalArgumentException();
+        && target != 768
+        && target != 96) throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
     probe.externalStopped = stopped;
     var baseline = probe.snapshot();
@@ -220,6 +265,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       patch = new OwnedHalResources.Patch(connected.id, List.of(deviceConfig), List.of(mix));
       report.put("stream", probe.open(mix, true, connected.minimumFrames));
       report.put("targetFillFrames", target);
+      afterOpen.run();
       if (target != 2587) {
         tuneAttempted = true;
         String tuning = changePolicyReserve(address, reserveOperation(target, false));
@@ -229,7 +275,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       }
       ready.run();
       if (live) startupTimeout.cancel(false);
-      try (var source = !live || zeroOnly ? new ZeroPlayback(pulse) : null) {
+      try (var source = !live || zeroOnly ? new ZeroPlayback(pulse, sourcePeriodFrames) : null) {
         report.put(
             "mapping",
             HalQueueMapping.inspectInChild(
@@ -295,6 +341,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
           case 800 -> "direct";
           case 752 -> "direct-752";
           case 768 -> "direct-768";
+          case 96 -> "tiny-period";
           default -> throw new IllegalArgumentException();
         };
     return restore ? "restore-" + operation : operation;
@@ -780,10 +827,13 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       return;
     }
     if (args.length == 3
-        && (args[0].equals("getter-period") || args[0].equals("getter-period-mixer"))) {
+        && (args[0].equals("getter-period")
+            || args[0].equals("getter-period-mixer")
+            || args[0].equals("getter-period-capture"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
-      JSONObject result = HalPeriodExperiment.run(args[0].endsWith("mixer"));
+      JSONObject result =
+          HalPeriodExperiment.run(!args[0].equals("getter-period"), args[0].endsWith("capture"));
       System.out.println(result);
       System.out.flush();
       if (result.optBoolean("resourcesRestoredExactly")) System.exit(0);

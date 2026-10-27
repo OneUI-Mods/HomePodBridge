@@ -110,10 +110,10 @@ static int thaw(task* tasks,size_t count) {
 JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     JNIEnv* env,jclass type,jint pid,jlong module,jlong mono,jstring registration,jint operation) {
     (void)type;
-    if (getuid()!=0 || pid<=1 || operation<0 || operation>12) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
+    if (getuid()!=0 || pid<=1 || operation<0 || operation>14) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
     // Closed per-route transitions; targets below the normal dedicated 800 are zero-only candidates.
-    const int before[]={0,2587,1856,2587,928,2587,464,2587,800,2587,752,2587,768};
-    const int after[]={0,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587};
+    const int before[]={0,2587,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96};
+    const int after[]={0,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96,2587};
     const char* address=(*env)->GetStringUTFChars(env,registration,NULL);
     if (!address) return NULL;
     memory mem={.fd=-1}; task tasks[256];size_t count=0;uint64_t begin=monotonic_ns();
