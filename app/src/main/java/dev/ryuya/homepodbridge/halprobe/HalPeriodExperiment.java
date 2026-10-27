@@ -16,7 +16,9 @@ import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Closed self-UID, no-playback HAL getter trial. No executable/data bytes are patched. */
+/**
+ * Root-owned virtual-route preparation and zero-only diagnostics; no instruction bytes are patched.
+ */
 final class HalPeriodExperiment implements AutoCloseable {
   private final Path directory;
   private final Process process;
@@ -333,19 +335,24 @@ final class HalPeriodExperiment implements AutoCloseable {
     if (closed) return;
     closed = true;
     stopping = true;
-    process.getOutputStream().close();
-    if (!process.waitFor(3, TimeUnit.SECONDS)) {
-      process.destroyForcibly();
-      process.waitFor(2, TimeUnit.SECONDS);
+    boolean clean = false;
+    try {
+      process.getOutputStream().close();
+      if (!process.waitFor(3, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+        process.waitFor(2, TimeUnit.SECONDS);
+      }
+      control.join(1000);
+      clean =
+          process.exitValue() == 0
+              && transcript
+                  .toString()
+                  .matches("(?s).*DONE hits=[0-9]+ changed=[0-9]+ clean=1 ok=1.*");
+    } finally {
+      if (process.isAlive()) process.destroyForcibly();
+      Files.deleteIfExists(directory.resolve("probe"));
+      Files.deleteIfExists(directory);
     }
-    control.join(1000);
-    boolean clean =
-        process.exitValue() == 0
-            && transcript
-                .toString()
-                .matches("(?s).*DONE hits=[0-9]+ changed=[0-9]+ clean=1 ok=1.*");
-    Files.deleteIfExists(directory.resolve("probe"));
-    Files.deleteIfExists(directory);
     if (!clean) throw new IllegalStateException("Period preparation cleanup unconfirmed");
     cleanupConfirmed = true;
   }

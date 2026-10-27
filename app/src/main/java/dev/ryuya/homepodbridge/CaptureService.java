@@ -332,6 +332,7 @@ public final class CaptureService extends Service {
           setBackend(token, BridgeState.CaptureBackend.FALLBACK);
         }
       }
+      if (generation.get() != token) return;
       if (systemMode && !dedicatedHal) {
         RootConnector.Input opened =
             RootConnector.open(sourcePackage, connectionLifetime, settings, zeroProbe);
