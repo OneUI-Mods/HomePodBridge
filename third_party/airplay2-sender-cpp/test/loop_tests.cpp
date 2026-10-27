@@ -371,6 +371,40 @@ void testRemoteCloseThenReconnect() {
     CHECK(res2.sawTeardown.load(), "second session torn down properly");
 }
 
+void testNetworkOptionsAndEvidence() {
+    g_test="session-owned network priority and kernel evidence";
+    RaopLoop loop;
+    CHECK(loop.networkStatistics()[6]==-1,"closed sockets have no fabricated timing");
+    REQUIRE(loop.setNetworkPriority(true),"configure before opening");
+    REQUIRE(loop.udpBind(RaopUdp::Audio)!=0,"audio UDP bound");
+    CHECK(!loop.setNetworkPriority(false),"live socket policy immutable");
+    auto stats=loop.networkStatistics();CHECK(stats[9]==1,"priority request explicit");
+#if defined(__linux__)
+    CHECK(stats[10]==184 && stats[11]==6,"Linux socket marking read back");
+#endif
+    const sock_t receiver=udpLoopback();REQUIRE(receiver!=kBad,"loopback receiver");
+    const std::string data="audio bytes unchanged";
+    loop.udpSend(RaopUdp::Audio,{"127.0.0.1",localPort(receiver)},
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()),data.size()));
+    REQUIRE(waitReadable(receiver,1000),"same payload delivered");
+    char buffer[128]{};const auto n=recv(receiver,buffer,sizeof(buffer),0);
+    CHECK(n==int(data.size()) && std::string(buffer,size_t(n))==data,"priority/timestamping preserve bytes");
+    RaopSender sender(loop,{});loop.pump(sender,std::chrono::milliseconds(0));
+    stats=loop.networkStatistics();CHECK(stats[0]==1 && stats[1]==0,"UDP handoff counted");
+#if defined(__linux__)
+    CHECK(stats[12]==1 && stats[5]==1 && stats[6]>=0 && stats[8]>=0,"paired local software timestamps available");
+    CHECK(stats[3]>=0,"kernel queue sampled");
+#else
+    CHECK(stats[5]==0 && stats[6]==-1,"unsupported timestamp platform stays unknown");
+#endif
+    loop.udpClose(RaopUdp::Audio);sockClose(receiver);
+    CHECK(loop.networkStatistics()[0]==0 && loop.networkStatistics()[6]==-1,"close removes stale counters/timing");
+    REQUIRE(loop.setNetworkPriority(false),"priority can be disabled after close");
+    REQUIRE(loop.udpBind(RaopUdp::Audio)!=0,"new socket bound");
+    CHECK(loop.networkStatistics()[9]==0 && loop.networkStatistics()[5]==0,"fresh session has no old request or samples");
+    loop.udpClose(RaopUdp::Audio);
+}
+
 void testStopFromCallbackAndRequestStop() {
     g_test = "run() + requestStop()";
     const sock_t lfd = tcpListenLoopback();
@@ -407,6 +441,7 @@ int main() {
     testUnresolvableHost();
     testRemoteCloseThenReconnect();
     testStopFromCallbackAndRequestStop();
+    testNetworkOptionsAndEvidence();
     std::printf("%s: %d/%d checks passed\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_checks - g_failures, g_checks);
 #ifdef _WIN32

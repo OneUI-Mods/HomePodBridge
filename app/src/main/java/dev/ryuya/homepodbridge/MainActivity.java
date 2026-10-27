@@ -277,6 +277,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body = tuningBody;
     body.addView(label(getString(R.string.manual_description), 16));
     body.addView(button(getString(R.string.manual_settings), view -> manualSettings()));
+    body.addView(button(getString(R.string.network_settings), view -> networkSettings()));
     manualSummary = label("", 14);
     body.addView(manualSummary);
     receiverTimingSelection = label("", 14);
@@ -586,6 +587,31 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     }
   }
 
+  private void networkSettings() {
+    int[] selected = {NetworkSettings.load(this).priority() ? 1 : 0};
+    new MaterialAlertDialogBuilder(this)
+        .setTitle(R.string.network_settings)
+        .setSingleChoiceItems(
+            new String[] {getString(R.string.network_normal), getString(R.string.network_priority)},
+            selected[0],
+            (dialog, which) -> selected[0] = which)
+        .setPositiveButton(
+            R.string.apply_settings,
+            (dialog, which) -> {
+              new NetworkSettings(selected[0] == 1).save(this);
+              if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+            })
+        .setNeutralButton(
+            R.string.network_details,
+            (dialog, which) ->
+                new MaterialAlertDialogBuilder(this)
+                    .setMessage(R.string.network_priority_description)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show())
+        .setNegativeButton(android.R.string.cancel, null)
+        .show();
+  }
+
   private String millis(long micros) {
     return micros < 0
         ? getString(R.string.diagnostics_unknown)
@@ -709,8 +735,24 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
             targets == null
                 ? getString(R.string.diagnostics_unknown)
                 : millis(targets[1] * 1000L)));
+    NetworkTiming network =
+        BridgeState.networkTiming == null ? new NetworkTiming(null, 0) : BridgeState.networkTiming;
     networkTiming.setText(
-        getString(R.string.diagnostics_network, millis(t.sender(11)), millis(t.sender(12))));
+        getString(R.string.diagnostics_network, millis(t.sender(11)), millis(t.sender(12)))
+            + "\n\n"
+            + getString(
+                R.string.diagnostics_network_tx,
+                millis(network.transit(6)),
+                millis(network.transit(7)),
+                millis(network.transit(8)),
+                network.value(3) < 0
+                    ? getString(R.string.diagnostics_unknown)
+                    : Long.toString(network.value(3)),
+                Math.max(0, network.value(1)),
+                Math.max(0, network.value(0)),
+                Math.max(0, network.value(5)),
+                getString(network.priorityResource()),
+                getString(network.wifiResource())));
   }
 
   private TextView label(String value, int size) {

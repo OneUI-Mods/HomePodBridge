@@ -51,6 +51,9 @@ public:
     void clearStopRequest() { stop_.store(false); }
     // Kernel-smoothed control TCP RTT/deviation; not UDP one-way or receiver rendering time.
     std::array<int64_t, 2> tcpRttMicros(RaopTcp channel) const;
+    // Configure before opening UDP sockets. Only this session's sockets are marked.
+    bool setNetworkPriority(bool enabled);
+    std::array<int64_t,14> networkStatistics() const;
 
     // RaopIo
     void tcpConnect(RaopTcp ch, const std::string& host, uint16_t port) override;

@@ -1,0 +1,57 @@
+package dev.ryuya.homepodbridge;
+
+import android.app.ActivityManager;
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
+import android.net.wifi.WifiManager;
+import android.os.PowerManager;
+
+/** Public, session-owned Wi-Fi request. Held is not evidence of radio/driver activation. */
+final class NetworkLease implements AutoCloseable {
+  private WifiManager.WifiLock lock;
+
+  NetworkLease(Context context, boolean requested) {
+    if (!requested || !onWifi(context)) return;
+    try {
+      WifiManager wifi = context.getApplicationContext().getSystemService(WifiManager.class);
+      if (wifi != null) {
+        lock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "HomePodBridge:audio");
+        lock.setReferenceCounted(false);
+        lock.acquire();
+      }
+    } catch (RuntimeException unsupported) {
+      close();
+    }
+  }
+
+  int status(Context context) {
+    if (lock == null || !lock.isHeld()) return 0;
+    var process = new ActivityManager.RunningAppProcessInfo();
+    ActivityManager.getMyMemoryState(process);
+    boolean eligible =
+        onWifi(context)
+            && context.getSystemService(PowerManager.class).isInteractive()
+            && process.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+    return eligible ? 2 : 1;
+  }
+
+  private static boolean onWifi(Context context) {
+    var manager = context.getSystemService(ConnectivityManager.class);
+    var network = manager.getBoundNetworkForProcess();
+    var capabilities = network == null ? null : manager.getNetworkCapabilities(network);
+    return capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+  }
+
+  @Override
+  public void close() {
+    WifiManager.WifiLock current = lock;
+    lock = null;
+    if (current != null && current.isHeld()) {
+      try {
+        current.release();
+      } catch (RuntimeException ignored) {
+      }
+    }
+  }
+}

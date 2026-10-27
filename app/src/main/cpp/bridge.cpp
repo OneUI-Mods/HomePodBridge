@@ -27,6 +27,7 @@ struct Engine {
     std::string statistics;
     jint timing[8] = {0, 0, -1, 0, 0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
     jint rejection[2] = {0, 0}; // receiver stream response / terminal refusal
+    jlong network[14] = {0,0,0,-1,-1,0,-1,-1,-1,0,-1,-1,0,0};
     jlong pipeline[13] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1};
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
@@ -62,7 +63,7 @@ void closeEngine() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring host,
-        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jint packetFrames, jboolean compressedAudio, jboolean adaptiveBuffer) {
+        jint port, jstring name, jstring deviceId, jstring identity, jint volumeLimit, jint bufferMs, jint latencyMs, jboolean independentTiming, jint receiverMinimumMs, jint receiverMaximumMs, jint packetFrames, jboolean compressedAudio, jboolean adaptiveBuffer, jboolean networkPriority) {
     closeEngine();
     auto engine = std::make_shared<Engine>();
     auto ip = utf(env, host), label = utf(env, name), id = utf(env, deviceId);
@@ -72,11 +73,12 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
         std::lock_guard<std::mutex> lock(engineMutex);
         current = engine;
     }
-    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, packetFrames, compressedAudio, adaptiveBuffer] {
+    engine->worker = std::thread([engine, ip, label, id, sourceId, port, volumeLimit, bufferMs, latencyMs, independentTiming, receiverMinimumMs, receiverMaximumMs, packetFrames, compressedAudio, adaptiveBuffer, networkPriority] {
         try {
             if (setpriority(PRIO_PROCESS, 0, -19) != 0)
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
             fxchain::RaopLoop loop;
+            loop.setNetworkPriority(networkPriority == JNI_TRUE);
             fxchain::RaopEvents events;
             events.receiverRejected = [engine](int status, bool retry) {
                 std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
@@ -149,6 +151,8 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         static_cast<jlong>(sender.bufferingFrames()),
                         static_cast<jlong>(engine->backpressure.load()), static_cast<jlong>(sender.audioPacketFrames()), rtt[0], rtt[1]};
                     std::copy(std::begin(pipeline), std::end(pipeline), engine->pipeline);
+                    const auto network=loop.networkStatistics();
+                    std::copy(network.begin(),network.end(),engine->network);
                     engine->statistics = "packetFrames=" + std::to_string(sender.audioPacketFrames())
                         + " queueFrames=" + std::to_string(engine->ring.availableRead() / 2)
                         + " requestedLatencyMs=" + std::to_string(engine->timing[0])
@@ -173,6 +177,16 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                         + " lastHandoffLeadMicros=" + std::to_string(sender.lastHandoffLeadMicros())
                         + " lateHandoffPackets=" + std::to_string(sender.lateHandoffPackets())
                         + " measuredHandoffPackets=" + std::to_string(sender.measuredHandoffPackets());
+                    engine->statistics += " udpSends=" + std::to_string(network[0])
+                        + " udpErrors=" + std::to_string(network[1])
+                        + " sendCallMaxUs=" + std::to_string(network[2])
+                        + " udpOutQueueBytes=" + std::to_string(network[3])
+                        + " txSamples=" + std::to_string(network[5])
+                        + " callToDriverP95Us=" + std::to_string(network[7])
+                        + " schedulerToDriverP95Us=" + std::to_string(network[8])
+                        + " priorityRequested=" + std::to_string(network[9])
+                        + " socketTos=" + std::to_string(network[10])
+                        + " socketPriority=" + std::to_string(network[11]);
                     nextStatistics = now + std::chrono::seconds(1);
                 }
             }
@@ -228,6 +242,13 @@ Java_dev_ryuya_homepodbridge_NativeSender_receiverRejection(JNIEnv* env, jclass)
     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
     env->SetIntArrayRegion(result, 0, 2, engine->rejection);
     return result;
+}
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_network(JNIEnv* env, jclass) {
+    auto engine=getEngine();if(!engine)return nullptr;
+    auto result=env->NewLongArray(14);if(!result)return nullptr;
+    std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+    env->SetLongArrayRegion(result,0,14,engine->network);return result;
 }
 extern "C" JNIEXPORT jstring JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_diagnostic(JNIEnv* env, jclass) {

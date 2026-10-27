@@ -54,6 +54,15 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("network-priority-on") || command.equals("network-priority-off")) {
+      if (BridgeState.capture != null || BridgeState.connected) {
+        commandStatus = "Stop sharing before changing network priority";
+        return START_NOT_STICKY;
+      }
+      new NetworkSettings(command.endsWith("on")).save(this);
+      commandStatus = "Network priority preference saved";
+      return START_NOT_STICKY;
+    }
     if (command.equals("measure-acoustic") || command.equals("measure-acoustic-paired")) {
       boolean paired = command.equals("measure-acoustic-paired");
       int volume = intent.getIntExtra("volume", -1);
@@ -454,6 +463,11 @@ public final class CommandService extends Service {
     }
     writer.println("Command service: " + commandStatus);
     writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
+    writer.println("networkPriorityPreference=" + NetworkSettings.load(this).priority());
+    writer.println("networkTiming=" + java.util.Arrays.toString(NativeSender.network()));
+    writer.println(
+        "wifiRequest="
+            + (BridgeState.networkTiming == null ? -1 : BridgeState.networkTiming.wifiRequest()));
     var receiverResponse =
         BridgeState.connected ? BridgeState.receiverRejection : ReceiverRejection.load(this);
     writer.println(

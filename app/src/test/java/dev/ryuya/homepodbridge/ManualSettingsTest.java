@@ -72,6 +72,7 @@ public final class ManualSettingsTest {
     assertTrue(low.effectiveShortMixerPeriod());
     assertFalse(low.effectiveShortAudioPackets());
     assertFalse(low.effectiveAdaptiveBuffer());
+    assertFalse(low.compressedAudio());
     assertEquals(0, low.effectiveBufferMs());
     assertEquals(50, low.requestedPresentationMs());
     var balanced = base.preset(0);

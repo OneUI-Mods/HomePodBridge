@@ -656,7 +656,7 @@ record StreamSettings(
     var base = withProfile(selected);
     if (selected == 0) base = base.withBuffers(150, 10, 1500);
     return base.withAdaptiveBuffer(false)
-        .withCompression(selected == 1)
+        .withCompression(false)
         .withDedicatedCapture(selected == 1)
         .withShortMixerPeriod(selected == 1)
         .withShortAudioPackets(false)

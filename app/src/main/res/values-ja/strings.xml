@@ -1,4 +1,17 @@
 <resources>
+    <string name="network_settings">ネットワーク設定</string>
+    <string name="network_normal">通常のネットワーク優先度</string>
+    <string name="network_priority">音声のネットワーク優先を要求</string>
+    <string name="network_details">詳細</string>
+    <string name="network_unknown">未計測</string>
+    <string name="network_priority_description">この接続の音声パケットの優先と、Wi-Fiの低遅延動作を要求します。ルーターやドライバによって対応が異なります。Wi-Fiの要求が作用するのは、画面点灯中かつこのアプリが前面にある時だけです。他のアプリを使用中は作用しない場合があります。要求の保持は無線側への適用を保証しません。取り込み・圧縮・受信側の設定を維持します。変更時は音量0%で再接続します。</string>
+    <string name="network_priority_accepted">端末が優先指定を受理（ルーター側の対応は別）</string>
+    <string name="network_priority_unavailable">優先要求中（一部の指定が未受理）</string>
+    <string name="network_wifi_off">Wi-Fi低遅延ロック：要求なし</string>
+    <string name="network_wifi_unavailable">Wi-Fi低遅延ロック：利用不可または未計測</string>
+    <string name="network_wifi_waiting">Wi-Fi要求を保持中（Wi-Fi接続・前面・画面点灯の条件待ち）</string>
+    <string name="network_wifi_eligible">Wi-Fi要求を保持中（Wi-Fi接続・前面・画面点灯の条件成立／無線側の適用は未確認）</string>
+    <string name="diagnostics_network_tx">端末内のUDP送信\nアプリ投入→ドライバ 中央値／p95：%1$s／%2$s\nカーネルの送信待ち→ドライバ p95：%3$s\nカーネル送信キュー（バイト）：%4$s\nUDP送信失敗／呼び出し：%5$d／%6$d\nタイムスタンプ標本数：%7$d\n%8$s\n%9$s\nドライバのソフトウェア時刻には、無線の空中時間やHomePod到着までの時間は含みません。往復時間とキュー容量は片道の音声遅延ではありません。</string>
     <string name="receiver_request_rejected">HomePodが音声接続の要求を拒否しました（応答 %1$d）。音声設定と受信機のアクセス許可を確認してください。</string>
     <string name="receiver_request_compatibility">HomePodが要求した設定を拒否しました（応答 %1$d）。互換設定で接続中です。要求した待ち時間範囲は適用されていません。</string>
     <string name="receiver_request_last_retry">前回の接続ではHomePodが要求した設定を拒否したため（応答 %1$d）、互換設定で再試行しました。</string>

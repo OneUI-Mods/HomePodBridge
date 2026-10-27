@@ -208,6 +208,7 @@ public final class CaptureService extends Service {
     BridgeState.receiverRejection = ReceiverRejection.NONE;
     ReceiverRejection.NONE.save(this);
     BridgeState.pipeline = null;
+    BridgeState.networkTiming = null;
     BridgeState.activePhoneTiming = null;
     BridgeState.phonePath = null;
     zeroProbeActive = zeroProbe;
@@ -246,11 +247,13 @@ public final class CaptureService extends Service {
     Network previousNetwork = connectivity.getBoundNetworkForProcess();
     boolean networkBound = false;
     LocalRoute localRoute = null;
+    NetworkLease networkLease = null;
     OwnedAudioPath devicePath = null;
     boolean started = false;
     long capturedFrames = 0;
     long signalBlocks = 0;
     StreamSettings savedSettings = StreamSettings.load(this);
+    NetworkSettings networkSettings = NetworkSettings.load(this);
     StreamSettings settings =
         forceDedicated
             ? savedSettings.withWholeDevice(testWhole)
@@ -292,6 +295,7 @@ public final class CaptureService extends Service {
         }
       }
       if (!networkBound) localRoute = LocalRoute.acquire(receiver.host());
+      networkLease = new NetworkLease(this, networkSettings.priority());
       PcmPipe rootInput = null;
       if (dedicatedHal && settings.wholeDevice()) {
         try {
@@ -437,7 +441,8 @@ public final class CaptureService extends Service {
           settings.requestedReceiverMaximumMs(),
           settings.packetFramesForBackend(dedicatedHal),
           settings.compressedAudio(),
-          settings.effectiveAdaptiveBuffer());
+          settings.effectiveAdaptiveBuffer(),
+          networkSettings.priority());
       ByteBuffer pcm =
           ByteBuffer.allocateDirect(settings.samplesPerRead() * 2).order(ByteOrder.LITTLE_ENDIAN);
       long deadline = System.nanoTime() + 20_000_000_000L;
@@ -453,6 +458,7 @@ public final class CaptureService extends Service {
         if (state == 2 && now >= nextTiming) {
           int[] timing = NativeSender.timing();
           var response = ReceiverRejection.fromNative(NativeSender.receiverRejection());
+          var networkTiming = new NetworkTiming(NativeSender.network(), networkLease.status(this));
           if (timing != null && timing.length >= 4 && timing[1] > 0) {
             PipelineTiming pipeline =
                 new PipelineTiming(
@@ -469,6 +475,7 @@ public final class CaptureService extends Service {
                   BridgeState.timing = timing;
                   BridgeState.receiverRejection = response;
                   BridgeState.pipeline = pipeline;
+                  BridgeState.networkTiming = networkTiming;
                   BridgeState.publishTiming();
                 });
           }
@@ -589,6 +596,7 @@ public final class CaptureService extends Service {
             () -> {
               if (destroyed || generation.get() != token) return;
               BridgeState.connected = false;
+              BridgeState.networkTiming = null;
               BridgeState.selected = null;
               BridgeState.status = message;
               BridgeState.receiverRejection = response;
@@ -599,6 +607,7 @@ public final class CaptureService extends Service {
               if (!wasStarted) complete(token, false);
             });
       } finally {
+        if (networkLease != null) networkLease.close();
         if (wake.isHeld()) wake.release();
       }
     }
@@ -610,6 +619,7 @@ public final class CaptureService extends Service {
     closeSystemInput();
     BridgeState.selected = null;
     BridgeState.connected = false;
+    BridgeState.networkTiming = null;
     BridgeState.status = R.string.sharing;
     BridgeState.publish();
     getSystemService(NotificationManager.class)
@@ -723,6 +733,7 @@ public final class CaptureService extends Service {
     BridgeState.selected = null;
     BridgeState.connected = false;
     BridgeState.pipeline = null;
+    BridgeState.networkTiming = null;
     BridgeState.activePhoneTiming = null;
     BridgeState.status = R.string.idle;
     BridgeState.publish();
@@ -746,6 +757,10 @@ public final class CaptureService extends Service {
             + " wholeDevice="
             + StreamSettings.load(this).wholeDevice());
     writer.println(NativeSender.diagnostic());
+    writer.println("networkTiming=" + java.util.Arrays.toString(NativeSender.network()));
+    writer.println(
+        "wifiRequest="
+            + (BridgeState.networkTiming == null ? -1 : BridgeState.networkTiming.wifiRequest()));
     writer.println(
         "captureBackend="
             + BridgeState.captureBackend

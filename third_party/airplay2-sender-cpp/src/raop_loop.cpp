@@ -16,6 +16,7 @@
 
 #include "raop_loop.h"
 #include "raop_sender.h"
+#include "udp_tx_probe.h"
 
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
@@ -35,6 +36,7 @@
   #include <netinet/tcp.h>
   #include <poll.h>
   #include <sys/socket.h>
+  #include <sys/ioctl.h>
   #include <time.h>
   #include <unistd.h>
 #endif
@@ -160,6 +162,18 @@ struct TcpSlot {
 struct UdpSlot {
     sock_t   fd  = kBadSock;
     uint32_t gen = 0;
+    uint64_t sends=0,errors=0,maximumSendUs=0;
+    int tos=-1,priority=-1;
+    int64_t maximumQueue=-1;
+#if defined(__linux__)
+    UdpTxProbe tx;
+#endif
+    void reset() {
+        fd=kBadSock;sends=errors=maximumSendUs=0;tos=priority=-1;maximumQueue=-1;
+#if defined(__linux__)
+        tx.reset();
+#endif
+    }
 };
 
 } // namespace
@@ -167,6 +181,7 @@ struct UdpSlot {
 struct RaopLoop::Impl {
     std::array<TcpSlot, 2> tcp;
     std::array<UdpSlot, 3> udp;
+    bool priority=false;
 
     TcpSlot& t(RaopTcp ch) { return tcp[size_t(ch)]; }
     UdpSlot& u(RaopUdp s)  { return udp[size_t(s)]; }
@@ -177,7 +192,7 @@ struct RaopLoop::Impl {
     }
     void closeUdp(UdpSlot& s) {
         if (s.fd != kBadSock) closeSocket(s.fd);
-        s.fd = kBadSock;
+        s.reset();
     }
 
     // push as much of the queued bytes as the kernel takes right now.
@@ -345,6 +360,21 @@ uint16_t RaopLoop::udpBind(RaopUdp which) {
     const RaopEndpoint local = localOf(fd);
     if (local.port == 0) { closeSocket(fd); return 0; }
     u.fd = fd;
+    if(d_->priority) {
+        const int expeditedForwarding=46<<2;
+        ::setsockopt(fd,IPPROTO_IP,IP_TOS,reinterpret_cast<const char*>(&expeditedForwarding),sizeof(expeditedForwarding));
+#if defined(__linux__)
+        const int voicePriority=6;
+        ::setsockopt(fd,SOL_SOCKET,SO_PRIORITY,&voicePriority,sizeof(voicePriority));
+#endif
+    }
+    socklen_t optionSize=sizeof(int);
+    if(::getsockopt(fd,IPPROTO_IP,IP_TOS,reinterpret_cast<char*>(&u.tos),&optionSize)!=0)u.tos=-1;
+#if defined(__linux__)
+    optionSize=sizeof(int);
+    if(::getsockopt(fd,SOL_SOCKET,SO_PRIORITY,&u.priority,&optionSize)!=0)u.priority=-1;
+    if(which==RaopUdp::Audio)u.tx.open(fd);
+#endif
     return local.port;
 }
 
@@ -353,12 +383,46 @@ void RaopLoop::udpSend(RaopUdp which, const RaopEndpoint& to, std::span<const ui
     if (u.fd == kBadSock) return;
     sockaddr_in addr{};
     if (!toSockAddr(to.ip, to.port, addr)) return;
-    ::sendto(u.fd, reinterpret_cast<const char*>(bytes.data()), buflen_t(bytes.size()),
-             kSendFlags, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));
+    const auto begin=std::chrono::steady_clock::now();
+#if defined(__linux__)
+    const auto sent=which==RaopUdp::Audio
+        ?u.tx.send(u.fd,bytes.data(),bytes.size(),kSendFlags,addr)
+        : ::sendto(u.fd,bytes.data(),bytes.size(),kSendFlags,reinterpret_cast<const sockaddr*>(&addr),sizeof(addr));
+#else
+    const auto sent=::sendto(u.fd,reinterpret_cast<const char*>(bytes.data()),buflen_t(bytes.size()),
+        kSendFlags,reinterpret_cast<const sockaddr*>(&addr),sizeof(addr));
+#endif
+    ++u.sends;if(sent<0 || size_t(sent)!=bytes.size())++u.errors;
+    const auto micros=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count();
+    u.maximumSendUs=std::max(u.maximumSendUs,static_cast<uint64_t>(micros));
 }
 
 void RaopLoop::udpClose(RaopUdp which) {
     d_->closeUdp(d_->u(which));
+}
+
+bool RaopLoop::setNetworkPriority(bool enabled) {
+    for(const auto& u:d_->udp)if(u.fd!=kBadSock)return false;
+    d_->priority=enabled;return true;
+}
+
+std::array<int64_t,14> RaopLoop::networkStatistics() const {
+    auto& u=d_->u(RaopUdp::Audio);
+    std::array<int64_t,14> result{0,0,0,-1,-1,0,-1,-1,-1,d_->priority?1:0,-1,-1,0,0};
+    if(u.fd==kBadSock)return result;
+    result[0]=int64_t(u.sends);result[1]=int64_t(u.errors);result[2]=int64_t(u.maximumSendUs);
+    result[10]=u.tos;result[11]=u.priority;
+#if defined(__linux__)
+    int queued=-1;
+    if(ioctl(u.fd,TIOCOUTQ,&queued)==0 && queued>=0) {
+        result[3]=queued;u.maximumQueue=std::max(u.maximumQueue,int64_t(queued));
+    }
+    result[4]=u.maximumQueue;result[5]=int64_t(u.tx.timing.count());
+    result[6]=u.tx.timing.percentile(false,50);result[7]=u.tx.timing.percentile(false,95);
+    result[8]=u.tx.timing.percentile(true,95);result[12]=u.tx.active?1:0;
+    result[13]=int64_t(u.tx.timing.rejected());
+#endif
+    return result;
 }
 
 // -- the loop ----------------------------------------------------------
@@ -446,6 +510,10 @@ void RaopLoop::pump(RaopSender& sender, std::chrono::milliseconds maxWait) {
             UdpSlot& u = d.udp[e.idx];
             if (u.fd != e.fd || u.gen != e.gen) continue;
             if (!(re & (kPollIn | POLLERR | POLLHUP))) continue;
+#if defined(__linux__)
+            if(e.idx==size_t(RaopUdp::Audio))u.tx.drain(u.fd);
+#endif
+            if(!(re & kPollIn)) {(void)socketError(u.fd);continue;}
             const auto which = RaopUdp(e.idx);
             uint8_t buf[4096];
             for (int burst = 0; burst < 64; ++burst) {
