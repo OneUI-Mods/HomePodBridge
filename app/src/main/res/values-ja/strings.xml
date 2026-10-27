@@ -76,6 +76,12 @@
     <string name="volume_unavailable">音量 · 操作できません</string>
     <string name="volume_unavailable_hint">スピーカーに接続すると音量を変更できます。</string>
     <string name="system_ready">システムの音声出力と連携しています</string>
+    <string name="system_connecting">システムの音声出力との接続を準備しています…</string>
+    <string name="preparing_sharing">音声共有を準備中…</string>
+    <string name="system_unavailable_title">システムの音声出力に接続できません</string>
+    <string name="system_unavailable_description">System UIとの接続が準備できませんでした。VectorでSystem UIを対象に有効化し、GalaxyReloadで再読み込みしてから再試行してください。標準の共有を選んだ場合のみ、Androidの画面・音声共有の許可を開きます。</string>
+    <string name="system_retry">システム接続を再試行</string>
+    <string name="standard_sharing">標準の共有を使う</string>
     <string name="system_missing">VectorでSystem UIを対象に有効化し、SystemUIを再読み込みしてください。</string>
     <string name="explanation">HomePodと同じWi-Fiに接続してください。Apple Musicのキャスト一覧やシステムの「メディア出力」から選ぶと、音声の転送が始まります。接続時の音量は0%です。</string>
     <string name="enable">音声の共有を許可</string>

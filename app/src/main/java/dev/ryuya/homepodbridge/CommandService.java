@@ -463,6 +463,7 @@ public final class CommandService extends Service {
     }
     writer.println("Command service: " + commandStatus);
     writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
+    writer.println("systemBridgeReady=" + RootConnector.available());
     if (BridgeState.connectionTiming != null)
       writer.println(BridgeState.connectionTiming.summary());
     writer.println("networkPriorityPreference=" + NetworkSettings.load(this).priority());

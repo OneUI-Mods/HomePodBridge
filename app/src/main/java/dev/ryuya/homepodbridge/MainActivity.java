@@ -65,6 +65,10 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private TextView manualSummary;
   private TabLayout tabs;
   private Button profileButton;
+  private final android.os.Handler sharingHandler =
+      new android.os.Handler(android.os.Looper.getMainLooper());
+  private long sharingAttempt;
+  private boolean awaitingSystemBridge;
   private MediaRouter2 router;
   private final MediaRouter2.RouteCallback routes = new MediaRouter2.RouteCallback() {};
 
@@ -230,10 +234,19 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     body.addView(share);
     ((MaterialButton) share)
         .setBackgroundTintList(
-            ColorStateList.valueOf(
-                MaterialColors.getColor(share, androidx.appcompat.R.attr.colorPrimary)));
+            new ColorStateList(
+                new int[][] {{-android.R.attr.state_enabled}, {}},
+                new int[] {
+                  ColorUtils.setAlphaComponent(textColor, 31),
+                  MaterialColors.getColor(share, androidx.appcompat.R.attr.colorPrimary)
+                }));
     share.setTextColor(
-        MaterialColors.getColor(share, com.google.android.material.R.attr.colorOnPrimary));
+        new ColorStateList(
+            new int[][] {{-android.R.attr.state_enabled}, {}},
+            new int[] {
+              ColorUtils.setAlphaComponent(textColor, 97),
+              MaterialColors.getColor(share, com.google.android.material.R.attr.colorOnPrimary)
+            }));
     ((MaterialButton) share).setStrokeWidth(0);
     body.addView(button(getString(R.string.refresh), view -> refresh()));
     speakers = new LinearLayout(this);
@@ -430,6 +443,9 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
 
   @Override
   protected void onStop() {
+    sharingAttempt++;
+    awaitingSystemBridge = false;
+    sharingHandler.removeCallbacksAndMessages(null);
     BridgeState.remove(this);
     if (router != null) {
       router.unregisterRouteCallback(routes);
@@ -465,10 +481,38 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       requestPermissions(new String[] {"android.permission.ACCESS_LOCAL_NETWORK"}, 4);
       return;
     }
+    if (awaitingSystemBridge) return;
+    long attempt = ++sharingAttempt;
+    awaitingSystemBridge = true;
+    RootConnector.request(this);
+    changed();
+    awaitSystemSharing(attempt, android.os.SystemClock.uptimeMillis() + 3000);
+  }
+
+  private void awaitSystemSharing(long attempt, long deadline) {
+    if (attempt != sharingAttempt || isFinishing() || isDestroyed()) return;
     if (RootConnector.available()) {
+      awaitingSystemBridge = false;
+      changed();
       startForegroundService(new Intent(this, CaptureService.class).putExtra("system", true));
       return;
     }
+    if (android.os.SystemClock.uptimeMillis() < deadline) {
+      sharingHandler.postDelayed(() -> awaitSystemSharing(attempt, deadline), 50);
+      return;
+    }
+    awaitingSystemBridge = false;
+    changed();
+    new MaterialAlertDialogBuilder(this)
+        .setTitle(R.string.system_unavailable_title)
+        .setMessage(R.string.system_unavailable_description)
+        .setPositiveButton(R.string.system_retry, (dialog, which) -> requestSharing())
+        .setNeutralButton(R.string.standard_sharing, (dialog, which) -> requestStandardSharing())
+        .setNegativeButton(android.R.string.cancel, null)
+        .show();
+  }
+
+  private void requestStandardSharing() {
     try {
       if (!StreamSettings.load(this).wholeDevice())
         getPackageManager().getApplicationInfo(BridgeState.MUSIC, 0);
@@ -496,7 +540,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
       toast(R.string.permission_needed);
       return;
     }
-    if (code == 2) requestSharing();
+    if (code == 2) requestStandardSharing();
     else if (code == 3) refresh();
     else if (code == 4) requestSharing();
   }
@@ -517,9 +561,15 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     if (status == null) return;
     syncSettings();
     updateConnectionStatus();
-    share.setText(BridgeState.capture == null ? R.string.enable : R.string.stop);
+    share.setText(
+        awaitingSystemBridge
+            ? R.string.preparing_sharing
+            : BridgeState.capture == null ? R.string.enable : R.string.stop);
+    share.setEnabled(!awaitingSystemBridge);
     systemStatus.setText(
-        RootConnector.available() ? R.string.system_ready : R.string.system_missing);
+        awaitingSystemBridge
+            ? R.string.system_connecting
+            : RootConnector.available() ? R.string.system_ready : R.string.system_missing);
     updateVolumeControls();
     speakers.removeAllViews();
     for (Receiver receiver : BridgeState.receivers) {

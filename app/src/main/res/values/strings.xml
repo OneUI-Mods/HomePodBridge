@@ -77,6 +77,12 @@
     <string name="volume_unavailable">Volume · Unavailable</string>
     <string name="volume_unavailable_hint">Connect a speaker to adjust its volume.</string>
     <string name="system_ready">System audio routing is ready</string>
+    <string name="system_connecting">Preparing the system audio connection…</string>
+    <string name="preparing_sharing">Preparing audio sharing…</string>
+    <string name="system_unavailable_title">System audio connection unavailable</string>
+    <string name="system_unavailable_description">The System UI connection did not become ready. Enable this module for System UI in Vector and reload it with GalaxyReload, then retry. Standard sharing is optional and opens Android’s screen and audio sharing permission.</string>
+    <string name="system_retry">Retry system connection</string>
+    <string name="standard_sharing">Use standard sharing</string>
     <string name="system_missing">Enable the module for System UI in Vector, then reload SystemUI.</string>
     <string name="explanation">Connect to the same Wi-Fi as your HomePod. Select it in Apple Music’s Cast chooser or the system media output picker. Each connection starts at 0% volume.</string>
     <string name="enable">Allow audio sharing</string>
