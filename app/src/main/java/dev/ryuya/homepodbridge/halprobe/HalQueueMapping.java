@@ -18,6 +18,64 @@ import org.json.JSONObject;
 /** Native inspection runs in a child; the Java owner retains all original stream handles/FDs. */
 public final class HalQueueMapping {
   private static java.io.OutputStream forwardedOutput;
+  private static final ThreadLocal<PreparedWorker> preparedWorker = new ThreadLocal<>();
+
+  /** Preloads only the isolated JVM/native library. No HAL FDs are sent before verification. */
+  static final class PreparedWorker implements AutoCloseable {
+    final String nonce;
+    final ProbeScenario scenario;
+    final LocalServerSocket server;
+    private Process child;
+    private boolean claimed;
+
+    PreparedWorker(String nonce, ProbeScenario scenario) throws Exception {
+      if (preparedWorker.get() != null
+          || !scenario.live()
+          || !java.util.UUID.fromString(nonce).toString().equals(nonce))
+        throw new SecurityException();
+      this.nonce = nonce;
+      this.scenario = scenario;
+      String apk = System.getenv("CLASSPATH");
+      if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
+        throw new SecurityException();
+      server = new LocalServerSocket("hpb-map-" + nonce);
+      try {
+        child =
+            new ProcessBuilder(
+                    "app_process",
+                    "/system/bin",
+                    HalQueueMapping.class.getName(),
+                    "hpb-map-" + nonce,
+                    nonce,
+                    Integer.toString(android.os.Process.myPid()),
+                    scenario.workerMode)
+                .redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")))
+                .redirectOutput(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")))
+                .start();
+        preparedWorker.set(this);
+      } catch (Exception failed) {
+        server.close();
+        throw failed;
+      }
+    }
+
+    Process claim(String nonce, ProbeScenario scenario, FileDescriptor directSocket) {
+      if (claimed || !this.nonce.equals(nonce) || this.scenario != scenario || directSocket == null)
+        throw new SecurityException("Prepared worker mismatch");
+      claimed = true;
+      return child;
+    }
+
+    @Override
+    public void close() {
+      if (preparedWorker.get() == this) preparedWorker.remove();
+      if (child != null && child.isAlive()) child.destroyForcibly();
+      try {
+        server.close();
+      } catch (java.io.IOException ignored) {
+      }
+    }
+  }
 
   private static native long[] inspect(int[] fds, long[] grants, int quantum, int flags);
 
@@ -72,7 +130,8 @@ public final class HalQueueMapping {
     Process child = null;
     Thread forwarder = null;
     Thread stopper = null;
-    try (var server = new LocalServerSocket(name)) {
+    PreparedWorker prepared = preparedWorker.get();
+    try (var server = prepared == null ? new LocalServerSocket(name) : prepared.server) {
       var command =
           new ProcessBuilder(
               "app_process",
@@ -86,7 +145,7 @@ public final class HalQueueMapping {
         command.redirectError(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")));
       if (directSocket != null)
         command.redirectOutput(ProcessBuilder.Redirect.to(new java.io.File("/dev/null")));
-      child = command.start();
+      child = prepared == null ? command.start() : prepared.claim(nonce, scenario, directSocket);
       if (directSocket == null && (scenario == ProbeScenario.POLICY_FORWARD || scenario.live())) {
         Process producer = child;
         // Keep stdout open until the resource owner's final cleanup and exit.
@@ -263,7 +322,7 @@ public final class HalQueueMapping {
     var owned = new ArrayList<ParcelFileDescriptor>();
     try (var socket = new LocalSocket()) {
       socket.connect(new LocalSocketAddress(args[0], LocalSocketAddress.Namespace.ABSTRACT));
-      socket.setSoTimeout(3000);
+      socket.setSoTimeout(scenario.live() ? 10000 : 3000);
       var peer = socket.getPeerCredentials();
       if (peer.getUid() != 0 || peer.getPid() != Integer.parseInt(args[2]))
         throw new SecurityException();

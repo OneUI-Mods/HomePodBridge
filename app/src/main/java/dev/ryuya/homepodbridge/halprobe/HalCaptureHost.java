@@ -71,17 +71,22 @@ public final class HalCaptureHost {
         control.setDaemon(true);
         control.start();
         allocations = true;
-        try (var policy =
-            new RegisteredPolicy(
-                context,
-                scope,
-                address -> {
-                  if (shortPeriod) {
-                    if (stopped.get()) throw new java.io.IOException("Client stopped");
-                    periods[0] = new HalPeriodExperiment(address, false, timing);
-                    periods[1] = new HalPeriodExperiment(address, true, timing);
-                  }
-                })) {
+        try (var prepared =
+                shortPeriod
+                    ? new HalQueueMapping.PreparedWorker(
+                        args[0], scope.zeroOnly() ? ProbeScenario.LIVE_ZERO : ProbeScenario.LIVE)
+                    : null;
+            var policy =
+                new RegisteredPolicy(
+                    context,
+                    scope,
+                    address -> {
+                      if (shortPeriod) {
+                        if (stopped.get()) throw new java.io.IOException("Client stopped");
+                        periods[0] = new HalPeriodExperiment(address, false, timing);
+                        periods[1] = new HalPeriodExperiment(address, true, timing);
+                      }
+                    })) {
           registration = policy.address;
           var output = socket.getOutputStream();
           HalPortProbe.Ready ready =
