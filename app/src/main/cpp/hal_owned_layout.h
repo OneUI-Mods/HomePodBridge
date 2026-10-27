@@ -8,7 +8,7 @@
 
 typedef int (*hp_read)(void*, uint64_t, void*, size_t);
 typedef int (*hp_write)(void*, uint64_t, const void*, size_t);
-typedef struct { uint64_t route, sink, target_address, target; } hp_owned_pipe;
+typedef struct { uint64_t route, sink, target_address, target, reported_frames; } hp_owned_pipe;
 static uint64_t hp_pointer(uint64_t value) { return value & UINT64_C(0x00ffffffffffffff); }
 static uint64_t hp_u64(const void* bytes) { uint64_t value; memcpy(&value,bytes,8); return value; }
 static uint32_t hp_u32(const void* bytes) { uint32_t value; memcpy(&value,bytes,4); return value; }
@@ -49,7 +49,7 @@ static const char* hp_find_owned(hp_read read, void* ctx, uint64_t module, uint6
         if (!read(ctx,owner,route,144)) return "owned route unavailable";
         if (hp_u32(route)) return "owned route locked";
         if (!route[0x68] || !route[0x72] || hp_u32(route+0x6c)!=1) return "owned stream references";
-        if (hp_u32(route+0x28)!=44100 || hp_u64(route+0x58)!=4 || hp_u64(route+0x60)!=4096)
+        if (hp_u32(route+0x28)!=44100 || hp_u64(route+0x58)!=4 || (hp_u64(route+0x60)!=4096 && hp_u64(route+0x60)!=192))
             return "owned format";
         uint64_t sink=hp_pointer(hp_u64(route+0x80));
         if (!read(ctx,sink,pipe,256)) return "owned pipe unavailable";
@@ -57,6 +57,8 @@ static const char* hp_find_owned(hp_read read, void* ctx, uint64_t module, uint6
             || hp_u64(pipe+0x40)!=4096 || pipe[0xf0]!=1 || pipe[0xf1]) return "owned pipe identity";
         uint64_t target=hp_u64(pipe+0xe8);
         if (target!=2587 && target!=1856 && target!=928 && target!=464 && target!=800 && target!=752 && target!=768 && target!=96) return "competing reserve change";
+        if(hp_u64(route+0x60)==192 && target!=96)return "latency window without tiny reserve";
+        result->reported_frames=hp_u64(route+0x60);
         result->route=owner; result->sink=sink; result->target_address=sink+0xe8; result->target=target;
     }
     if (visited!=count) return "incomplete route tree";
@@ -68,6 +70,7 @@ static const char* hp_change_reserve(hp_read read,hp_write write,void* ctx,const
                                     int exclusive,uint64_t before,uint64_t after) {
     uint8_t original[256],expected[256],observed[256];
     if (!exclusive) return "exclusive access required";
+    if(owned->reported_frames!=4096)return "restore latency window first";
     if (!((before==2587 && (after==1856 || after==928 || after==464 || after==800 || after==752 || after==768 || after==96))
           || ((before==1856 || before==928 || before==464 || before==800 || before==752 || before==768 || before==96) && after==2587)))
         return "unsupported reserve transition";
@@ -83,5 +86,23 @@ static const char* hp_change_reserve(hp_read read,hp_write write,void* ctx,const
     if (!write(ctx,owned->target_address,&before,8) || !read(ctx,owned->sink,observed,256)
         || memcmp(original,observed,256)) return "reserve rollback failed; close owned capture";
     return "reserve verification failed; original restored";
+}
+
+// Only the private route's latency calculation budget changes; allocated pipe capacity stays 4096.
+static const char* hp_change_reported_frames(hp_read read,hp_write write,void* ctx,
+        const hp_owned_pipe* owned,int exclusive,uint64_t before,uint64_t after) {
+    uint8_t original[144],expected[144],observed[144];
+    if(!exclusive || owned->target!=96 || owned->reported_frames!=before
+        || !((before==4096 && after==192)||(before==192 && after==4096)))return "unsupported latency window transition";
+    if(!read(ctx,owned->route,original,144) || hp_u64(original+0x60)!=before)return "stale route metadata";
+    memcpy(expected,original,144);memcpy(expected+0x60,&after,8);
+    int complete=write(ctx,owned->route+0x60,&after,8);
+    if(read(ctx,owned->route,observed,144)) {
+        if(complete && !memcmp(expected,observed,144))return NULL;
+        if(!memcmp(original,observed,144))return "latency window write not applied";
+    }
+    if(!write(ctx,owned->route+0x60,&before,8) || !read(ctx,owned->route,observed,144)
+        || memcmp(original,observed,144))return "latency window rollback failed; close owned capture";
+    return "latency window verification failed; original restored";
 }
 #endif

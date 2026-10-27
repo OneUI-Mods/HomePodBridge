@@ -151,14 +151,15 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     }
     hp_status_reply response{};int64_t duration=0;
     int error=0,cycles=0;int64_t captured=0,maximum=0,max_pending=0,min_pending=INT64_MAX,sum_pending=0;
-    int64_t queries=0,total_input_us=0;
+    int64_t queries=0,total_input_us=0,pending_observations=0;
+    auto metric_begin=std::chrono::steady_clock::now();
     std::array<uint32_t,4097> producer_steps{};uint64_t producer_events=0;
     int64_t previous_produced=0,previous_produced_at=0;std::vector<int64_t> producer_intervals;
     auto observe_producer=[&] {
         if(response.observable.frames<=previous_produced)return;
         int64_t stamp=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         int64_t step=response.observable.frames-previous_produced;
-        if(cycles>100 && step>0 && step<=4096) {
+        if(std::chrono::steady_clock::now()-metric_begin>=std::chrono::milliseconds(500) && step>0 && step<=4096) {
             ++producer_steps[size_t(step)];++producer_events;
             if(previous_produced_at>0 && producer_intervals.size()<8192)producer_intervals.push_back(stamp-previous_produced_at);
         }
@@ -195,7 +196,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
             if(clock_gettime(CLOCK_MONOTONIC,&now)!=0 || !hp_write_zero_packet(STDOUT_FILENO,
                 int64_t(now.tv_sec)*1000000000+now.tv_nsec,pending)) {error=10;break;}
         }
-        if(cycles>100) {max_pending=std::max(max_pending,pending);min_pending=std::min(min_pending,pending);sum_pending+=pending;}
+        if(std::chrono::steady_clock::now()-metric_begin>=std::chrono::milliseconds(500)) {++pending_observations;max_pending=std::max(max_pending,pending);min_pending=std::min(min_pending,pending);sum_pending+=pending;}
         if(std::chrono::steady_clock::now()-begin>=std::chrono::milliseconds(forward ? 10000:1500)) break;
     }
     for(auto& queue:queues) if(!hp_empty(queue)) error=6;
@@ -209,7 +210,7 @@ Java_dev_ryuya_homepodbridge_halprobe_HalQueueMapping_policyInputRead(
     std::sort(producer_intervals.begin(),producer_intervals.end());
     auto interval_percentile=[&](unsigned percent){return producer_intervals.empty()?jlong(-1):jlong(producer_intervals[std::min(producer_intervals.size()-1,producer_intervals.size()*percent/100)]);};
     jlong values[]={error==0 && cycles>100 ? 1:0,captured,cycles,elapsed,maximum,max_pending,
-        min_pending==INT64_MAX ? -1:min_pending,error,cycles>100 ? sum_pending/(cycles-100):-1,queries,cycles?total_input_us/cycles:0,
+        min_pending==INT64_MAX ? -1:min_pending,error,pending_observations ? sum_pending/pending_observations:-1,queries,cycles?total_input_us/cycles:0,
         jlong(producer_events),step_percentile(50),step_percentile(95),interval_percentile(50),interval_percentile(95)};
     auto result=env->NewLongArray(16);
     if(result) env->SetLongArrayRegion(result,0,16,values);

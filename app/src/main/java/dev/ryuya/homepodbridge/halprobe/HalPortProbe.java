@@ -129,8 +129,19 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     diagnosticScenario.set(ProbeScenario.POLICY_HALF);
     try {
       return inputSession(
-          address, nonce, 96, false, false, true, false, null, () -> false, () -> {}, null,
-          afterOpen, 96);
+          address,
+          nonce,
+          96,
+          false,
+          false,
+          true,
+          false,
+          null,
+          () -> false,
+          () -> {},
+          null,
+          afterOpen,
+          96);
     } finally {
       diagnosticScenario.remove();
     }
@@ -217,7 +228,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     var configs = new ArrayList<OwnedHalResources.Config>();
     OwnedHalResources.Patch patch = null;
     var report = new JSONObject();
-    boolean tuneAttempted = false;
+    boolean tuneAttempted = false, latencyWindowAttempted = false;
     var watchdog =
         Executors.newSingleThreadScheduledExecutor(
             r -> {
@@ -273,6 +284,13 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         if (!tuning.contains("Owned reserve changed: 2587 -> " + target + ";"))
           throw new IllegalStateException("Reserve change not confirmed");
       }
+      if (target == 96) {
+        latencyWindowAttempted = true;
+        String latency = changePolicyReserve(address, "latency-window");
+        report.put("latencyWindow", latency);
+        if (!latency.contains("Owned latency window changed: 4096 -> 192;"))
+          throw new IllegalStateException("Private latency window not confirmed");
+      }
       ready.run();
       if (live) startupTimeout.cancel(false);
       try (var source = !live || zeroOnly ? new ZeroPlayback(pulse, sourcePeriodFrames) : null) {
@@ -292,10 +310,19 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
                 stopped,
                 directSocket));
         report.put("sourceWrittenFrames", source == null ? 0 : source.writtenFrames());
+        report.put("sourceBufferFrames", source == null ? 0 : source.bufferFrames());
       }
     } catch (Exception failure) {
       report.put("failure", failure.getClass().getSimpleName() + ": " + failure.getMessage());
     } finally {
+      if (latencyWindowAttempted) {
+        try {
+          report.put(
+              "restoreLatencyWindow", changePolicyReserve(address, "restore-latency-window"));
+        } catch (Exception failure) {
+          report.put("latencyWindowRestoreFailure", failure.getClass().getSimpleName());
+        }
+      }
       if (tuneAttempted) {
         try {
           report.put("restore", changePolicyReserve(address, reserveOperation(target, true)));

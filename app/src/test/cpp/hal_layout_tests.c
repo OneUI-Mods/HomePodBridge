@@ -6,7 +6,7 @@ static uint8_t fixture[0x200000];
 static const uint64_t base=0x10000000,mono=0x101c0000,node=0x101e0000,owner=0x101e1000,sink=0x101e2000;
 static int write_calls,write_failure;
 static int write_fixture(void* ignored,uint64_t at,const void* input,size_t length) {
-    (void)ignored;assert(at==sink+0xe8 && length==8);++write_calls;
+    (void)ignored;assert((at==sink+0xe8 || at==owner+0x60) && length==8);++write_calls;
     if (write_failure==2) return 0;
     if (write_failure==1) {memcpy(fixture+at-base,input,4);write_failure=0;return 0;}
     memcpy(fixture+at-base,input,length);return 1;
@@ -44,7 +44,7 @@ int main(void) {
     write_failure=2;assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,1856));
     assert(!memcmp(original,fixture+sink-base,256));write_failure=0;
     const uint64_t experiment_targets[]={928,464,800,752,768,96};
-    for (size_t i=0;i<5;++i) {
+    for (size_t i=0;i<sizeof(experiment_targets)/sizeof(experiment_targets[0]);++i) {
         uint64_t target=experiment_targets[i];
         assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
         assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,target));
@@ -61,6 +61,28 @@ int main(void) {
         assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,target));
         assert(!memcmp(original,fixture+sink-base,256));
     }
+    assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+    assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,2587,96));
+    assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+    uint8_t original_route[144],expected_route[144];memcpy(original_route,fixture+owner-base,144);
+    int before_calls=write_calls;
+    assert(hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,0,4096,192));
+    assert(hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,1,4096,256));
+    assert(write_calls==before_calls);
+    assert(!hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,1,4096,192));
+    memcpy(expected_route,original_route,144);uint64_t latency_frames=192;memcpy(expected_route+0x60,&latency_frames,8);
+    assert(!memcmp(expected_route,fixture+owner-base,144));
+    assert(hp_u64(fixture+sink-base+0x40)==4096);
+    assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+    before_calls=write_calls;
+    assert(hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,96,2587));assert(write_calls==before_calls);
+    assert(!hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,1,192,4096));
+    assert(!memcmp(original_route,fixture+owner-base,144));
+    assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+    write_failure=1;assert(hp_change_reported_frames(read_fixture,write_fixture,NULL,&result,1,4096,192));
+    assert(!memcmp(original_route,fixture+owner-base,144));write_failure=0;
+    assert(!hp_find_owned(read_fixture,NULL,base,mono,address,&result));
+    assert(!hp_change_reserve(read_fixture,write_fixture,NULL,&result,1,96,2587));
     assert(hp_find_owned(read_fixture,NULL,base,mono,"another-route",&result));
     set32(base+0x1b4700,1);assert(hp_find_owned(read_fixture,NULL,base,mono,address,&result));set32(base+0x1b4700,0);
     set32(owner,1);assert(hp_find_owned(read_fixture,NULL,base,mono,address,&result));set32(owner,0);

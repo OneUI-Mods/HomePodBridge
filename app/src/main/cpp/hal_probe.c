@@ -110,10 +110,10 @@ static int thaw(task* tasks,size_t count) {
 JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     JNIEnv* env,jclass type,jint pid,jlong module,jlong mono,jstring registration,jint operation) {
     (void)type;
-    if (getuid()!=0 || pid<=1 || operation<0 || operation>14) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
+    if (getuid()!=0 || pid<=1 || operation<0 || operation>16) return (*env)->NewStringUTF(env,"HAL operation unavailable: invalid context");
     // Closed per-route transitions; targets below the normal dedicated 800 are zero-only candidates.
-    const int before[]={0,2587,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96};
-    const int after[]={0,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96,2587};
+    const int before[]={0,2587,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96,4096,192};
+    const int after[]={0,1856,2587,928,2587,464,2587,800,2587,752,2587,768,2587,96,2587,192,4096};
     const char* address=(*env)->GetStringUTFChars(env,registration,NULL);
     if (!address) return NULL;
     memory mem={.fd=-1}; task tasks[256];size_t count=0;uint64_t begin=monotonic_ns();
@@ -130,7 +130,8 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
         error=freeze(pid,tasks,&count,begin+25000000u);
         if (!error) error=hp_find_owned(read_memory,&mem,(uint64_t)module,(uint64_t)mono,address,&owned);
         if (!error && monotonic_ns()>begin+25000000u) error="exclusive interval exceeded";
-        if (!error && operation) error=hp_change_reserve(read_memory,write_memory,&mem,&owned,1,
+        if (!error && operation>=15) error=hp_change_reported_frames(read_memory,write_memory,&mem,&owned,1,before[operation],after[operation]);
+        if (!error && operation>0 && operation<15) error=hp_change_reserve(read_memory,write_memory,&mem,&owned,1,
             before[operation],after[operation]);
     }
     int detached=thaw(tasks,count);
@@ -139,6 +140,7 @@ JNIEXPORT jstring JNICALL Java_dev_ryuya_homepodbridge_HalRootProbe_freezeCheck(
     uint64_t elapsed=(monotonic_ns()-begin)/1000;
     if (!detached) error="detach incomplete";
     if (error) snprintf(report,sizeof(report),"Owned HAL operation refused: %s; maps=%zu tasks=%zu elapsedUs=%llu writeAttempts=%u",error,mem.count,count,(unsigned long long)elapsed,mem.writes);
+    else if (operation>=15) snprintf(report,sizeof(report),"Owned latency window changed: %d -> %d; exact field verified",before[operation],after[operation]);
     else if (operation) snprintf(report,sizeof(report),"Owned reserve changed: %d -> %d; tasks=%zu elapsedUs=%llu writeAttempts=%u; exact field verified",before[operation],after[operation],count,(unsigned long long)elapsed,mem.writes);
     else snprintf(report,sizeof(report),"Read-only freeze check passed: tasks=%zu elapsedUs=%llu targetFillFrames=%llu; no memory writes",count,(unsigned long long)elapsed,(unsigned long long)owned.target);
     (*env)->ReleaseStringUTFChars(env,registration,address);

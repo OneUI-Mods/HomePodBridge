@@ -21,6 +21,11 @@ public final class SilentProbeSource implements AutoCloseable {
 
   private AudioTrack track;
   private volatile long writtenFrames;
+  private volatile int bufferFrames;
+
+  public int bufferFrames() {
+    return bufferFrames;
+  }
 
   public long writtenFrames() {
     return writtenFrames;
@@ -51,6 +56,7 @@ public final class SilentProbeSource implements AutoCloseable {
               .setBufferSizeInBytes(periodFrames * 4 * 2)
               .setTransferMode(AudioTrack.MODE_STREAM)
               .build();
+      bufferFrames = created.getBufferSizeInFrames();
       synchronized (this) {
         if (closed.get()) return;
         track = created;

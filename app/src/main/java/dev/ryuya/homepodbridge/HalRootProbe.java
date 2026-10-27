@@ -43,7 +43,9 @@ public final class HalRootProbe {
                       "direct-768",
                       "restore-direct-768",
                       "tiny-period",
-                      "restore-tiny-period")
+                      "restore-tiny-period",
+                      "latency-window",
+                      "restore-latency-window")
                   .contains(args[1]))
           || !(args[0].equals("none") || args[0].matches("[0-9]+:ap:[0-9]+mixp:[0-9]+")))
         throw new IOException("Invalid probe context");
@@ -152,7 +154,9 @@ public final class HalRootProbe {
                       "direct-768",
                       "restore-direct-768",
                       "tiny-period",
-                      "restore-tiny-period")
+                      "restore-tiny-period",
+                      "latency-window",
+                      "restore-latency-window")
                   .indexOf(args[1]);
           System.out.println(
               freezeCheck(Integer.parseInt(pid), base, pipeBase, args[0], operation));
