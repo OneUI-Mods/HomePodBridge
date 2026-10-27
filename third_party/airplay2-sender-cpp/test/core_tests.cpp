@@ -1633,7 +1633,7 @@ void testLowLatencyTimeline() {
 }
 
 void testShortAudioPackets() {
-    g_test = "AP2 partial ALAC packets without changing the negotiated maximum";
+    g_test = "AP2 short ALAC packets with matching stream block size";
     for (bool compressed : {false,true}) {
         Rig r;
         r.sender->setVolumePolicy(0,100);
@@ -1646,7 +1646,7 @@ void testShortAudioPackets() {
         CHECK(!r.launchedOk && r.io.takeUdp().empty(), "short packets cannot precede mute ACK");
         auto setup=airplay::bplist::decode(bytesOf(r.rx.last("SETUP")->body));
         REQUIRE(setup && setup->find("streams"), "short packet stream SETUP");
-        CHECK(setup->find("streams")->arr.front().find("spf")->asInt()==352, "negotiated ALAC maximum stays 352");
+        CHECK(setup->find("streams")->arr.front().find("spf")->asInt()==88, "receiver stream block matches short packets");
         r.sender->onTcpData(RaopTcp::Control,spanOf(r.rx.heldVolumeReply));
         REQUIRE(r.launchedOk && *r.launchedOk && r.sender->audioPacketFrames()==88, "short packet mode ready");
         CHECK(!r.sender->setShortAudioPackets(false), "cannot change packet size during a stream");
