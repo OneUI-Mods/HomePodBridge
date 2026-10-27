@@ -8,6 +8,7 @@ final class AcousticSignal {
       FIRST_FRAME = 44100,
       GAP_FRAMES = 26460;
   static final double PEAK = 0.12;
+  static final int[] PHASE_CODE = {0xACE1, 0xB4D3, 0x69A7};
   static final int[] LOW = {1600, 2100, 1300}, HIGH = {3900, 4700, 3400};
 
   static long firstFrame(int index) {
@@ -20,7 +21,8 @@ final class AcousticSignal {
     double phase =
         2 * Math.PI * (LOW[index] * t + 0.5 * (HIGH[index] - LOW[index]) * t * t / seconds);
     double window = 0.5 - 0.5 * Math.cos(2 * Math.PI * frame / (TONE_FRAMES - 1));
-    return (short) Math.round(32767 * PEAK * window * Math.sin(phase));
+    int sign = ((PHASE_CODE[index] >> (frame * 16 / TONE_FRAMES)) & 1) == 0 ? -1 : 1;
+    return (short) Math.round(32767 * PEAK * window * Math.sin(phase) * sign);
   }
 
   private AcousticSignal() {}

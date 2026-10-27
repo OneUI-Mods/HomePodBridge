@@ -42,6 +42,7 @@ def analyze(record):
         if marker<=0:raise ValueError("Sender marker missing")
         count=int(record["toneFrames"]);t=np.arange(count)/out_rate;seconds=count/out_rate
         y=np.rint(32767*.12*(.5-.5*np.cos(2*np.pi*np.arange(count)/(count-1)))*np.sin(2*np.pi*(tone["lowHz"]*t+.5*(tone["highHz"]-tone["lowHz"])*t*t/seconds)))/32768
+        phase_code=int(tone.get("phaseCode",65535));chips=(np.arange(count)*16//count).astype(np.int64);y*=np.where((phase_code>>chips)&1,1,-1)
         template=np.interp(np.arange(int(np.ceil(count*rate/out_rate)))*out_rate/rate,np.arange(count),y)
         size=len(template);valid=len(x)-size+1
         corr=np.fft.irfft(spectrum*np.conj(np.fft.rfft(template,nfft)),nfft)[:valid]
@@ -66,7 +67,7 @@ def analyze(record):
     clock_p95=float(np.percentile(residual,95))
     clipping=float(np.mean(np.abs(x)>=32760/32768)*100)
     return {"reference":"Sender PCM enqueue to microphone hardware timestamp; pre-enqueue capture excluded",
-        "phoneSpeakerSignal":False,"microphoneReadDelayExcluded":True,"adcInternalDelayCalibrated":False,
+        "phoneSpeakerSignal":False,"microphoneAudioSource":record.get("source"),"microphoneReadDelayExcluded":True,"adcInternalDelayCalibrated":False,
         "microphoneClockResidualP95Ms":clock_p95,"microphoneDeliveryDelayMedianMs":float(np.median(delivery)),
         "microphoneClippedPercent":clipping,"microphoneRms":float(np.sqrt(np.mean(x*x))),"tones":results,
         "matchedTones":len(good),"timingQualityAccepted":len(good)>=2 and clock_p95<=2 and clipping<.1,

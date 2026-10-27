@@ -10,9 +10,10 @@ class AcousticAnalysisTest(unittest.TestCase):
   pcm=.15*np.sin(2*np.pi*90*t)+.08*np.sin(2*np.pi*180*t)+rng.normal(0,.015,size)
   tones=[]
   for i,(low,high) in enumerate([(1600,3900),(2100,4700),(1300,3400)]):
-   send=.9+i*.6;tones.append({"lowHz":low,"highHz":high,"enqueuedAtNs":int(origin+send*1e9)})
+   send=.9+i*.6;tones.append({"lowHz":low,"highHz":high,"enqueuedAtNs":int(origin+send*1e9),"phaseCode":[0xACE1,0xB4D3,0x69A7][i]})
    length=1764;u=np.arange(length)/output
    y=np.rint(32767*.12*(.5-.5*np.cos(2*np.pi*np.arange(length)/(length-1)))*np.sin(2*np.pi*(low*u+.5*(high-low)*u*u/(length/output))))/32768
+   y*=np.where((tones[-1]["phaseCode"]>>(np.arange(length)*16//length))&1,1,-1)
    template=np.interp(np.arange(1920)*output/rate,np.arange(length),y)
    at=round((send+.123)*rate)
    if signal:pcm[at:at+len(template)]+=.35*template

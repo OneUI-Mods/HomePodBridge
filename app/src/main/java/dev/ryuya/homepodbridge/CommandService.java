@@ -97,7 +97,26 @@ public final class CommandService extends Service {
                         2, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
                   }
                 });
-        playback.startAcoustic(acoustic);
+        AcousticProbe prepared = acoustic;
+        commands.execute(
+            () -> {
+              try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+                while (!RootConnector.available() && System.nanoTime() < deadline) Thread.sleep(25);
+                main.post(
+                    () -> {
+                      if (acousticEpoch != token) return;
+                      if (RootConnector.available()) playback.startAcoustic(prepared);
+                      else {
+                        commandStatus = "System bridge unavailable";
+                        prepared.connected(false);
+                      }
+                    });
+              } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                prepared.close();
+              }
+            });
       } catch (RuntimeException failure) {
         commandStatus =
             "ACOUSTIC_FAILED " + failure.getClass().getSimpleName() + ": " + failure.getMessage();

@@ -270,6 +270,7 @@ final class AcousticProbe implements AutoCloseable {
           tones.put(
               new JSONObject()
                   .put("enqueuedAtNs", markers[i])
+                  .put("phaseCode", AcousticSignal.PHASE_CODE[i])
                   .put("lowHz", AcousticSignal.LOW[i])
                   .put("highHz", AcousticSignal.HIGH[i]));
       }
