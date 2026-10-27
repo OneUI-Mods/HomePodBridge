@@ -32,6 +32,7 @@ final class AcousticProbe implements AutoCloseable {
   private final short[] samples = new short[MIC_RATE * MAX_SECONDS];
   private final ArrayList<long[]> anchors = new ArrayList<>();
   private final long[] markers = new long[AcousticSignal.COUNT];
+  private final long[][] markerStages = new long[AcousticSignal.COUNT][];
   private volatile IBinder lifetime;
   private volatile boolean armed, finished, clearRequested;
   private volatile int sampleCount;
@@ -270,6 +271,9 @@ final class AcousticProbe implements AutoCloseable {
           tones.put(
               new JSONObject()
                   .put("enqueuedAtNs", markers[i])
+                  .put(
+                      "senderPipeline",
+                      markerStages[i] == null ? JSONObject.NULL : new JSONArray(markerStages[i]))
                   .put("phaseCode", AcousticSignal.PHASE_CODE[i])
                   .put("lowHz", AcousticSignal.LOW[i])
                   .put("highHz", AcousticSignal.HIGH[i]));
