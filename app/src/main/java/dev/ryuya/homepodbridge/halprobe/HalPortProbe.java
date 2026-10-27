@@ -920,11 +920,17 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     if (args.length == 3
         && (args[0].equals("getter-period")
             || args[0].equals("getter-period-mixer")
-            || args[0].equals("getter-period-capture"))) {
+            || args[0].equals("getter-period-capture")
+            || args[0].matches("getter-period-step-(?:[2-9]|1[0-9]|2[01])"))) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
       JSONObject result =
-          HalPeriodExperiment.run(!args[0].equals("getter-period"), args[0].endsWith("capture"));
+          HalPeriodExperiment.run(
+              !args[0].equals("getter-period"),
+              args[0].endsWith("capture"),
+              args[0].startsWith("getter-period-step-")
+                  ? new PhoneTiming(Integer.parseInt(args[0].substring(19)), 96)
+                  : PhoneTiming.fastest());
       System.out.println(result);
       System.out.flush();
       if (result.optBoolean("resourcesRestoredExactly")) System.exit(0);

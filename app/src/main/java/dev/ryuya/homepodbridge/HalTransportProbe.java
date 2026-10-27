@@ -25,6 +25,11 @@ final class HalTransportProbe {
         context, mixer ? "getter-period-mixer" : "getter-period", UUID.randomUUID().toString());
   }
 
+  static String ownedPeriod(Context context, int period) {
+    if (period < 2 || period > 21) return "HAL_PROBE_REFUSED";
+    return execute(context, "getter-period-step-" + period, UUID.randomUUID().toString());
+  }
+
   static String periodCapture(Context context) {
     return execute(context, "getter-period-capture", UUID.randomUUID().toString());
   }

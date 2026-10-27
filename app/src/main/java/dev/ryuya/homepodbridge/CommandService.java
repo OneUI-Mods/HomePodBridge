@@ -82,6 +82,13 @@ public final class CommandService extends Service {
       commands.execute(() -> commandStatus = "Local HAL: " + LocalHalProbe.runTiming(this, timing));
       return START_NOT_STICKY;
     }
+    if (command.equals("probe-owned-period")) {
+      int period = intent.getIntExtra("periodMs", -1);
+      commandStatus = "Checking owned period without playback";
+      commands.execute(
+          () -> commandStatus = "HAL period: " + HalTransportProbe.ownedPeriod(this, period));
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-local-manual-timing")) {
       commandStatus = "Checking manual phone timing with fixed zeros";
       var timing = StreamSettings.load(this).phoneTiming();

@@ -263,6 +263,10 @@ final class HalPeriodExperiment implements AutoCloseable {
   }
 
   static JSONObject run(boolean mixer, boolean capture) throws Exception {
+    return run(mixer, capture, PhoneTiming.fastest());
+  }
+
+  static JSONObject run(boolean mixer, boolean capture, PhoneTiming timing) throws Exception {
     HalPortProbe.rootPreflight();
     ReadOnlyHalState state = new ReadOnlyHalState();
     String baseline = state.snapshot().toString();
@@ -278,10 +282,12 @@ final class HalPeriodExperiment implements AutoCloseable {
             context,
             new CaptureScope(false, 0, -1, true, false),
             address -> {
-              owner[0] = new HalPeriodExperiment(address, false);
-              if (mixer) owner[1] = new HalPeriodExperiment(address, true);
+              owner[0] = new HalPeriodExperiment(address, false, timing);
+              if (mixer) owner[1] = new HalPeriodExperiment(address, true, timing);
             })) {
       result.put("active", state.snapshot());
+      result.put("requestedPeriodMs", timing.periodMs());
+      if (mixer) result.put("confirmedOutput", requireOutput(state, policy.address, timing));
       if (capture)
         result.put(
             "capture",
