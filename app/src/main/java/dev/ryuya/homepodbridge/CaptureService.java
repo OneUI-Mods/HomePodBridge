@@ -205,6 +205,8 @@ public final class CaptureService extends Service {
     BridgeState.connected = false;
     BridgeState.volume = 0;
     BridgeState.timing = null;
+    BridgeState.receiverRejection = ReceiverRejection.NONE;
+    ReceiverRejection.NONE.save(this);
     BridgeState.pipeline = null;
     BridgeState.activePhoneTiming = null;
     BridgeState.phonePath = null;
@@ -450,6 +452,7 @@ public final class CaptureService extends Service {
         if (state < 0 || (!started && System.nanoTime() > deadline)) break;
         if (state == 2 && now >= nextTiming) {
           int[] timing = NativeSender.timing();
+          var response = ReceiverRejection.fromNative(NativeSender.receiverRejection());
           if (timing != null && timing.length >= 4 && timing[1] > 0) {
             PipelineTiming pipeline =
                 new PipelineTiming(
@@ -464,6 +467,7 @@ public final class CaptureService extends Service {
                 () -> {
                   if (generation.get() != token || destroyed) return;
                   BridgeState.timing = timing;
+                  BridgeState.receiverRejection = response;
                   BridgeState.pipeline = pipeline;
                   BridgeState.publishTiming();
                 });
@@ -573,6 +577,8 @@ public final class CaptureService extends Service {
           }
           recorder.release();
         }
+        var response = ReceiverRejection.fromNative(NativeSender.receiverRejection());
+        if (!destroyed && generation.get() == token) response.save(this);
         NativeSender.stop();
         if (zeroHal != null) halCleanupUnconfirmed = !zeroHal.awaitCleanup(5000);
         if (localRoute != null) localRoute.close();
@@ -585,7 +591,11 @@ public final class CaptureService extends Service {
               BridgeState.connected = false;
               BridgeState.selected = null;
               BridgeState.status = message;
+              BridgeState.receiverRejection = response;
               BridgeState.publish();
+              if (response.code() != 0)
+                getSystemService(NotificationManager.class)
+                    .notify(1, notification(response.message(this, false)));
               if (!wasStarted) complete(token, false);
             });
       } finally {

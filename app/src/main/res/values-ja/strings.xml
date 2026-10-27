@@ -1,4 +1,7 @@
 <resources>
+    <string name="receiver_request_rejected">HomePodが音声接続の要求を拒否しました（応答 %1$d）。音声設定と受信機のアクセス許可を確認してください。</string>
+    <string name="receiver_request_compatibility">HomePodが要求した設定を拒否しました（応答 %1$d）。互換設定で接続中です。要求した待ち時間範囲は適用されていません。</string>
+    <string name="receiver_request_last_retry">前回の接続ではHomePodが要求した設定を拒否したため（応答 %1$d）、互換設定で再試行しました。</string>
     <string name="device_buffer_faster">スマートフォンのバッファをさらに削減</string>
     <string name="device_buffer_faster_description">低遅延モードで、より小さい対応バッファを使います。処理の遅れに弱くなるため、音が途切れる場合はまずこちらをオフにしてください。表示される目標の充填量は再生全体の遅延ではありません。</string>
     <string name="device_buffer">スマートフォンの音声バッファを削減（root）</string>
@@ -139,7 +142,7 @@
     <string name="manual_period_help">1.09～21.04 ms。端末が対応する最も近い周期へ丸めます。</string>
     <string name="manual_period_applied">1.09～21.04 ms。適用予定：%1$.2f ms（%2$dフレーム）。</string>
     <string name="manual_reserve">取り込み待ち目標（ms）</string>
-    <string name="manual_reserve_help">1.09～18.14 ms（48～800フレーム）。フレーム単位に丸めます。長いミキサー周期と少ない待ち量の組み合わせでは音が途切れることがあります。</string>
+    <string name="manual_reserve_help">1.27～18.14 ms（56～800フレーム）。フレーム単位に丸めます。長いミキサー周期と少ない待ち量の組み合わせでは音が途切れることがあります。</string>
     <string name="manual_observed_queue">以前の1.18～10.50 msは取り込み時の平均残量の実測です。再生状況や負荷で変わるため、設定する待ち目標とは分けて表示します。</string>
     <string name="manual_dedicated_read">専用経路の読み取り単位：0.50 ms（22フレーム・固定）。</string>
     <string name="manual_standard_buffer">標準経路のスマホバッファー目標（フレーム）</string>

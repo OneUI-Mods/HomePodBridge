@@ -433,6 +433,14 @@ public final class CommandService extends Service {
     }
     writer.println("Command service: " + commandStatus);
     writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume);
+    var receiverResponse =
+        BridgeState.connected ? BridgeState.receiverRejection : ReceiverRejection.load(this);
+    writer.println(
+        "receiverRejection="
+            + receiverResponse.code()
+            + " terminal="
+            + receiverResponse.terminal());
+    writer.println("receiverMessage=" + receiverResponse.message(this, BridgeState.connected));
     writer.println(
         "captureBackend="
             + BridgeState.captureBackend

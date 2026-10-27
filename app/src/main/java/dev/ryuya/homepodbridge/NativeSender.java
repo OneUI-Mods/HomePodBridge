@@ -29,6 +29,8 @@ final class NativeSender {
 
   static native int[] timing();
 
+  static native int[] receiverRejection();
+
   static native long[] pipeline();
 
   static native void volume(int volume);

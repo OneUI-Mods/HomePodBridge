@@ -631,6 +631,7 @@ struct Rig {
     std::string launchedErr;
     int launchedCount = 0;
     int closedCount = 0;
+    std::vector<std::pair<int,bool>> receiverRejections;
     std::optional<std::string> pinDevice;
     std::optional<std::string> credsJson;
     std::string credsDeviceId;
@@ -644,6 +645,7 @@ struct Rig {
         RaopEvents ev;
         ev.launched = [this](bool ok, const std::string& err) { launchedOk = ok; launchedErr = err; ++launchedCount; };
         ev.closed = [this] { ++closedCount; };
+        ev.receiverRejected = [this](int code, bool retry) { receiverRejections.emplace_back(code, retry); };
         ev.pinRequired = [this](const std::string& dev) { pinDevice = dev; };
         ev.credentialsObtained = [this](const std::string& dev, const std::string& json) { credsDeviceId = dev; credsJson = json; };
         sender = std::make_unique<RaopSender>(io, std::move(ev),
@@ -1813,6 +1815,7 @@ void testAp2LatencyNegotiation() {
         bool retry = status != 401 && status != 403 && status != 470;
         CHECK(r.rx.streamSetups == (retry ? 2 : 1), "only format/parameter rejection permits one retry");
         CHECK(r.sender->latencyCompatibilityFallback() == retry, "compatibility flag explicit");
+        CHECK(r.receiverRejections.size()==1 && r.receiverRejections[0]==std::make_pair(status,retry), "typed receiver response distinguishes retry from terminal refusal");
         if (retry) {
             REQUIRE(r.launchedOk && *r.launchedOk, "compatibility retry accepted");
             CHECK(r.sender->requestedLatencyFrames() == 2205 && r.sender->presentationLatencyFrames() == 11025, "larger fallback target is reported, request retained");
@@ -1831,6 +1834,8 @@ void testAp2LatencyNegotiation() {
         runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
         CHECK(r.rx.streamSetups == 2 && r.launchedOk && !*r.launchedOk, "repeated refusal fails after exactly two attempts");
         CHECK(r.io.takeUdp().empty(), "no audio on repeated refusal");
+        CHECK(r.receiverRejections.size()==2 && r.receiverRejections[0]==std::make_pair(400,true)
+            && r.receiverRejections[1]==std::make_pair(400,false), "final refusal replaces compatibility retry response");
         r.sender->stop();
     }
 }

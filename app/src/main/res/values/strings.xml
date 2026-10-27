@@ -1,4 +1,7 @@
 <resources>
+    <string name="receiver_request_rejected">HomePod rejected the audio connection request (response %1$d). Check the audio settings and receiver access permissions.</string>
+    <string name="receiver_request_compatibility">HomePod rejected the requested settings (response %1$d). Connected using compatibility settings; the requested waiting range was not applied.</string>
+    <string name="receiver_request_last_retry">Last connection: HomePod rejected the requested settings (response %1$d), and compatibility settings were retried.</string>
     <string name="device_buffer_faster">Further reduce phone buffering</string>
     <string name="device_buffer_faster_description">Uses the smaller supported buffer in Low latency mode. More sensitive to processing stalls; turn this off first if audio breaks up. The displayed target fill is not total playback latency.</string>
     <string name="device_buffer">Reduce phone audio buffering (root)</string>
@@ -140,7 +143,7 @@
     <string name="manual_period_help">1.09–21.04 ms. Rounded to the closest supported period.</string>
     <string name="manual_period_applied">1.09–21.04 ms. Applied: %1$.2f ms (%2$d frames).</string>
     <string name="manual_reserve">Capture reserve target (ms)</string>
-    <string name="manual_reserve_help">1.09–18.14 ms (48–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
+    <string name="manual_reserve_help">1.27–18.14 ms (56–800 frames). Rounded to a whole frame. Small reserves with long mixer periods may interrupt audio.</string>
     <string name="manual_observed_queue">The earlier 1.18–10.50 ms values were measured average queued audio. They vary with playback and load; the reserve target is a separate setting.</string>
     <string name="manual_dedicated_read">Dedicated read unit: 0.50 ms (22 frames, fixed).</string>
     <string name="manual_standard_buffer">Standard phone buffer target (frames)</string>

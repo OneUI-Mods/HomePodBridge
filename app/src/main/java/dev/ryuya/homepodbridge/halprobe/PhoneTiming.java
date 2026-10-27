@@ -3,7 +3,7 @@ package dev.ryuya.homepodbridge.halprobe;
 /** Bounded owned-route parameters. Queue measurements are not configuration values. */
 public record PhoneTiming(int periodMs, int reserveFrames) {
   public static final int MIN_PERIOD_MS = 1, MAX_PERIOD_MS = 21;
-  public static final int MIN_RESERVE = 48, MAX_RESERVE = 800;
+  public static final int MIN_RESERVE = 56, MAX_RESERVE = 800;
 
   public PhoneTiming {
     if (periodMs < MIN_PERIOD_MS
@@ -45,7 +45,7 @@ public record PhoneTiming(int periodMs, int reserveFrames) {
   }
 
   public static PhoneTiming fastest() {
-    return new PhoneTiming(1, 48);
+    return new PhoneTiming(1, 56);
   }
 
   public static PhoneTiming fromStored(int period, int reserve) {

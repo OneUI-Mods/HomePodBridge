@@ -1337,8 +1337,11 @@ void RaopSender::onPairingResponse_(int code, const Headers& headers, const std:
         return;
     }
 
-    if (pairStage_ == PairStage::Ap2Stream && !latencyCompatibilityFallback_
-        && (code == 400 || code == 406 || code == 415 || code == 451)) {
+    const bool retryStreamSetup = pairStage_ == PairStage::Ap2Stream && !latencyCompatibilityFallback_
+        && (code == 400 || code == 406 || code == 415 || code == 451);
+    if (pairStage_ == PairStage::Ap2Stream && code >= 400 && code <= 599
+        && events_.receiverRejected) events_.receiverRejected(code, retryStreamSetup);
+    if (retryStreamSetup) {
         // One compatibility attempt before any audio/mute readiness. Never retry auth failures.
         latencyCompatibilityFallback_ = true;
         if (!independentReceiverTiming_) latency_ = std::max(requestedLatency_, 11025u);

@@ -25,6 +25,7 @@ struct Engine {
     std::string diagnostic;
     std::string statistics;
     jint timing[8] = {0, 0, -1, 0, 0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
+    jint rejection[2] = {0, 0}; // receiver stream response / terminal refusal
     jlong pipeline[13] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1};
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
@@ -76,6 +77,11 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                 __android_log_write(ANDROID_LOG_INFO, "HomePodBridge", "Audio sender priority unchanged");
             fxchain::RaopLoop loop;
             fxchain::RaopEvents events;
+            events.receiverRejected = [engine](int status, bool retry) {
+                std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+                engine->rejection[0] = status;
+                engine->rejection[1] = retry ? 0 : 1;
+            };
             events.launched = [engine](bool ok, const std::string& error) {
                 if (!ok) { std::lock_guard<std::mutex> lock(engine->diagnosticMutex); engine->diagnostic += "Failure: " + error + "\n"; }
                 if (!ok) __android_log_print(ANDROID_LOG_WARN, "HomePodBridge", "AirPlay connection failed: %s", error.c_str());
@@ -209,6 +215,16 @@ Java_dev_ryuya_homepodbridge_NativeSender_timing(JNIEnv* env, jclass) {
     if (!result) return nullptr;
     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
     env->SetIntArrayRegion(result, 0, 8, engine->timing);
+    return result;
+}
+extern "C" JNIEXPORT jintArray JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_receiverRejection(JNIEnv* env, jclass) {
+    auto engine = getEngine();
+    if (!engine) return nullptr;
+    auto result = env->NewIntArray(2);
+    if (!result) return nullptr;
+    std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+    env->SetIntArrayRegion(result, 0, 2, engine->rejection);
     return result;
 }
 extern "C" JNIEXPORT jstring JNICALL

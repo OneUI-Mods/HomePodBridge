@@ -228,7 +228,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
         && target != 800
         && target != 752
         && target != 768
-        && !(phoneTiming != null && target >= 48 && target <= 800))
+        && !(phoneTiming != null && target >= 56 && target <= 800))
       throw new IllegalArgumentException();
     HalPortProbe probe = new HalPortProbe(nonce, 44100, false, address);
     probe.externalStopped = stopped;
@@ -424,7 +424,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
   }
 
   private static String reserveOperation(int target, boolean restore) {
-    if (target >= 48 && target <= 800) return (restore ? "restore-reserve-" : "reserve-") + target;
+    if (target >= 56 && target <= 800) return (restore ? "restore-reserve-" : "reserve-") + target;
     String operation =
         switch (target) {
           case 928 -> "brief";

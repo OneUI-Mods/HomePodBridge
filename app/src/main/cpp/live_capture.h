@@ -20,6 +20,10 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
     const int producer_frames=(int)(q[2].view.capacity/4);
     const bool short_period=producer_frames>=48 && producer_frames<928;
     const auto producer_quantum=std::chrono::microseconds((producer_frames*1000000LL+44099)/44100);
+    // A smaller mixer quantum must not shrink the legacy short-path scheduling tolerance.
+    // This is a wait for recent production only, never an extra PCM reserve.
+    const auto recent_production=std::max(producer_quantum*3,std::chrono::microseconds(6750));
+    const auto production_grace=std::max(producer_quantum*2,std::chrono::microseconds(4500));
     int64_t last_produced=reply.observable.frames;
     auto last_production=begin;
     auto note_production=[&] {
@@ -38,8 +42,8 @@ inline hp_live_result hp_live_capture(std::array<hp_mapped_queue,3>& q,bool zero
             note_production();
         }
         if(short_period && last_produced>0 && reply.observable.frames-r.captured<frames
-            && std::chrono::steady_clock::now()-last_production<producer_quantum*3) {
-            auto grace=std::chrono::steady_clock::now()+producer_quantum*2;
+            && std::chrono::steady_clock::now()-last_production<recent_production) {
+            auto grace=std::chrono::steady_clock::now()+production_grace;
             while(reply.observable.frames-r.captured<frames && std::chrono::steady_clock::now()<grace) {
                 if(!hp_capture_owner_alive(owner_control)){r.error=11;break;}
                 std::this_thread::sleep_for(std::chrono::microseconds(100));

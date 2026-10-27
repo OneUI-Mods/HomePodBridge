@@ -40,6 +40,7 @@ final class BridgeState {
   static volatile String captureRegistration;
   static volatile OwnedAudioPath.Update phonePath;
   static int status = R.string.idle;
+  static ReceiverRejection receiverRejection = ReceiverRejection.NONE;
 
   static void observe(Observer observer) {
     OBSERVERS.add(observer);

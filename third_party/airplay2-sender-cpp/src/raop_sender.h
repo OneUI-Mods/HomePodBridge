@@ -77,6 +77,8 @@ struct RaopEvents {
     // should persist for this device id (later connects skip the PIN).
     // `credsJson` is opaque to the host.
     std::function<void(const std::string& deviceId, const std::string& credsJson)> credentialsObtained;
+    // Bounded stream-SETUP refusal only. retry=true means a compatibility attempt follows.
+    std::function<void(int status, bool retry)> receiverRejected;
 };
 
 // How the receiver sees us: the name on its PIN dialog / as the AirPlay

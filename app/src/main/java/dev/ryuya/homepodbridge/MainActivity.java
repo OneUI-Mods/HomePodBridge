@@ -107,6 +107,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     setTheme(R.style.Theme_HomePodBridge);
     DynamicColors.applyToActivityIfAvailable(this);
     super.onCreate(state);
+    if (BridgeState.capture == null) BridgeState.receiverRejection = ReceiverRejection.load(this);
     textColor =
         MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorOnSurface, Color.BLACK);
@@ -493,13 +494,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     timingChanged();
     if (status == null) return;
     syncSettings();
-    String message;
-    if (BridgeState.selected != null && BridgeState.status == R.string.connecting)
-      message = getString(R.string.connecting, BridgeState.selected.name());
-    else if (BridgeState.selected != null && BridgeState.status == R.string.playing)
-      message = getString(R.string.playing, BridgeState.selected.name());
-    else message = getString(BridgeState.status);
-    status.setText(message);
+    updateConnectionStatus();
     share.setText(BridgeState.capture == null ? R.string.enable : R.string.stop);
     systemStatus.setText(
         RootConnector.available() ? R.string.system_ready : R.string.system_missing);
@@ -525,19 +520,39 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                   BridgeState.capture.select(
                       receiver,
                       success -> {
-                        if (!success) toast(R.string.connection_failed);
+                        if (!success) {
+                          String reason = BridgeState.receiverRejection.message(this, false);
+                          android.widget.Toast.makeText(
+                                  this,
+                                  reason.isEmpty() ? getString(R.string.connection_failed) : reason,
+                                  android.widget.Toast.LENGTH_LONG)
+                              .show();
+                        }
                       });
                 }
               });
       speaker.setSelected(receiver.equals(BridgeState.selected));
       speakers.addView(speaker);
     }
-    if (!BridgeState.receivers.isEmpty() && BridgeState.status == R.string.searching)
-      status.setText(R.string.ready);
+  }
+
+  private void updateConnectionStatus() {
+    if (status == null) return;
+    String message;
+    if (BridgeState.selected != null && BridgeState.status == R.string.connecting)
+      message = getString(R.string.connecting, BridgeState.selected.name());
+    else if (BridgeState.selected != null && BridgeState.status == R.string.playing)
+      message = getString(R.string.playing, BridgeState.selected.name());
+    else if (!BridgeState.receivers.isEmpty() && BridgeState.status == R.string.searching)
+      message = getString(R.string.ready);
+    else message = getString(BridgeState.status);
+    String reason = BridgeState.receiverRejection.message(this, BridgeState.connected);
+    status.setText(reason.isEmpty() ? message : message + "\n\n" + reason);
   }
 
   @Override
   public void timingChanged() {
+    updateConnectionStatus();
     if (captureTiming == null) return;
     if (tabs.getSelectedTabPosition() == 3) updatePipeline();
     updateTargetTiming();

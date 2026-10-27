@@ -88,7 +88,7 @@ public final class ManualSettingsTest {
 
   @Test
   public void phoneBoundsAndQuantizationAreExplicit() {
-    assertEquals(48, new PhoneTiming(1, 48).periodFrames());
+    assertEquals(48, new PhoneTiming(1, 56).periodFrames());
     assertEquals(96, new PhoneTiming(2, 96).periodFrames());
     assertEquals(928, new PhoneTiming(21, 800).periodFrames());
     assertEquals(96, PhoneTiming.fastest().latencyWindowFrames());
@@ -100,16 +100,16 @@ public final class ManualSettingsTest {
       assertEquals(0, t.periodFrames() % 16);
     }
     assertEquals(2, PhoneTiming.nearest(2.18, 96).periodMs());
-    assertEquals(1, PhoneTiming.nearest(1.09, 48).periodMs());
+    assertEquals(1, PhoneTiming.nearest(1.09, 56).periodMs());
     assertEquals(21, PhoneTiming.nearest(21.04, 800).periodMs());
     assertEquals(PhoneTiming.fastest(), PhoneTiming.fromStored(-1, -1));
     assertEquals(
         new PhoneTiming(21, 800), PhoneTiming.fromStored(Integer.MAX_VALUE, Integer.MAX_VALUE));
     for (double x : new double[] {Double.NaN, Double.POSITIVE_INFINITY, 1.08, 21.05})
       assertThrows(IllegalArgumentException.class, () -> PhoneTiming.nearest(x, 96));
-    assertThrows(IllegalArgumentException.class, () -> new PhoneTiming(0, 48));
+    assertThrows(IllegalArgumentException.class, () -> new PhoneTiming(0, 56));
     assertThrows(IllegalArgumentException.class, () -> new PhoneTiming(22, 96));
-    assertThrows(IllegalArgumentException.class, () -> new PhoneTiming(1, 47));
+    assertThrows(IllegalArgumentException.class, () -> new PhoneTiming(1, 55));
     assertThrows(IllegalArgumentException.class, () -> new PhoneTiming(2, 801));
   }
 }
