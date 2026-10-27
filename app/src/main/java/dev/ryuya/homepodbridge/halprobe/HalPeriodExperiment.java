@@ -1,0 +1,210 @@
+package dev.ryuya.homepodbridge.halprobe;
+
+import android.content.Context;
+import android.os.Looper;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/** Closed self-UID, no-playback HAL getter trial. No executable/data bytes are patched. */
+final class HalPeriodExperiment implements AutoCloseable {
+  private final Path directory;
+  private final Process process;
+  private final Thread control;
+  private final CountDownLatch ready = new CountDownLatch(1);
+  private final StringBuilder transcript = new StringBuilder();
+  private volatile boolean stopping;
+  private volatile String failure;
+  private volatile int accepted;
+
+  private HalPeriodExperiment(String address) throws Exception {
+    byte[] bytes = Files.readAllBytes(Path.of("/data/local/tmp/homepod-period-trace"));
+    if (bytes.length > 1048576
+        || !HexFormat.of()
+            .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+            .equals("f768e043022b65ced5df7524f7084d7a7d5ad36b01cb889ad5703b427c7904aa"))
+      throw new SecurityException("Unverified getter trial executable");
+    directory =
+        Files.createTempDirectory(
+            Path.of("/data/local/tmp"),
+            "homepod-getter-",
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+    Path executable = directory.resolve("probe");
+    Process started = null;
+    try {
+      Files.write(executable, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+      Files.setPosixFilePermissions(executable, PosixFilePermissions.fromString("rwx------"));
+      Process query =
+          new ProcessBuilder("dumpsys", "--pid", ReadOnlyHalState.DESCRIPTOR + "/r_submix").start();
+      String pid =
+          new String(query.getInputStream().readNBytes(128), StandardCharsets.US_ASCII).trim();
+      if (!query.waitFor(2, TimeUnit.SECONDS) || !pid.matches("[1-9][0-9]{0,6}"))
+        throw new SecurityException();
+      String base = null;
+      for (String line : Files.readAllLines(Path.of("/proc", pid, "maps"))) {
+        String[] fields = line.trim().split("\\s+");
+        if (fields.length == 6
+            && fields[2].equals("00000000")
+            && fields[5].equals("/vendor/lib64/libaudioserviceexampleimpl.so")) {
+          if (base != null) throw new SecurityException("Ambiguous module");
+          base = fields[0].split("-")[0];
+        }
+      }
+      if (base == null) throw new SecurityException("Pinned module missing");
+      started =
+          new ProcessBuilder(executable.toString(), pid, base).redirectErrorStream(true).start();
+    } catch (Exception error) {
+      if (started != null) started.destroyForcibly();
+      Files.deleteIfExists(executable);
+      Files.deleteIfExists(directory);
+      throw error;
+    }
+    process = started;
+    control =
+        new Thread(
+            () -> {
+              try (var reader =
+                  new BufferedReader(
+                      new InputStreamReader(process.getInputStream(), StandardCharsets.US_ASCII))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                  if (line.length() > 256) throw new SecurityException("Invalid trace reply");
+                  synchronized (transcript) {
+                    if (transcript.length() < 8192) transcript.append(line).append('\n');
+                  }
+                  if (line.startsWith("READY ")) ready.countDown();
+                  if (line.startsWith("HIT ")) {
+                    String[] fields = line.split(" ");
+                    if (fields.length != 4) throw new SecurityException("Invalid getter event");
+                    int sequence = Integer.parseInt(fields[1]),
+                        id = Integer.parseInt(fields[2]),
+                        port = Integer.parseInt(fields[3]);
+                    boolean allow =
+                        !stopping
+                            && ownedConfig(new ReadOnlyHalState().snapshot(), address, id, port);
+                    if (allow) accepted++;
+                    process
+                        .getOutputStream()
+                        .write(
+                            ((allow ? "A " : "P ") + sequence + "\n")
+                                .getBytes(StandardCharsets.US_ASCII));
+                    process.getOutputStream().flush();
+                  }
+                }
+              } catch (Exception error) {
+                failure = error.getClass().getSimpleName() + ": " + error.getMessage();
+              } finally {
+                ready.countDown();
+              }
+            },
+            "HomePod-owned-getter-trial");
+    control.setDaemon(true);
+    control.start();
+    if (!ready.await(3, TimeUnit.SECONDS) || failure != null || !process.isAlive()) {
+      close();
+      throw new IllegalStateException("Getter trial not ready: " + transcript);
+    }
+  }
+
+  static boolean ownedConfig(JSONObject snapshot, String address, int id, int port)
+      throws Exception {
+    var ports = new java.util.ArrayList<PeriodRouteGuard.Port>();
+    var configs = new java.util.ArrayList<PeriodRouteGuard.Config>();
+    JSONArray rawPorts = snapshot.getJSONArray("ports"),
+        rawConfigs = snapshot.getJSONArray("configs");
+    for (int i = 0; i < rawPorts.length(); i++) {
+      JSONObject p = rawPorts.getJSONObject(i);
+      ports.add(
+          new PeriodRouteGuard.Port(
+              p.getInt("id"), p.optInt("deviceType"), p.optString("address")));
+    }
+    for (int i = 0; i < rawConfigs.length(); i++) {
+      JSONObject c = rawConfigs.getJSONObject(i);
+      configs.add(
+          new PeriodRouteGuard.Config(
+              c.getInt("id"),
+              c.getInt("portId"),
+              c.getInt("rate"),
+              c.getBoolean("stereo"),
+              c.getBoolean("pcm16"),
+              c.optInt("handle")));
+    }
+    return PeriodRouteGuard.allows(ports, configs, address, id, port);
+  }
+
+  static JSONObject run() throws Exception {
+    HalPortProbe.rootPreflight();
+    ReadOnlyHalState state = new ReadOnlyHalState();
+    String baseline = state.snapshot().toString();
+    if (Looper.myLooper() == null) Looper.prepare();
+    Class<?> activity = Class.forName("android.app.ActivityThread");
+    Object thread = activity.getMethod("systemMain").invoke(null);
+    Context context = (Context) activity.getMethod("getSystemContext").invoke(thread);
+    HalPeriodExperiment[] owner = {null};
+    JSONObject result = new JSONObject().put("playbackCreated", false).put("networkStarted", false);
+    try (var policy =
+        new RegisteredPolicy(
+            context,
+            new CaptureScope(false, 0, -1, true, false),
+            address -> owner[0] = new HalPeriodExperiment(address))) {
+      result.put("active", state.snapshot());
+      Process dump = new ProcessBuilder("dumpsys", "media.audio_flinger").start();
+      byte[] text = dump.getInputStream().readNBytes(1048577);
+      if (dump.waitFor(2, TimeUnit.SECONDS) && text.length <= 1048576) {
+        int io = OutputPeriodProbe.ownedOutput(state.snapshot(), policy.address);
+        String section = "";
+        for (String part :
+            new String(text, StandardCharsets.UTF_8).replace("\r", "").split("Output thread "))
+          if (part.contains("  I/O handle: " + io + "\n")) section = part;
+        StringBuilder fields = new StringBuilder();
+        for (String line : section.split("\n"))
+          if (line.contains("frame count:")
+              || line.contains("Sample rate:")
+              || line.contains("I/O handle:")
+              || line.contains("FastMixer thread")) fields.append(line.trim()).append('\n');
+        result.put("audioFlinger", fields.toString());
+      } else dump.destroyForcibly();
+    } catch (Exception error) {
+      result.put("failure", error.getClass().getSimpleName() + ": " + error.getMessage());
+    } finally {
+      if (owner[0] != null) {
+        owner[0].close();
+        result
+            .put("trace", owner[0].transcript.toString())
+            .put("approvedCalls", owner[0].accepted)
+            .put("traceFailure", owner[0].failure == null ? JSONObject.NULL : owner[0].failure);
+      }
+      boolean restored = false;
+      for (int i = 0; i < 60; i++) {
+        restored = baseline.equals(state.snapshot().toString());
+        if (restored) break;
+        Thread.sleep(50);
+      }
+      result.put("resourcesRestoredExactly", restored);
+    }
+    return result;
+  }
+
+  @Override
+  public void close() throws Exception {
+    stopping = true;
+    process.getOutputStream().close();
+    if (!process.waitFor(3, TimeUnit.SECONDS)) {
+      process.destroyForcibly();
+      process.waitFor(2, TimeUnit.SECONDS);
+    }
+    control.join(1000);
+    Files.deleteIfExists(directory.resolve("probe"));
+    Files.deleteIfExists(directory);
+  }
+}

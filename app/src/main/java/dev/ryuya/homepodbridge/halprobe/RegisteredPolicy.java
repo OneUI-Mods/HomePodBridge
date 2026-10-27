@@ -20,7 +20,15 @@ final class RegisteredPolicy implements AutoCloseable {
   private boolean volumeRequested;
   final String address;
 
+  interface BeforeRoute {
+    void ready(String address) throws Exception;
+  }
+
   RegisteredPolicy(Context context, CaptureScope scope) throws Exception {
+    this(context, scope, address -> {});
+  }
+
+  RegisteredPolicy(Context context, CaptureScope scope, BeforeRoute before) throws Exception {
     manager = context.getSystemService(AudioManager.class);
     policyType = Class.forName("android.media.audiopolicy.AudioPolicy");
     callbacks.start();
@@ -81,6 +89,7 @@ final class RegisteredPolicy implements AutoCloseable {
                   .invoke(manager, policy);
       if (status != 0) throw new IllegalStateException("Playback policy refused");
       address = (String) mixType.getMethod("getRegistration").invoke(audioMix);
+      before.ready(address);
       route = PolicyRouteLease.open(context, address);
       // Match AudioRecord's fixed-volume submix lease without changing the phone/receiver volume.
       android.os.IBinder binder =

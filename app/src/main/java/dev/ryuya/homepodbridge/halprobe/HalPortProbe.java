@@ -759,6 +759,15 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
 
   private static void runMain(String[] args) throws Exception {
     rootPreflight();
+    if (args.length == 3 && args[0].equals("getter-period")) {
+      if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
+        throw new IllegalArgumentException();
+      JSONObject result = HalPeriodExperiment.run();
+      System.out.println(result);
+      System.out.flush();
+      if (result.optBoolean("resourcesRestoredExactly")) System.exit(0);
+      return;
+    }
     if (args.length == 3 && args[0].equals("output-period")) {
       if (!UUID.fromString(args[1]).toString().equals(args[1]) || !args[2].equals("44100"))
         throw new IllegalArgumentException();
