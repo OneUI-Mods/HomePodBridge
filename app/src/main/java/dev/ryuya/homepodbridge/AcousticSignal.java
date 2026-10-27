@@ -5,7 +5,7 @@ final class AcousticSignal {
   static final int RATE = 44100,
       COUNT = 3,
       TONE_FRAMES = 1764,
-      FIRST_FRAME = 44100,
+      FIRST_FRAME = 88200,
       GAP_FRAMES = 26460;
   static final double PEAK = 0.12;
   static final int[] PHASE_CODE = {0xACE1, 0xB4D3, 0x69A7};
