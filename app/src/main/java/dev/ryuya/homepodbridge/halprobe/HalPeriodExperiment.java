@@ -25,10 +25,16 @@ final class HalPeriodExperiment implements AutoCloseable {
   private final StringBuilder transcript = new StringBuilder();
   private volatile boolean stopping;
   private boolean closed;
+  private boolean cleanupConfirmed;
+
+  boolean cleanupConfirmed() {
+    return cleanupConfirmed;
+  }
+
   private volatile String failure;
   private volatile int accepted;
 
-  private HalPeriodExperiment(String address, boolean mixer) throws Exception {
+  HalPeriodExperiment(String address, boolean mixer) throws Exception {
     String apk = System.getenv("CLASSPATH");
     if (apk == null || !apk.matches("/data/app/[A-Za-z0-9_=/+.~-]+/base\\.apk"))
       throw new SecurityException("Installed helper required");
@@ -200,6 +206,39 @@ final class HalPeriodExperiment implements AutoCloseable {
     return false;
   }
 
+  static JSONObject requireSmallOutput(ReadOnlyHalState state, String address) throws Exception {
+    int io = OutputPeriodProbe.ownedOutput(state.snapshot(), address);
+    Process dump = new ProcessBuilder("dumpsys", "media.audio_flinger").start();
+    byte[] bytes = dump.getInputStream().readNBytes(1048577);
+    if (!dump.waitFor(2, TimeUnit.SECONDS) || bytes.length > 1048576) {
+      dump.destroyForcibly();
+      throw new SecurityException("Mixer period unavailable");
+    }
+    for (String section :
+        new String(bytes, StandardCharsets.UTF_8).replace("\r", "").split("Output thread ")) {
+      boolean matched = false;
+      for (String line : section.split("\n"))
+        if (line.equals("  I/O handle: " + io)) matched = true;
+      if (!matched) continue;
+      int hal = 0, normal = 0, rate = 0;
+      for (String line : section.split("\n")) {
+        if (line.trim().startsWith("-")) break;
+        String text = line.trim();
+        if (text.startsWith("HAL frame count: ")) hal = Integer.parseInt(text.substring(17).trim());
+        if (text.startsWith("Normal frame count: "))
+          normal = Integer.parseInt(text.substring(20).trim());
+        if (text.startsWith("Sample rate: "))
+          rate = Integer.parseInt(text.substring(13).split(" ")[0]);
+      }
+      if (hal == 96 && normal == 96 && rate == 44100)
+        return new JSONObject()
+            .put("halFrames", hal)
+            .put("normalFrames", normal)
+            .put("sampleRate", rate);
+    }
+    throw new SecurityException("Short period not confirmed");
+  }
+
   static JSONObject run() throws Exception {
     return run(false, false);
   }
@@ -300,7 +339,14 @@ final class HalPeriodExperiment implements AutoCloseable {
       process.waitFor(2, TimeUnit.SECONDS);
     }
     control.join(1000);
+    boolean clean =
+        process.exitValue() == 0
+            && transcript
+                .toString()
+                .matches("(?s).*DONE hits=[0-9]+ changed=[0-9]+ clean=1 ok=1.*");
     Files.deleteIfExists(directory.resolve("probe"));
     Files.deleteIfExists(directory);
+    if (!clean) throw new IllegalStateException("Period preparation cleanup unconfirmed");
+    cleanupConfirmed = true;
   }
 }

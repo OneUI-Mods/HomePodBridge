@@ -52,6 +52,24 @@ public final class CommandService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String command = intent == null ? "status" : intent.getStringExtra("command");
     if (command == null || command.equals("status")) return START_NOT_STICKY;
+    if (command.equals("short-mixer-on") || command.equals("short-mixer-off")) {
+      if (BridgeState.capture != null || BridgeState.connected || BridgeState.volume != 0) {
+        commandStatus = "Stop sharing before changing the mixer period";
+        return START_NOT_STICKY;
+      }
+      StreamSettings.load(this).withShortMixerPeriod(command.endsWith("on")).save(this);
+      commandStatus = "Short mixer preference: " + command.endsWith("on");
+      return START_NOT_STICKY;
+    }
+    if (command.equals("probe-local-short-period")
+        || command.equals("probe-local-short-period-cycle")) {
+      commandStatus = "Checking the actual short-period app path with fixed zeros";
+      commands.execute(
+          () ->
+              commandStatus =
+                  "Local HAL: " + LocalHalProbe.run(this, 800, command.endsWith("cycle"), true));
+      return START_NOT_STICKY;
+    }
     if (command.equals("probe-period-capture")) {
       commandStatus = "Checking fixed-zero input with a short owned mixer period";
       commands.execute(
@@ -320,6 +338,7 @@ public final class CommandService extends Service {
             + settings.deviceBufferFrames()
             + " receiverTargetMs="
             + settings.effectiveLatencyMs());
+    writer.println("shortMixerPeriod=" + StreamSettings.load(this).shortMixerPeriod());
     CaptureProbe.dump(writer);
     HalInspection.dump(writer, false);
   }

@@ -59,6 +59,7 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
   private MaterialSwitch deviceBufferSwitch;
   private MaterialSwitch minimumBufferSwitch;
   private MaterialSwitch dedicatedCaptureSwitch;
+  private MaterialSwitch shortMixerSwitch;
   private MaterialSwitch shortPacketsSwitch;
   private TextView captureBackendStatus;
   private TextView profileSelection;
@@ -294,6 +295,17 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
         });
     latencyControls.addView(dedicatedCaptureSwitch);
     latencyControls.addView(label(getString(R.string.dedicated_capture_description), 14));
+    shortMixerSwitch = new MaterialSwitch(this);
+    shortMixerSwitch.setText(R.string.short_mixer_period);
+    shortMixerSwitch.setOnCheckedChangeListener(
+        (view, enabled) -> {
+          if (updatingSettings) return;
+          StreamSettings.load(this).withShortMixerPeriod(enabled).save(this);
+          syncSettings();
+          if (BridgeState.capture != null) BridgeState.capture.reconfigure();
+        });
+    latencyControls.addView(shortMixerSwitch);
+    latencyControls.addView(label(getString(R.string.short_mixer_period_description), 14));
     captureBackendStatus = label("", 14);
     latencyControls.addView(captureBackendStatus);
     highQualitySwitch = new MaterialSwitch(this);
@@ -426,6 +438,8 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
     lowLatencySwitch.setChecked(settings.lowLatency());
     dedicatedCaptureSwitch.setChecked(settings.dedicatedCapture());
     dedicatedCaptureSwitch.setEnabled(settings.lowLatency() && RootConnector.available());
+    shortMixerSwitch.setChecked(settings.shortMixerPeriod());
+    shortMixerSwitch.setEnabled(settings.effectiveDedicatedCapture() && RootConnector.available());
     highQualitySwitch.setChecked(settings.highQuality());
     shortPacketsSwitch.setChecked(settings.shortAudioPackets());
     shortPacketsSwitch.setEnabled(settings.effectiveDedicatedCapture());
@@ -667,10 +681,13 @@ public final class MainActivity extends AppCompatActivity implements BridgeState
                 case STANDARD -> R.string.capture_backend_standard;
                 case CHECKING -> R.string.capture_backend_checking;
                 case DEDICATED -> R.string.capture_backend_active;
+                case DEDICATED_SHORT -> R.string.capture_backend_short;
                 case DEDICATED_TEST -> R.string.capture_backend_test;
                 case FALLBACK -> R.string.capture_backend_fallback;
               });
-    boolean live = BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED;
+    boolean live =
+        BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED
+            || BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED_SHORT;
     PipelineTiming t = BridgeState.connected ? BridgeState.pipeline : null;
     if (t == null) {
       for (TextView label :

@@ -17,6 +17,7 @@ public final class HalCaptureHost {
     ReadOnlyHalState state = null;
     String baseline = null;
     String registration = null;
+    HalPeriodExperiment[] periods = {null, null};
     try {
       if (args.length != 3
           || !UUID.fromString(args[0]).toString().equals(args[0])
@@ -34,6 +35,7 @@ public final class HalCaptureHost {
       int selectedUid = context.getPackageManager().getApplicationInfo(args[2], 0).uid;
       if (selectedUid == bridgeUid) throw new SecurityException("Cannot capture Bridge itself");
       CaptureScope scope = CaptureScope.parse(args[1], selectedUid, bridgeUid);
+      boolean shortPeriod = args[1].endsWith("-short");
       int target =
           switch (args[1]) {
             case "test-target-752" -> 752;
@@ -64,29 +66,62 @@ public final class HalCaptureHost {
         control.setDaemon(true);
         control.start();
         allocations = true;
-        try (var policy = new RegisteredPolicy(context, scope)) {
+        try (var policy =
+            new RegisteredPolicy(
+                context,
+                scope,
+                address -> {
+                  if (shortPeriod) {
+                    if (stopped.get()) throw new java.io.IOException("Client stopped");
+                    periods[0] = new HalPeriodExperiment(address, false);
+                    periods[1] = new HalPeriodExperiment(address, true);
+                  }
+                })) {
           registration = policy.address;
           var output = socket.getOutputStream();
-          result.put(
-              "capture",
-              HalPortProbe.inputSession(
-                  policy.address,
-                  UUID.fromString(args[0]),
-                  target,
-                  false,
-                  true,
-                  scope.zeroOnly(),
-                  scope.pulse(),
-                  output,
-                  stopped::get,
-                  () -> {
-                    DataOutputStream ready = new DataOutputStream(output);
-                    ready.writeInt(0x48505231);
-                    ready.writeUTF(args[0]);
-                    ready.writeUTF(policy.address);
-                    ready.flush();
-                  },
-                  socket.getFileDescriptor()));
+          HalPortProbe.Ready ready =
+              () -> {
+                DataOutputStream message = new DataOutputStream(output);
+                message.writeInt(0x48505231);
+                message.writeUTF(args[0]);
+                message.writeUTF(policy.address);
+                message.flush();
+              };
+          if (shortPeriod) {
+            result.put(
+                "shortPeriod", HalPeriodExperiment.requireSmallOutput(state, policy.address));
+            result.put(
+                "capture",
+                HalPortProbe.livePeriodCapture(
+                    policy.address,
+                    UUID.fromString(args[0]),
+                    scope.zeroOnly(),
+                    scope.pulse(),
+                    output,
+                    stopped::get,
+                    ready,
+                    socket.getFileDescriptor(),
+                    () -> {
+                      periods[1].close();
+                      periods[0].close();
+                      if (stopped.get()) throw new java.io.IOException("Client stopped");
+                    }));
+          } else {
+            result.put(
+                "capture",
+                HalPortProbe.inputSession(
+                    policy.address,
+                    UUID.fromString(args[0]),
+                    target,
+                    false,
+                    true,
+                    scope.zeroOnly(),
+                    scope.pulse(),
+                    output,
+                    stopped::get,
+                    ready,
+                    socket.getFileDescriptor()));
+          }
         }
       }
     } catch (Throwable failure) {
@@ -94,6 +129,23 @@ public final class HalCaptureHost {
         result.put("failure", failure.getClass().getSimpleName());
       } catch (Exception ignored) {
       }
+    }
+    for (int i = periods.length - 1; i >= 0; i--)
+      if (periods[i] != null)
+        try {
+          periods[i].close();
+        } catch (Exception error) {
+          try {
+            result.put("periodCleanupFailure", error.getClass().getSimpleName());
+          } catch (Exception ignored) {
+          }
+        }
+    boolean periodClean = true;
+    for (var period : periods)
+      if (period != null && !period.cleanupConfirmed()) periodClean = false;
+    try {
+      result.put("periodCleanupConfirmed", periodClean);
+    } catch (Exception ignored) {
     }
     try {
       boolean restored = !allocations;
@@ -130,8 +182,9 @@ public final class HalCaptureHost {
     }
     System.out.println(result);
     System.out.flush();
-    if (result.optBoolean("resourcesRestoredExactly")
-        || result.optBoolean("ownedResourcesReleased")) System.exit(0);
+    if (periodClean
+        && (result.optBoolean("resourcesRestoredExactly")
+            || result.optBoolean("ownedResourcesReleased"))) System.exit(0);
   }
 
   private HalCaptureHost() {}

@@ -33,6 +33,15 @@ public final class CaptureScopeTest {
     assertFalse(scope.whole());
   }
 
+  @Test
+  public void shortPeriodPreservesEverySourceAndExclusionRule() {
+    for (String mode :
+        new String[] {"selected", "whole", "test-selected", "test-whole", "test-cycle"})
+      assertEquals(
+          CaptureScope.parse(mode, 12345, 10234),
+          CaptureScope.parse(mode + "-short", 12345, 10234));
+  }
+
   @Test(expected = IllegalArgumentException.class)
   public void rejectsUnrecognizedScope() {
     CaptureScope.parse("microphone", 12345, 10234);

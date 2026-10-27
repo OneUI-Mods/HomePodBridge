@@ -147,6 +147,34 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
     }
   }
 
+  static JSONObject livePeriodCapture(
+      String address,
+      UUID nonce,
+      boolean zero,
+      boolean pulse,
+      java.io.OutputStream output,
+      java.util.function.BooleanSupplier stopped,
+      Ready ready,
+      java.io.FileDescriptor directSocket,
+      Ready afterOpen)
+      throws Exception {
+    HalPeriodExperiment.requireSmallOutput(new ReadOnlyHalState(), address);
+    return inputSession(
+        address,
+        nonce,
+        96,
+        false,
+        true,
+        zero,
+        pulse,
+        output,
+        stopped,
+        ready,
+        directSocket,
+        afterOpen,
+        96);
+  }
+
   private static JSONObject inputSession(
       String address,
       UUID nonce,
@@ -162,8 +190,7 @@ public final class HalPortProbe implements OwnedHalResources.Backend {
       Ready afterOpen,
       int sourcePeriodFrames)
       throws Exception {
-    if (target == 96 && (!zeroOnly || live || sourcePeriodFrames != 96))
-      throw new SecurityException();
+    if (target == 96 && sourcePeriodFrames != 96) throw new SecurityException();
     if (target != 2587
         && target != 928
         && target != 464

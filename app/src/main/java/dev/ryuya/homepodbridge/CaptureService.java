@@ -297,7 +297,14 @@ public final class CaptureService extends Service {
       }
       if (dedicatedHal) {
         try {
-          zeroHal = new RootHalInput(this, sourcePackage, settings.wholeDevice(), zeroProbe, pulse);
+          zeroHal =
+              new RootHalInput(
+                  this,
+                  sourcePackage,
+                  settings.wholeDevice(),
+                  zeroProbe,
+                  pulse,
+                  settings.effectiveShortMixerPeriod());
           activeZeroHal = zeroHal;
           halNonce = zeroHal.nonce;
           rootInput =
@@ -311,7 +318,9 @@ public final class CaptureService extends Service {
               token,
               zeroProbe
                   ? BridgeState.CaptureBackend.DEDICATED_TEST
-                  : BridgeState.CaptureBackend.DEDICATED);
+                  : settings.effectiveShortMixerPeriod()
+                      ? BridgeState.CaptureBackend.DEDICATED_SHORT
+                      : BridgeState.CaptureBackend.DEDICATED);
           if (generation.get() != token) return;
         } catch (RootHalInput.StartupException unavailable) {
           if (!unavailable.safeFallback) {

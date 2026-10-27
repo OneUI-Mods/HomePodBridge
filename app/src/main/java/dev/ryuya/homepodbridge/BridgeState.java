@@ -11,6 +11,7 @@ final class BridgeState {
     STANDARD,
     CHECKING,
     DEDICATED,
+    DEDICATED_SHORT,
     DEDICATED_TEST,
     FALLBACK
   }

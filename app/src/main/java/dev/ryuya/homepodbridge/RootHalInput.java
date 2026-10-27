@@ -36,6 +36,29 @@ final class RootHalInput implements AutoCloseable {
   RootHalInput(
       Context context, String source, boolean whole, boolean zero, boolean pulse, int testTarget)
       throws StartupException {
+    this(context, source, whole, zero, pulse, testTarget, false);
+  }
+
+  RootHalInput(
+      Context context,
+      String source,
+      boolean whole,
+      boolean zero,
+      boolean pulse,
+      boolean shortPeriod)
+      throws StartupException {
+    this(context, source, whole, zero, pulse, 800, shortPeriod);
+  }
+
+  private RootHalInput(
+      Context context,
+      String source,
+      boolean whole,
+      boolean zero,
+      boolean pulse,
+      int testTarget,
+      boolean shortPeriod)
+      throws StartupException {
     try {
       if (testTarget != 800
           && ((testTarget != 752 && testTarget != 768) || !zero || whole || pulse))
@@ -51,6 +74,10 @@ final class RootHalInput implements AutoCloseable {
               ? (pulse ? "test-cycle" : whole ? "test-whole" : "test-selected")
               : whole ? "whole" : "selected";
       if (testTarget != 800) mode = "test-target-" + testTarget;
+      if (shortPeriod) {
+        if (testTarget != 800) throw new SecurityException();
+        mode += "-short";
+      }
       try (var server = new LocalServerSocket("hpb-live-" + nonce)) {
         process =
             new ProcessBuilder(
@@ -106,7 +133,7 @@ final class RootHalInput implements AutoCloseable {
         if ((poll.revents & android.system.OsConstants.POLLIN) == 0)
           throw new java.io.IOException("No HAL host");
         socket = server.accept();
-        socket.setSoTimeout(8000);
+        socket.setSoTimeout(shortPeriod ? 16000 : 8000);
         if (socket.getPeerCredentials().getUid() != 0)
           throw new SecurityException("Root host required");
         var input = new DataInputStream(socket.getInputStream());
@@ -153,6 +180,7 @@ final class RootHalInput implements AutoCloseable {
     }
     JSONObject report = result;
     return report != null
+        && report.optBoolean("periodCleanupConfirmed", true)
         && (report.optBoolean("resourcesRestoredExactly")
             || report.optBoolean("ownedResourcesReleased"));
   }

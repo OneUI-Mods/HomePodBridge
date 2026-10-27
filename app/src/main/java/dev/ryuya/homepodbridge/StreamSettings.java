@@ -15,7 +15,39 @@ record StreamSettings(
     int deviceBufferFrames,
     boolean dedicatedCapture,
     ReceiverTiming receiverTiming,
-    boolean shortAudioPackets) {
+    boolean shortAudioPackets,
+    boolean shortMixerPeriod) {
+  StreamSettings(
+      boolean wholeDevice,
+      int bufferMs,
+      int blockMs,
+      int latencyMs,
+      boolean lowLatency,
+      boolean highQuality,
+      boolean compressedAudio,
+      boolean adaptiveBuffer,
+      boolean deviceBuffer,
+      int deviceBufferFrames,
+      boolean dedicatedCapture,
+      ReceiverTiming receiverTiming,
+      boolean shortAudioPackets) {
+    this(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        shortAudioPackets,
+        false);
+  }
+
   StreamSettings(
       boolean wholeDevice,
       int bufferMs,
@@ -184,7 +216,8 @@ record StreamSettings(
                 preferences.getInt("receiverMinimumMs", Math.min(target, 250)),
                 preferences.getInt("receiverMaximumMs", target),
                 preferences.getInt("presentationOffsetMs", target)))
-        .withShortAudioPackets(preferences.getBoolean("shortAudioPackets", false));
+        .withShortAudioPackets(preferences.getBoolean("shortAudioPackets", false))
+        .withShortMixerPeriod(preferences.getBoolean("shortMixerPeriod", false));
   }
 
   void save(Context context) {
@@ -202,6 +235,7 @@ record StreamSettings(
         .putBoolean("deviceBuffer", deviceBuffer)
         .putBoolean("dedicatedCapture", dedicatedCapture)
         .putBoolean("shortAudioPackets", shortAudioPackets)
+        .putBoolean("shortMixerPeriod", shortMixerPeriod)
         .putBoolean("independentReceiverTiming", receiverTiming.independent())
         .putInt("receiverMinimumMs", receiverTiming.minimumMs())
         .putInt("receiverMaximumMs", receiverTiming.maximumMs())
@@ -224,7 +258,8 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withProfile(int profile) {
@@ -241,7 +276,8 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withCompression(boolean enabled) {
@@ -258,7 +294,8 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withBuffers(int buffer, int block, int latency) {
@@ -275,7 +312,8 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withAdaptiveBuffer(boolean enabled) {
@@ -292,7 +330,8 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withDeviceBuffer(boolean enabled) {
@@ -309,7 +348,8 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withDeviceBufferFrames(int frames) {
@@ -326,7 +366,8 @@ record StreamSettings(
         frames,
         dedicatedCapture,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withDedicatedCapture(boolean enabled) {
@@ -343,7 +384,8 @@ record StreamSettings(
         deviceBufferFrames,
         enabled,
         receiverTiming,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withReceiverTiming(ReceiverTiming timing) {
@@ -360,7 +402,8 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         timing,
-        shortAudioPackets);
+        shortAudioPackets,
+        shortMixerPeriod);
   }
 
   StreamSettings withShortAudioPackets(boolean enabled) {
@@ -377,7 +420,30 @@ record StreamSettings(
         deviceBufferFrames,
         dedicatedCapture,
         receiverTiming,
+        enabled,
+        shortMixerPeriod);
+  }
+
+  StreamSettings withShortMixerPeriod(boolean enabled) {
+    return new StreamSettings(
+        wholeDevice,
+        bufferMs,
+        blockMs,
+        latencyMs,
+        lowLatency,
+        highQuality,
+        compressedAudio,
+        adaptiveBuffer,
+        deviceBuffer,
+        deviceBufferFrames,
+        dedicatedCapture,
+        receiverTiming,
+        shortAudioPackets,
         enabled);
+  }
+
+  boolean effectiveShortMixerPeriod() {
+    return effectiveDedicatedCapture() && shortMixerPeriod;
   }
 
   boolean effectiveShortAudioPackets() {

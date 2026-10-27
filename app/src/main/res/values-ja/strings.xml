@@ -118,4 +118,7 @@
     <string name="buffer_use_custom">カスタム設定に切り替え</string>
     <string name="short_audio_packets">短い音声パケット（実験）</string>
     <string name="short_audio_packets_description">低遅延モードの専用経路で、音声をまとめる単位を約8 msから約2 msにします。音声はロスレスのままです。パケット数が増え、HomePodでの動作は未確認です。再生できない場合はオフに戻してください。標準経路と高音質モードは約8 msを使用します。変更時は音量0%で再接続します。</string>
+    <string name="short_mixer_period">スマホのミキサー周期を短縮（実験）</string>
+    <string name="short_mixer_period_description">対応するroot化Galaxyで、スマホのミキサー周期を約2.18msへ短縮します。低遅延・専用取り込みが必要です。適用できない経路は代替取り込みに切り替わります。HomePod側の待ち時間は別設定です。</string>
+    <string name="capture_backend_short">専用取り込み動作中・スマホのミキサー周期2.18ms</string>
 </resources>
