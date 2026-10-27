@@ -5,15 +5,35 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <android/dlext.h>
+
+static void* platform_library(const char* path) {
+    void* library=dlopen(path,RTLD_NOW|RTLD_LOCAL);
+    if(library) return library;
+    // app_process already owns the platform namespace. Do not create or alter namespaces.
+    typedef struct android_namespace_t*(*Namespace)(const char*);
+    Namespace exported=(Namespace)dlsym(RTLD_DEFAULT,"android_get_exported_namespace");
+    if(!exported) return NULL;
+    const char* names[]={"platform","default"};
+    for(size_t i=0;i<2;i++) {
+        struct android_namespace_t* space=exported(names[i]);
+        if(!space) continue;
+        android_dlextinfo info={.flags=ANDROID_DLEXT_USE_NAMESPACE,.library_namespace=space};
+        library=android_dlopen_ext(path,RTLD_NOW|RTLD_LOCAL,&info);
+        if(library) return library;
+    }
+    return NULL;
+}
 
 // Exact pinned platform ABI, root process only. No global (io=0) parameter call exists here.
 JNIEXPORT jlongArray JNICALL
 Java_dev_ryuya_homepodbridge_halprobe_OutputPeriodProbe_probe(JNIEnv* env,jclass type,jint io) {
     (void)type;
     if(getuid()!=0 || sizeof(void*)!=8 || io<=0 || io>1000000) return NULL;
-    void* base=dlopen("/system/lib64/libaudiobase.so",RTLD_NOW|RTLD_LOCAL);
-    void* utils=dlopen("/system/lib64/libutils.so",RTLD_NOW|RTLD_LOCAL);
-    jlong v[18];for(int i=0;i<18;i++) v[i]=-1;
+    void* base=platform_library("/system/lib64/libaudiobase.so");
+    void* utils=platform_library("/system/lib64/libutils.so");
+    jlong v[20];for(int i=0;i<20;i++) v[i]=-1;
+    v[18]=(base?1:0)|(utils?2:0);
     if(base && utils) {
         typedef int(*Count)(int,size_t*);
         typedef int(*Rate)(int,unsigned*);
@@ -26,6 +46,7 @@ Java_dev_ryuya_homepodbridge_halprobe_OutputPeriodProbe_probe(JNIEnv* env,jclass
         Set set=(Set)dlsym(base,"_ZN7android11AudioSystem13setParametersEiRKNS_7String8E");
         Construct construct=(Construct)dlsym(utils,"_ZN7android7String8C1EPKc");
         Destroy destroy=(Destroy)dlsym(utils,"_ZN7android7String8D1Ev");
+        v[19]=(count?1:0)|(hal?2:0)|(rate?4:0)|(set?8:0)|(construct?16:0)|(destroy?32:0);
         if(count && hal && rate && set && construct && destroy) {
             #define READ(start) do { \
                 size_t frames=0,halFrames=0;unsigned hz=0; \
@@ -53,7 +74,7 @@ Java_dev_ryuya_homepodbridge_halprobe_OutputPeriodProbe_probe(JNIEnv* env,jclass
     }
     if(utils) dlclose(utils);
     if(base) dlclose(base);
-    jlongArray result=(*env)->NewLongArray(env,18);
-    if(result) (*env)->SetLongArrayRegion(env,result,0,18,v);
+    jlongArray result=(*env)->NewLongArray(env,20);
+    if(result) (*env)->SetLongArrayRegion(env,result,0,20,v);
     return result;
 }
