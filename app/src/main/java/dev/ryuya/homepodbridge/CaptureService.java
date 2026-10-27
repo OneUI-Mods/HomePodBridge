@@ -41,7 +41,12 @@ public final class CaptureService extends Service {
   private static final ExecutorService worker = Executors.newSingleThreadExecutor();
   private static final ExecutorService devicePaths = Executors.newSingleThreadExecutor();
   // The shared worker must not open another path after an unconfirmed dedicated close.
-  private static boolean halCleanupUnconfirmed;
+  private static volatile boolean halCleanupUnconfirmed;
+
+  static void blockUnconfirmedHalCleanup() {
+    halCleanupUnconfirmed = true;
+  }
+
   private final AtomicInteger generation = new AtomicInteger();
   private MediaProjection projection;
   private int musicUid;

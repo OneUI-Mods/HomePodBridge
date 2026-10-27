@@ -16,6 +16,7 @@ final class LocalHalProbe {
       return "LOCAL_HAL_BUSY";
     JSONObject result = new JSONObject();
     RootHalInput owner = null;
+    boolean startupCleanupSafe = true;
     try {
       owner = new RootHalInput(context, BridgeState.MUSIC, false, true, true);
       PcmPipe pipe =
@@ -66,16 +67,19 @@ final class LocalHalProbe {
           .put("p95TransitUs", percentile(transits, 95))
           .put("maximumTransitUs", percentile(transits, 100));
     } catch (Exception error) {
+      if (error instanceof RootHalInput.StartupException startup)
+        startupCleanupSafe = startup.safeFallback;
       try {
         result.put("failure", error.getClass().getSimpleName() + ": " + error.getMessage());
       } catch (org.json.JSONException ignored) {
       }
     } finally {
-      boolean cleaned = owner == null;
+      boolean cleaned = owner == null && startupCleanupSafe;
       if (owner != null) {
         owner.close();
         cleaned = owner.awaitCleanup(5000);
       }
+      if (!cleaned) CaptureService.blockUnconfirmedHalCleanup();
       try {
         result.put("cleanupConfirmed", cleaned);
       } catch (org.json.JSONException ignored) {
