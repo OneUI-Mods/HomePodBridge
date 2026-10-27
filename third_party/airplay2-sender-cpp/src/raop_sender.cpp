@@ -2167,7 +2167,17 @@ size_t RaopSender::fillFrames_(int16_t* dst, size_t want) {
         // Pass-through: pop what's there, pad the rest with silence
         // (player paused / ring priming, the timeline must keep
         // running or the receiver declares the stream dead).
-        const size_t availFrames = ring_->availableRead() / kChannels;
+        size_t availFrames = ring_->availableRead() / kChannels;
+        // An initial underrun must not leave permanent stale silence in a zero-reserve stream.
+        // Keep one complete packet, only when more than two are queued. Never discard audio.
+        if (shortAudioPackets_ && packetFrames_ < 352 && inputBufferFrames_ == 0
+            && !adaptiveInputBuffer_ && availFrames > want * 2) {
+            const size_t excess = availFrames - want;
+            if (ring_->tryDiscardZeros(excess * kChannels)) {
+                trimmedSilentFrames_ += excess;
+                availFrames = ring_->availableRead() / kChannels;
+            }
+        }
         if (inputBufferFrames_ > 0 && !inputPrimed_) {
             const size_t threshold = std::min(inputBufferFrames_, ring_->capacity() / kChannels);
             if (availFrames < threshold) {

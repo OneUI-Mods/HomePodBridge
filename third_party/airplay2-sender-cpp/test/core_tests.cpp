@@ -1692,6 +1692,38 @@ void testShortAudioPackets() {
     }
 }
 
+void testZeroReserveStaleSilence() {
+    g_test = "zero-reserve short streams discard only stale silence";
+    for(uint32_t frames : {44u,88u}) for(bool oldAudio : {false,true}) for(bool reserve : {false,true}) {
+        Rig r;
+        REQUIRE(r.sender->setAudioPacketFrames(frames),"short stream configured");
+        r.sender->setInputBufferFrames(reserve ? frames : 0);
+        r.sender->setPresentationLatencyMs(50);
+        runAp2Handshake(r,FakeReceiver::Mode::Ap2Transient,RaopDeviceInfo::Auth::HapTransient);
+        REQUIRE(r.launchedOk && *r.launchedOk,"stream connected muted");
+        r.io.takeUdp();
+        std::vector<int16_t> prefix(frames*2*4,0), signal(frames*2,1234);
+        if(oldAudio) prefix[0]=1;
+        REQUIRE(r.ring.tryPush(prefix) && r.ring.tryPush(signal),"old queue and fresh signal supplied");
+        r.now+=std::chrono::ceil<Clock::duration>(std::chrono::nanoseconds((uint64_t(frames)*1000000000ULL+44099)/44100));
+        r.sender->tick();
+        auto packets=r.io.takeUdp();
+        auto packet=std::find_if(packets.begin(),packets.end(),[](const auto& p){return p.s==RaopUdp::Audio;});
+        REQUIRE(packet!=packets.end(),"one audio deadline reached");
+        auto decoded=r.rx.decodeAudio(packet->data);
+        REQUIRE(decoded,"valid audio after trim decision");
+        if(!oldAudio && !reserve) {
+            CHECK(*decoded==signal && r.sender->trimmedSilentFrames()==frames*4,"stale silence removed without losing fresh signal");
+            CHECK(r.ring.availableRead()==0,"no permanent silent tail remains");
+        } else {
+            CHECK((*decoded)[0]==(oldAudio ? 1 : 0) && r.sender->trimmedSilentFrames()==0,"audio and explicit reserve are preserved");
+            CHECK(r.ring.availableRead()==frames*2*4,"untrimmed queue preserved exactly");
+        }
+        CHECK(be32(packet->data,4)==2205,"silence trimming never rebases the RTP clock");
+        r.sender->stop();
+    }
+}
+
 void testIndependentReceiverTiming() {
     using airplay::bplist::Value;
     g_test = "independent receiver window and presentation timeline";
@@ -1998,6 +2030,7 @@ int main() {
     testAp2LatencyNegotiation();
     testIndependentReceiverTiming();
     testShortAudioPackets();
+    testZeroReserveStaleSilence();
     testCompressedAp2Audio();
     testFrameClockPacing();
     testLocalHandoffLead();
