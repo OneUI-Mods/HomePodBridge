@@ -12,7 +12,7 @@
 - The application supports 0–100% volume and starts each connection muted. The 5% maximum applies only to volume values the assistant sets during physical-device operation. Do not impose a 5% application/build limit. Never set a device volume above 5% while debugging.
 - The user explicitly requested 20% for listening in this session; that specific requested value is authorized. Do not use that request as permission to sweep higher values during debugging.
 - The user is sleeping and has requested silence. Until the user explicitly lifts this restriction, keep receiver volume at 0%, do not start audible sources, and do not request listening tests. The earlier 20% listening authorization does not apply during this restriction.
-- Java uses google-java-format. Keep user-facing strings in English and Japanese resources, and implementation details in docs/development.md.
+- Android sources use Kotlin and ktfmt --kotlinlang-style. Keep user-facing strings in English and Japanese resources, and implementation details in docs/development.md.
 
 # Distribution
 
