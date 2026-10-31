@@ -13,12 +13,13 @@ class ReadOnlyHalState {
     @kotlin.jvm.JvmField val module: IBinder
 
     init {
-        module =
+        val candidate =
             (Class.forName("android.os.ServiceManager")
                 .getDeclaredMethod("getService", String::class.java)
-                .invoke(null, ReadOnlyHalState.DESCRIPTOR + "/r_submix") as IBinder?)!!
-        if (module == null || ReadOnlyHalState.DESCRIPTOR != module.getInterfaceDescriptor())
+                .invoke(null, ReadOnlyHalState.DESCRIPTOR + "/r_submix") as IBinder?)
+        if (candidate == null || ReadOnlyHalState.DESCRIPTOR != candidate.getInterfaceDescriptor())
             throw SecurityException()
+        module = candidate
         var p = read(16777215)
         try {
             if (p!!.readInt() != 3) throw SecurityException("Unsupported version")

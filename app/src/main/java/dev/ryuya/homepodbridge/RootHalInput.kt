@@ -83,7 +83,7 @@ private constructor(
         zero: Boolean,
         pulse: Boolean,
         timing: PhoneTiming?,
-    ) : this(context, source, whole, zero, pulse, 800, timing != null, timing!!)
+    ) : this(context, source, whole, zero, pulse, 800, timing != null, timing)
 
     init {
         try {

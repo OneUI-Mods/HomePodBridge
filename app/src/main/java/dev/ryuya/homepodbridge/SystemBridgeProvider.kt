@@ -23,7 +23,7 @@ class SystemBridgeProvider : ContentProvider() {
             if (Binder.getCallingUid() != systemUi)
                 throw SecurityException("Only SystemUI can control routes")
             if ("register" == method && extras != null) {
-                RootConnector.register(extras.getBinder("bridge")!!)
+                RootConnector.register(extras.getBinder("bridge"))
                 return Bundle.EMPTY
             }
             val main = Handler(Looper.getMainLooper())
