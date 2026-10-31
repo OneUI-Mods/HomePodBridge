@@ -80,13 +80,7 @@ object HalRootProbe {
                 throw IOException("Service already stopped")
             val command =
                 String(Files.readAllBytes(proc.resolve("cmdline")), StandardCharsets.UTF_8)
-            if (
-                !command
-                    .split("\u0000".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()[0]
-                    .endsWith("audiohalservice.qti")
-            )
+            if (!TextCompatibility.split(command, "\u0000")[0].endsWith("audiohalservice.qti"))
                 throw IOException("Unexpected service executable")
             HalRootProbe.Memory(proc).use { memory ->
                 val base = memory.base(HalRootProbe.MODULE)
@@ -331,8 +325,7 @@ object HalRootProbe {
         init {
             for (line in Files.readAllLines(proc.resolve("maps"))) {
                 val fields = line.split("\\s+".toRegex(), limit = 6).toTypedArray()
-                val range =
-                    fields[0].split("-".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+                val range = TextCompatibility.split(fields[0], "-")
                 maps.add(
                     HalRootProbe.Mapping(
                         range[0].toLong(16),

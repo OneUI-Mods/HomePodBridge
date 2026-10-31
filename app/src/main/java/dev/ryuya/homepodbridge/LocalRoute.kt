@@ -69,7 +69,7 @@ class LocalRoute private constructor(process: java.lang.Process) : AutoCloseable
         fun isLocalIpv4(host: String?): Boolean {
             if (host == null || !host.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}".toRegex()))
                 return false
-            val parts = host.split("\\.".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+            val parts = TextCompatibility.split(host, "\\.")
             val ip = IntArray(4)
             for (i in 0..3) {
                 ip[i] = parts[i].toInt()

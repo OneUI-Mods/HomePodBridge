@@ -5,6 +5,7 @@ import android.os.Parcel
 import android.os.Parcelable
 import android.os.Parcelable.Creator
 import android.os.Process
+import dev.ryuya.homepodbridge.TextCompatibility
 import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.IOException
@@ -938,9 +939,10 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
             }
             val proc = Path.of("/proc", pid)
             if (
-                (HalPortProbe.readString(proc.resolve("cmdline"))!!.split("\u0000".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()[0] != "/vendor/bin/hw/audiohalservice.qti") ||
+                (TextCompatibility.split(
+                        HalPortProbe.readString(proc.resolve("cmdline"))!!,
+                        "\u0000",
+                    )[0] != "/vendor/bin/hw/audiohalservice.qti") ||
                     !HalPortProbe.readString(proc.resolve("status"))!!.matches(
                         "(?s).*\\nUid:\\s+1041\\s+1041\\s+1041\\s+1041\\s*\\n.*".toRegex()
                     )
@@ -948,11 +950,10 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
                 throw SecurityException("Unexpected module process")
             val stat = HalPortProbe.readString(proc.resolve("stat"))
             val fields =
-                stat!!
-                    .substring(stat!!.lastIndexOf(')') + 2)
-                    .split("\\s+".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()
+                TextCompatibility.split(
+                    stat!!.substring(stat!!.lastIndexOf(')') + 2),
+                    "\\s+",
+                )
             check(!(fields.size < 20 || !fields[19].matches("[0-9]+".toRegex()))) {
                 "Module start time unavailable"
             }
@@ -1238,10 +1239,7 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
                 val proc =
                     Path.of(
                         "/proc",
-                        current!!
-                            .split(":".toRegex())
-                            .dropLastWhile { it.isEmpty() }
-                            .toTypedArray()[0],
+                        TextCompatibility.split(current!!, ":")[0],
                     )
                 val fds: Long
                 val threads: Long
@@ -1341,16 +1339,14 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
                     throw SecurityException()
                 val now = HalPortProbe.readString(proc!!.resolve("stat"))
                 if (
-                    identity!!
-                        .substring(identity!!.lastIndexOf(')') + 2)
-                        .split("\\s+".toRegex())
-                        .dropLastWhile { it.isEmpty() }
-                        .toTypedArray()[19] !=
-                        now!!
-                            .substring(now!!.lastIndexOf(')') + 2)
-                            .split("\\s+".toRegex())
-                            .dropLastWhile { it.isEmpty() }
-                            .toTypedArray()[19]
+                    TextCompatibility.split(
+                            identity!!.substring(identity!!.lastIndexOf(')') + 2),
+                            "\\s+",
+                        )[19] !=
+                        TextCompatibility.split(
+                                now!!.substring(now!!.lastIndexOf(')') + 2),
+                                "\\s+",
+                            )[19]
                 )
                     throw SecurityException("Helper identity changed")
                 Process.sendSignal(proc!!.getFileName().toString().toInt(), 15)

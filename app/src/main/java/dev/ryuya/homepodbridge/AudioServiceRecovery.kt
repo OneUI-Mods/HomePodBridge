@@ -78,11 +78,10 @@ object AudioServiceRecovery {
             return false
         val saved = JSONObject(AudioServiceRecovery.readProc(journal))
         val start: String? =
-            stat
-                .substring(stat.lastIndexOf(')') + 2)
-                .split("\\s+".toRegex())
-                .dropLastWhile { it.isEmpty() }
-                .toTypedArray()[19]
+            TextCompatibility.split(
+                    stat.substring(stat.lastIndexOf(')') + 2),
+                    "\\s+",
+                )[19]
         return saved.optBoolean("zeroOnly", false) &&
             (pid + ":" + start) == saved.getString("epoch")
     }
@@ -184,10 +183,8 @@ object AudioServiceRecovery {
             val executable = AudioServiceRecovery.readProc(proc.resolve("cmdline"))
             val identity = AudioServiceRecovery.readProc(proc.resolve("status"))
             if (
-                executable!!
-                    .split("\u0000".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()[0] != "/vendor/bin/hw/audiohalservice.qti" ||
+                TextCompatibility.split(executable!!, "\u0000")[0] !=
+                    "/vendor/bin/hw/audiohalservice.qti" ||
                     !identity!!.matches(
                         "(?s).*\\nUid:\\s+1041\\s+1041\\s+1041\\s+1041\\s*\\n.*".toRegex()
                     )
@@ -225,16 +222,14 @@ object AudioServiceRecovery {
             val currentStat = AudioServiceRecovery.readProc(proc.resolve("stat"))
             // PID reuse guard: compare the process start-time field, rather than changing counters.
             if (
-                epoch!!
-                    .substring(epoch!!.lastIndexOf(')') + 2)
-                    .split("\\s+".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()[19] !=
-                    currentStat!!
-                        .substring(currentStat!!.lastIndexOf(')') + 2)
-                        .split("\\s+".toRegex())
-                        .dropLastWhile { it.isEmpty() }
-                        .toTypedArray()[19]
+                TextCompatibility.split(
+                        epoch!!.substring(epoch!!.lastIndexOf(')') + 2),
+                        "\\s+",
+                    )[19] !=
+                    TextCompatibility.split(
+                            currentStat!!.substring(currentStat!!.lastIndexOf(')') + 2),
+                            "\\s+",
+                        )[19]
             )
                 throw SecurityException()
             run(

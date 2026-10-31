@@ -2,6 +2,7 @@ package dev.ryuya.homepodbridge.halprobe
 
 import android.content.Context
 import android.os.Looper
+import dev.ryuya.homepodbridge.TextCompatibility
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
@@ -107,11 +108,10 @@ constructor(address: String?, mixer: Boolean, timing: PhoneTiming = PhoneTiming.
 
             for (line in Files.readAllLines(Path.of("/proc", pid, "maps"))) {
                 val fields =
-                    line
-                        .trim { it <= ' ' }
-                        .split("\\s+".toRegex())
-                        .dropLastWhile { it.isEmpty() }
-                        .toTypedArray()
+                    TextCompatibility.split(
+                        line.trim { it <= ' ' },
+                        "\\s+",
+                    )
                 if (
                     fields.size == 6 &&
                         fields[2] == "00000000" &&
@@ -120,11 +120,7 @@ constructor(address: String?, mixer: Boolean, timing: PhoneTiming = PhoneTiming.
                             else "/vendor/lib64/libaudioserviceexampleimpl.so"
                 ) {
                     if (base != null) throw SecurityException("Ambiguous module")
-                    base =
-                        fields[0]
-                            .split("-".toRegex())
-                            .dropLastWhile { it.isEmpty() }
-                            .toTypedArray()[0]
+                    base = TextCompatibility.split(fields[0], "-")[0]
                 }
             }
             if (base == null) throw SecurityException("Pinned module missing")
@@ -168,11 +164,7 @@ constructor(address: String?, mixer: Boolean, timing: PhoneTiming = PhoneTiming.
                                     }
                                     if (line!!.startsWith("READY ")) ready.countDown()
                                     if (line!!.startsWith("HIT ")) {
-                                        val fields =
-                                            line!!
-                                                .split(" ".toRegex())
-                                                .dropLastWhile { it.isEmpty() }
-                                                .toTypedArray()
+                                        val fields = TextCompatibility.split(line!!, " ")
                                         if (fields.size != 4)
                                             throw SecurityException("Invalid getter event")
                                         val sequence = fields[1].toInt()
@@ -337,23 +329,20 @@ constructor(address: String?, mixer: Boolean, timing: PhoneTiming = PhoneTiming.
                 throw SecurityException("Mixer period unavailable")
             }
             for (section in
-                String(bytes, StandardCharsets.UTF_8)
-                    .replace("\r", "")
-                    .split("Output thread ".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()) {
+                TextCompatibility.split(
+                    String(bytes, StandardCharsets.UTF_8).replace("\r", ""),
+                    "Output thread ",
+                )) {
                 var matched: Boolean = false
-                for (line in
-                    section
-                        .split("\n".toRegex())
-                        .dropLastWhile { it.isEmpty() }
-                        .toTypedArray()) if (line == "  I/O handle: " + io) matched = true
+                for (line in TextCompatibility.split(section, "\n")) if (
+                    line == "  I/O handle: " + io
+                )
+                    matched = true
                 if (!matched) continue
                 var hal: Int = 0
                 var normal: Int = 0
                 var rate: Int = 0
-                for (line in
-                    section.split("\n".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()) {
+                for (line in TextCompatibility.split(section, "\n")) {
                     if (line.trim { it <= ' ' }.startsWith("-")) break
                     val text = line.trim { it <= ' ' }
                     if (text.startsWith("HAL frame count: "))
@@ -362,11 +351,10 @@ constructor(address: String?, mixer: Boolean, timing: PhoneTiming = PhoneTiming.
                         normal = text.substring(20).trim { it <= ' ' }.toInt()
                     if (text.startsWith("Sample rate: "))
                         rate =
-                            text
-                                .substring(13)
-                                .split(" ".toRegex())
-                                .dropLastWhile { it.isEmpty() }
-                                .toTypedArray()[0]
+                            TextCompatibility.split(
+                                    text.substring(13),
+                                    " ",
+                                )[0]
                                 .toInt()
                 }
                 if (
@@ -438,20 +426,12 @@ constructor(address: String?, mixer: Boolean, timing: PhoneTiming = PhoneTiming.
                                 OutputPeriodProbe.ownedOutput(state.snapshot()!!, policy.address)
                             var section: String = ""
                             for (part in
-                                String(text, StandardCharsets.UTF_8)
-                                    .replace("\r", "")
-                                    .split("Output thread ".toRegex())
-                                    .dropLastWhile { it.isEmpty() }
-                                    .toTypedArray()) if (
-                                part.contains("  I/O handle: " + io + "\n")
-                            )
-                                section = part
+                                TextCompatibility.split(
+                                    String(text, StandardCharsets.UTF_8).replace("\r", ""),
+                                    "Output thread ",
+                                )) if (part.contains("  I/O handle: " + io + "\n")) section = part
                             val fields = StringBuilder()
-                            for (line in
-                                section
-                                    .split("\n".toRegex())
-                                    .dropLastWhile { it.isEmpty() }
-                                    .toTypedArray()) if (
+                            for (line in TextCompatibility.split(section, "\n")) if (
                                 !line.trim { it <= ' ' }.startsWith("-") &&
                                     (line.contains("frame count:") ||
                                         line.contains("Sample rate:") ||

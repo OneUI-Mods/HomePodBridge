@@ -1,5 +1,6 @@
 package dev.ryuya.homepodbridge.halprobe
 
+import dev.ryuya.homepodbridge.TextCompatibility
 import java.util.UUID
 import kotlin.jvm.JvmRecord
 import kotlin.jvm.JvmStatic
@@ -66,11 +67,10 @@ data class WorkerIdentity(
             if (space < 1 || close < space || (stat.substring(0, space) != pid.toString()))
                 throw SecurityException("Invalid process stat")
             val fields =
-                stat
-                    .substring(close + 2)
-                    .split("\\s+".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()
+                TextCompatibility.split(
+                    stat.substring(close + 2),
+                    "\\s+",
+                )
             if (
                 fields.size < 20 ||
                     (fields[1] != parent.toString()) ||
