@@ -93,12 +93,15 @@ object NullContractProbe {
         )
         check(explicit.javaClass.getField("safeFallback").getBoolean(explicit))
         println("PASS explicit timing still follows the same safe startup guard")
-        val state = Class.forName("dev.ryuya.homepodbridge.halprobe.ReadOnlyHalState", true, bridge)
-        val absent = failure { state.getConstructor().newInstance() }
-        check(if (before) absent is NullPointerException else absent is SecurityException) {
-            absent
+        if (args.getOrNull(2) != "device") {
+            val state =
+                Class.forName("dev.ryuya.homepodbridge.halprobe.ReadOnlyHalState", true, bridge)
+            val absent = failure { state.getConstructor().newInstance() }
+            check(if (before) absent is NullPointerException else absent is SecurityException) {
+                absent
+            }
+            println("PASS absent vendor HAL: ${absent.javaClass.simpleName}")
         }
-        println("PASS absent vendor HAL: ${absent.javaClass.simpleName}")
         val connector = Class.forName("dev.ryuya.homepodbridge.RootConnector", true, bridge)
         val missing = failure {
             connector.getMethod("register", android.os.IBinder::class.java).invoke(null, null)
