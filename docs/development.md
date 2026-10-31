@@ -32,7 +32,7 @@ HomePod transient authentication now derives the event-channel keys from the ful
 
 ## Verification
 
-- Java tests exercise receiver identity changes, unsupported auth/endpoints, fragmented PCM reads, byte order and truncated frames.
+- Kotlin tests exercise receiver identity changes, unsupported auth/endpoints, fragmented PCM reads, byte order and truncated frames.
 - Upstream `raop_core_tests` exercises protocol handshakes, encryption, authentication failure, RTP/timing and retransmission against an in-process fake receiver.
 - Upstream `raop_loop_tests` exercises real loopback TCP/UDP connections, refusal, disconnect and reconnect.
 - Jitter-buffer regression tests deliver PCM in 64 ms bursts, verify uninterrupted samples with a reserve, and verify starvation/recovery while RTP continues. They also verify a custom 500 ms presentation timestamp. Java tests bound persisted stream settings and verify complete stereo frames for capture block sizes.
@@ -514,3 +514,5 @@ Zero-reserve sender snapshots before silent-tail trimming held 374–418 frames 
 
 
 Network physical verification preserved the user-audited current and manual preferences byte for byte, including compression OFF, receiver window 45–50 ms/presentation 50 ms, 48-frame producer and 88-frame capture reserve. Silent normal/priority comparisons delivered several thousand existing audio packets per session with zero local UDP send failures and zero handoff deadline misses. Receiver requests for a few resend packets were handed off with no unavailable backlog data. Socket EF/priority-6 readback succeeded. The Wi-Fi lock was held through the Wi-Fi-backed VPN fallback and released after worker teardown, but foreground eligibility was false during command-only tests. In a repeated pair, smoothed control RTT medians were about 7.40/7.57 ms for priority/normal; earlier trials also included a 24.65 ms priority-session median, so these short observations do not demonstrate a network speedup. Normal priority remains selected. The standalone Galaxy loopback fixture produced four paired software timestamp samples; the actual receiver path supplied no usable pairs, so its local driver-transit values remain unknown and automatic sampling disable was confirmed. No microphone or audible source was used.
+
+- [Kotlin移行の設計と検証範囲](kotlin-migration.md)
