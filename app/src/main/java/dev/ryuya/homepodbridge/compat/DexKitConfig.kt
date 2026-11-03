@@ -1,12 +1,13 @@
 package dev.ryuya.homepodbridge.compat
 
 internal object DexKitConfig {
-    const val SCHEMA = 1
+    const val SCHEMA = 2
     const val MODULE_ID = "dev.ryuya.homepodbridge"
     val MODULE_VERSION
         get() = dev.ryuya.homepodbridge.BuildConfig.VERSION_CODE
 
     const val PROFILE_HASH = "cae4ad6001675f5ebc246b5e9433d2448cbc713b9b89b123eb3338b2c8028639"
+    val FEATURE_PREFIXES = setOf<String>()
     val TARGETS = setOf("com.android.systemui")
     val HOSTS = setOf("com.android.systemui")
     val CLASSES_BY_TARGET =

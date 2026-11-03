@@ -1,16 +1,14 @@
 package dev.ryuya.homepodbridge.compat
 
 import android.content.Context
-import android.os.Build
-import java.io.File
 import org.luckypray.dexkit.DexKitBridge
 
 /** Persistent cache for feature-specific call graphs; no bridge on a hit, including failures. */
 object DexRuntimeCache {
-    @Volatile private var directory: File? = null
+    @Volatile private var hostContext: Context? = null
 
     fun configure(context: Context) {
-        directory = File(context.filesDir, "dexkit-feature-results/${DexKitConfig.MODULE_ID}")
+        hostContext = context
     }
 
     fun query(
@@ -18,28 +16,47 @@ object DexRuntimeCache {
         rule: String,
         block: (DexKitBridge) -> Map<String, String?>,
     ): Map<String, String?> {
-        val base = checkNotNull(directory) { "Discovery cache not configured" }
-        val file = File(apk)
-        val generation =
-            listOf(
-                    DexKitConfig.SCHEMA,
-                    DexKitConfig.MODULE_VERSION,
-                    DexKitConfig.PROFILE_HASH,
-                    Build.VERSION.SDK_INT,
-                    Build.FINGERPRINT,
-                    file.path,
-                    file.length(),
-                    file.lastModified(),
-                    rule,
-                )
-                .joinToString("|")
+        val context = checkNotNull(hostContext) { "Discovery cache not configured" }
+        val uri = android.net.Uri.parse("content://${DexKitConfig.MODULE_ID}.dexkit/ready")
+        val request =
+            android.os.Bundle().apply {
+                putString("apk", apk)
+                putString("rule", rule)
+            }
+        val start =
+            checkNotNull(
+                context.contentResolver.call(uri, "feature_begin", context.packageName, request)
+            )
+        val token = start.getString("token")
         val result =
-            GenerationStore(base).readOrExplore(generation) {
-                System.loadLibrary("dexkit")
-                DexKitBridge.create(apk).use { bridge ->
-                    bridge.setThreadNum(2)
-                    block(bridge)
-                }
+            if (token == null) {
+                GenerationStore.decode(checkNotNull(start.getByteArray("snapshot")))
+            } else {
+                val explored =
+                    try {
+                        System.loadLibrary("dexkit")
+                        DexKitBridge.create(apk).use { bridge ->
+                            bridge.setThreadNum(2)
+                            GenerationStore.Result("ready", block(bridge))
+                        }
+                    } catch (_: Exception) {
+                        GenerationStore.Result("failed")
+                    } catch (_: LinkageError) {
+                        GenerationStore.Result("native-unavailable")
+                    }
+                val bytes = GenerationStore.encode(explored)
+                check(bytes.size <= 512 * 1024) { "Feature result too large" }
+                request.putString("token", token)
+                request.putByteArray("snapshot", bytes)
+                val saved =
+                    context.contentResolver.call(
+                        uri,
+                        "feature_finish",
+                        context.packageName,
+                        request,
+                    )
+                check(saved?.getBoolean("saved") == true) { "Discovery claim changed" }
+                explored
             }
         check(result.state == "ready") { "Discovery unavailable for this version: ${result.state}" }
         return result.bindings

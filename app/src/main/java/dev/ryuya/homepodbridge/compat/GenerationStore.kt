@@ -18,8 +18,11 @@ class GenerationStore(private val directory: File) {
         return if (file.exists()) read(file) else null
     }
 
-    fun readOrExplore(generation: String, explore: () -> Map<String, String?>): Result {
-        check(directory.isDirectory || directory.mkdirs()) { "Cache directory unavailable" }
+    private fun <T> locked(generation: String, block: (File) -> T): T {
+        // mkdirs can return false when another process just created the directory.
+        check(directory.isDirectory || directory.mkdirs() || directory.isDirectory) {
+            "Cache directory unavailable"
+        }
         val key = digest(generation)
         return synchronized(
             locks.computeIfAbsent(File(directory, "$key.bin").absolutePath) { Any() }
@@ -30,27 +33,56 @@ class GenerationStore(private val directory: File) {
                     StandardOpenOption.WRITE,
                 )
                 .use { channel ->
-                    channel.lock().use {
-                        val file = File(directory, "$key.bin")
-                        if (file.exists()) return@use read(file)
-                        // Persist the claim BEFORE touching native code. A killed/failed search is
-                        // not
-                        // silently repeated at every subsequent launch of the same target version.
-                        write(file, Result("interrupted"))
-                        val result =
-                            try {
-                                Result("ready", explore())
-                            } catch (_: Exception) {
-                                Result("failed")
-                            } catch (_: LinkageError) {
-                                Result("native-unavailable")
-                            }
-                        write(file, result)
-                        result
-                    }
+                    channel.lock().use { block(File(directory, "$key.bin")) }
                 }
         }
     }
+
+    fun readOrExplore(generation: String, explore: () -> Map<String, String?>): Result =
+        locked(generation) { file ->
+            if (file.exists()) return@locked read(file)
+            // Persist the claim before touching native code. An interrupted search is terminal.
+            write(file, Result("interrupted"))
+            val result =
+                try {
+                    Result("ready", explore())
+                } catch (_: Exception) {
+                    Result("failed")
+                } catch (_: LinkageError) {
+                    Result("native-unavailable")
+                }
+            write(file, result)
+            result
+        }
+
+    data class ExternalClaim(val result: Result, val token: String?)
+
+    /** The module owns the file even when native exploration runs in a hooked host process. */
+    fun beginExternal(generation: String): ExternalClaim =
+        locked(generation) { file ->
+            if (file.exists()) {
+                val result = read(file)
+                return@locked ExternalClaim(
+                    if (result.state == "interrupted") Result("interrupted") else result,
+                    null,
+                )
+            }
+            val token = java.util.UUID.randomUUID().toString()
+            write(file, Result("interrupted", mapOf("claim" to token)))
+            ExternalClaim(Result("interrupted"), token)
+        }
+
+    /** A duplicate, stale or lost claimant can never overwrite a completed result. */
+    fun finishExternal(generation: String, token: String, result: Result): Boolean =
+        locked(generation) { file ->
+            require(result.state in setOf("ready", "failed", "native-unavailable"))
+            if (!file.exists()) return@locked false
+            val current = read(file)
+            if (current.state != "interrupted" || current.bindings["claim"] != token)
+                return@locked false
+            write(file, result)
+            true
+        }
 
     private fun read(file: File): Result =
         try {

@@ -126,12 +126,17 @@ class DexKitProvider : ContentProvider() {
                 }
             }
         }
-        require(method == "bindings" && arg != null && (own || arg in DexKitConfig.HOSTS)) {
+        require(
+            method in setOf("bindings", "feature_begin", "feature_finish") &&
+                arg != null &&
+                (own || arg in DexKitConfig.HOSTS)
+        ) {
             "Unsupported request"
         }
         require(own || context!!.packageManager.getPackagesForUid(uid).orEmpty().contains(arg)) {
             "Host UID mismatch"
         }
+        if (method.startsWith("feature_")) return feature(method, checkNotNull(extras))
         refresh()
         val merged = linkedMapOf<String, String?>()
         var ready = true
@@ -155,6 +160,44 @@ class DexKitProvider : ContentProvider() {
                 val bytes = GenerationStore.encode(GenerationStore.Result("ready", merged))
                 check(bytes.size <= 512 * 1024) { "Binding bundle too large" }
                 putByteArray("snapshot", bytes)
+            }
+        }
+    }
+
+    /** Only fixed feature families and installed target APK paths can own a cache entry. */
+    private fun feature(method: String, request: Bundle): Bundle {
+        val rule = checkNotNull(request.getString("rule"))
+        require(rule.length <= 4096 && DexKitConfig.FEATURE_PREFIXES.any { rule.startsWith(it) }) {
+            "Unrecognized feature rule"
+        }
+        val apk = checkNotNull(request.getString("apk"))
+        val sources =
+            DexKitConfig.TARGETS.mapNotNull { pkg ->
+                identity(pkg)?.let { Triple(pkg, it.first, it.second) }
+            }
+        val source =
+            sources.singleOrNull { (_, _, files) -> files.any { it.path == apk } }
+                ?: throw SecurityException("Feature APK is not an installed target")
+        val store = GenerationStore(File(context!!.filesDir, "dexkit-features/${source.first}"))
+        val generation = source.second + "|feature=" + rule
+        return Bundle().apply {
+            if (method == "feature_begin") {
+                val claim = store.beginExternal(generation)
+                claim.token?.let { putString("token", it) }
+                val bytes = GenerationStore.encode(claim.result)
+                check(bytes.size <= 512 * 1024)
+                putByteArray("snapshot", bytes)
+            } else {
+                val bytes = checkNotNull(request.getByteArray("snapshot"))
+                require(bytes.size <= 512 * 1024)
+                putBoolean(
+                    "saved",
+                    store.finishExternal(
+                        generation,
+                        checkNotNull(request.getString("token")),
+                        GenerationStore.decode(bytes),
+                    ),
+                )
             }
         }
     }
