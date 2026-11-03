@@ -6,6 +6,8 @@ import android.os.Looper
 import android.os.Process
 import android.system.Os
 import android.util.Log
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import java.io.File
 import java.nio.file.Files
 import kotlin.jvm.JvmStatic
@@ -17,10 +19,10 @@ object GalaxyReloadPrepare {
         try {
             if (args.size != 0 || Process.myUid() != 0) throw SecurityException()
             if (Looper.myLooper() == null) Looper.prepare()
-            val activity = Class.forName("android.app.ActivityThread")
-            val thread = activity.getMethod("systemMain").invoke(null)
+            val activity = DexSymbols.findClass("android.app.ActivityThread")
+            val thread = activity.compatibleMethod("systemMain").invoke(null)
             val context: Context? =
-                activity.getMethod("getSystemContext").invoke(thread) as Context?
+                activity.compatibleMethod("getSystemContext").invoke(thread) as Context?
             val app = context!!.getPackageManager().getApplicationInfo("com.android.systemui", 0)
             if (
                 (app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||

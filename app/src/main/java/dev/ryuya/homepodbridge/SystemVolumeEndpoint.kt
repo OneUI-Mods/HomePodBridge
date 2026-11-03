@@ -14,7 +14,8 @@ import android.os.RemoteException
 import android.os.SystemClock
 import android.util.Log
 import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import dev.ryuya.homepodbridge.compat.VolumeUiSymbols
+import dev.ryuya.homepodbridge.compat.compatibleName
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -69,33 +70,34 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                     Supplier { IllegalStateException("Owned remote session unavailable") }
                 )
         val loader = context.getClassLoader()
-        val managerClass = XposedHelpers.findClass("android.media.AudioDeviceVolumeManager", loader)
-        manager = XposedHelpers.newInstance(managerClass, context)
+        val managerClass =
+            VolumeUiSymbols.findClass("android.media.AudioDeviceVolumeManager", loader)
+        manager = VolumeUiSymbols.newInstance(managerClass, context)
         device =
-            XposedHelpers.newInstance(
-                XposedHelpers.findClass("android.media.AudioDeviceAttributes", loader),
+            VolumeUiSymbols.newInstance(
+                VolumeUiSymbols.findClass("android.media.AudioDeviceAttributes", loader),
                 2,
                 2,
                 "",
             )
         // Preserve other absolute-volume owners and nonstandard device behaviors.
-        check(XposedHelpers.callMethod(manager, "getDeviceVolumeBehavior", device) as Int? == 0) {
+        check(VolumeUiSymbols.callMethod(manager, "getDeviceVolumeBehavior", device) as Int? == 0) {
             "Speaker already has a volume owner"
         }
-        infoBuilder = XposedHelpers.findClass("android.media.VolumeInfo\$Builder", loader)
+        infoBuilder = VolumeUiSymbols.findClass("android.media.VolumeInfo\$Builder", loader)
         val query =
-            XposedHelpers.callMethod(
-                XposedHelpers.newInstance(infoBuilder, AudioManager.STREAM_MUSIC),
+            VolumeUiSymbols.callMethod(
+                VolumeUiSymbols.newInstance(infoBuilder, AudioManager.STREAM_MUSIC),
                 "build",
             )
-        previousVolume = XposedHelpers.callMethod(manager, "getDeviceVolume", query, device)
+        previousVolume = VolumeUiSymbols.callMethod(manager, "getDeviceVolume", query, device)!!
         var fine: Int = -1
-        var baseline: Int = XposedHelpers.callMethod(previousVolume, "getVolumeIndex") as Int
-        val maximum: Int = XposedHelpers.callMethod(previousVolume, "getMaxVolumeIndex") as Int
+        var baseline: Int = VolumeUiSymbols.callMethod(previousVolume, "getVolumeIndex") as Int
+        val maximum: Int = VolumeUiSymbols.callMethod(previousVolume, "getMaxVolumeIndex") as Int
         baseline = if (maximum > 0) baseline * 100 / maximum else 0
         try {
             fine =
-                (XposedHelpers.callMethod(audio, "semGetFineVolume", AudioManager.STREAM_MUSIC, 2)
+                (VolumeUiSymbols.callMethod(audio, "semGetFineVolume", AudioManager.STREAM_MUSIC, 2)
                     as Int?)!!
             baseline =
                 Math.round(fine * 100f / (audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * 10))
@@ -106,7 +108,7 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
         handler = Handler(thread.getLooper())
         try {
             val listenerClass =
-                XposedHelpers.findClass(
+                VolumeUiSymbols.findClass(
                     "android.media.AudioDeviceVolumeManager\$OnAudioDeviceVolumeChangedListener",
                     loader,
                 )
@@ -116,20 +118,20 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                     arrayOf<Class<*>?>(listenerClass),
                     InvocationHandler { proxy: Any?, method: Method?, args: Array<Any?>? ->
                         try {
-                            if (method!!.getName() == "hashCode")
+                            if (method!!.compatibleName() == "hashCode")
                                 return@InvocationHandler System.identityHashCode(proxy)
-                            if (method!!.getName() == "equals")
+                            if (method!!.compatibleName() == "equals")
                                 return@InvocationHandler proxy === args!![0]
-                            if (method!!.getName() == "toString")
+                            if (method!!.compatibleName() == "toString")
                                 return@InvocationHandler "HomePod volume lease"
                             if (closed || args == null || args.size < 2)
                                 return@InvocationHandler null
                             val stream: Int =
-                                XposedHelpers.callMethod(args!![1], "getStreamType") as Int
+                                VolumeUiSymbols.callMethod(args!![1], "getStreamType") as Int
                             val media: Boolean =
                                 stream == AudioManager.STREAM_MUSIC &&
                                     audio.getMode() == AudioManager.MODE_NORMAL
-                            if (method!!.getName() == "onAudioDeviceVolumeAdjusted") {
+                            if (method!!.compatibleName() == "onAudioDeviceVolumeAdjusted") {
                                 val direction: Int = args!![2] as Int
                                 val mode: Int = args!![3] as Int
                                 if (mode == 2 || direction == AudioManager.ADJUST_SAME)
@@ -139,7 +141,7 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                                     // Bypass our absolute-volume callback for normal non-media/call
                                     // controls.
                                     val bypass =
-                                        XposedHelpers.getStaticIntField(
+                                        VolumeUiSymbols.getStaticIntField(
                                             AudioManager::class.java,
                                             "FLAG_ABSOLUTE_VOLUME",
                                         )
@@ -150,10 +152,10 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                                     )
                                 }
                             } else if (
-                                method!!.getName() == "onAudioDeviceVolumeChanged" && media
+                                method!!.compatibleName() == "onAudioDeviceVolumeChanged" && media
                             ) {
                                 volumeKeys.changed(
-                                    XposedHelpers.callMethod(args!![1], "getVolumeIndex") as Int,
+                                    VolumeUiSymbols.callMethod(args!![1], "getVolumeIndex") as Int,
                                     SystemClock.uptimeMillis(),
                                 )
                                 restoreLocalVolume()
@@ -168,38 +170,38 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                 )
             val volumes = ArrayList<Any?>()
             val streams: Int =
-                XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("android.media.AudioSystem", loader),
+                VolumeUiSymbols.callStaticMethod(
+                    VolumeUiSymbols.findClass("android.media.AudioSystem", loader),
                     "getNumStreamTypes",
                 ) as Int
             for (stream in 0 until streams) {
                 if (
-                    !(XposedHelpers.callStaticMethod(
+                    !(VolumeUiSymbols.callStaticMethod(
                         AudioManager::class.java,
                         "isVolumeControlStreamType",
                         stream,
                     ) as Boolean)
                 )
                     continue
-                val builder = XposedHelpers.newInstance(infoBuilder, stream)
-                XposedHelpers.callMethod(
+                val builder = VolumeUiSymbols.newInstance(infoBuilder, stream)
+                VolumeUiSymbols.callMethod(
                     builder,
                     "setMinVolumeIndex",
                     if (stream == AudioManager.STREAM_MUSIC) 0
                     else audio.getStreamMinVolume(stream),
                 )
-                XposedHelpers.callMethod(
+                VolumeUiSymbols.callMethod(
                     builder,
                     "setMaxVolumeIndex",
                     if (stream == AudioManager.STREAM_MUSIC) 100
                     else audio.getStreamMaxVolume(stream),
                 )
                 // Every index stays unset: registration must not alter local volumes.
-                volumes.add(XposedHelpers.callMethod(builder, "build"))
+                volumes.add(VolumeUiSymbols.callMethod(builder, "build"))
             }
             val executor = Executor { command: Runnable? -> handler.post(command!!) }
             registered = true
-            XposedHelpers.callMethod(
+            VolumeUiSymbols.callMethod(
                 manager,
                 "setDeviceAbsoluteMultiVolumeBehavior",
                 device,
@@ -219,7 +221,7 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
         if (closed) return false
         try {
             var token: Any? = sessionId
-            if (token !is Token) token = XposedHelpers.getObjectField(sessionId, "token")
+            if (token !is Token) token = VolumeUiSymbols.getObjectField(sessionId, "token")
             return remoteController.getSessionToken() == token
         } catch (ignored: Throwable) {
             return false
@@ -229,8 +231,8 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
     fun rememberRemoteStream(callbacks: Any?, sessionId: Any?) {
         if (!ownsSession(sessionId)) return
         try {
-            val streams = XposedHelpers.getObjectField(callbacks, "mRemoteStreams")
-            synchronized(streams) {
+            val streams = VolumeUiSymbols.getObjectField(callbacks, "mRemoteStreams")
+            synchronized(streams!!) {
                 run {
                     val patternPrefix0 = streams is MutableMap<*, *>
                     val stream = if (patternPrefix0) streams.get(sessionId) as? Int else null
@@ -249,35 +251,35 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
     fun handleIconAction(action: Any?, state: Any?): Any? {
         if (closed || state == null) return null
         try {
-            val type = XposedHelpers.callMethod(action, "getActionType")
+            val type = VolumeUiSymbols.callMethod(action, "getActionType")
             if (type !is Enum<*> || type.name != "ACTION_VOLUME_ICON_CLICKED") return null
-            val stream: Int = XposedHelpers.callMethod(action, "getStream") as Int
+            val stream: Int = VolumeUiSymbols.callMethod(action, "getStream") as Int
             if (!volumeIcons.owns(stream)) return null
             val rows: MutableList<*>? =
-                XposedHelpers.callMethod(state, "getVolumeRowList") as MutableList<*>?
+                VolumeUiSymbols.callMethod(state, "getVolumeRowList") as MutableList<*>?
             for (row in rows!!) {
-                if (XposedHelpers.callMethod(row, "getStreamType") as Int? != stream) continue
+                if (VolumeUiSymbols.callMethod(row, "getStreamType") as Int? != stream) continue
                 val target =
-                    volumeIcons.target(stream, XposedHelpers.callMethod(row, "getLevel") as Int)
+                    volumeIcons.target(stream, VolumeUiSymbols.callMethod(row, "getLevel") as Int)
                 if (target == null) return null
                 val builder =
-                    XposedHelpers.newInstance(
-                        XposedHelpers.findClass(
-                            state.javaClass.getName() + "\$Builder",
+                    VolumeUiSymbols.newInstance(
+                        VolumeUiSymbols.findClass(
+                            state.javaClass.compatibleName() + "\$Builder",
                             state.javaClass.getClassLoader(),
                         ),
                         state,
                     )
                 val noDispatch =
-                    XposedHelpers.getStaticObjectField(
-                        XposedHelpers.findClass(
-                            state.javaClass.getName() + "\$StateType",
+                    VolumeUiSymbols.getStaticObjectField(
+                        VolumeUiSymbols.findClass(
+                            state.javaClass.compatibleName() + "\$StateType",
                             state.javaClass.getClassLoader(),
                         ),
                         "STATE_NO_DISPATCH",
                     )
-                XposedHelpers.callMethod(builder, "setStateType", noDispatch)
-                val result = XposedHelpers.callMethod(builder, "build")
+                VolumeUiSymbols.callMethod(builder, "setStateType", noDispatch)
+                val result = VolumeUiSymbols.callMethod(builder, "build")
                 handler.post(Runnable { send(RootProtocol.SET_VOLUME, target) })
                 Log.i("HomePodBridgeUi", "Owned volume icon target=" + target)
                 return result
@@ -294,19 +296,19 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
     fun enableIconState(state: Any?): Any? {
         if (closed || state == null) return state
         try {
-            val rows = XposedHelpers.callMethod(state, "getVolumeRowList")
+            val rows = VolumeUiSymbols.callMethod(state, "getVolumeRowList")
             val enabled = enableOwnedIcon(rows)
             if (enabled === rows) return state
             val builder =
-                XposedHelpers.newInstance(
-                    XposedHelpers.findClass(
-                        state.javaClass.getName() + "\$Builder",
+                VolumeUiSymbols.newInstance(
+                    VolumeUiSymbols.findClass(
+                        state.javaClass.compatibleName() + "\$Builder",
                         state.javaClass.getClassLoader(),
                     ),
                     state,
                 )
-            XposedHelpers.callMethod(builder, "setVolumeRowList", enabled)
-            return XposedHelpers.callMethod(builder, "build")
+            VolumeUiSymbols.callMethod(builder, "setVolumeRowList", enabled)
+            return VolumeUiSymbols.callMethod(builder, "build")
         } catch (ignored: Throwable) {
             return state
         }
@@ -318,16 +320,16 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
             val updated = ArrayList<Any?>(rows)
             for (i in updated.indices) {
                 val row = updated.get(i)
-                val stream: Int = XposedHelpers.callMethod(row, "getStreamType") as Int
+                val stream: Int = VolumeUiSymbols.callMethod(row, "getStreamType") as Int
                 if (!volumeIcons.owns(stream)) continue
                 val builder =
-                    XposedHelpers.findClass(
-                        row!!.javaClass.getName() + "\$Builder",
+                    VolumeUiSymbols.findClass(
+                        row!!.javaClass.compatibleName() + "\$Builder",
                         row!!.javaClass.getClassLoader(),
                     )
-                val copy = XposedHelpers.newInstance(builder, row)
-                XposedHelpers.callMethod(copy, "isIconClickable", true)
-                updated.set(i, XposedHelpers.callMethod(copy, "build"))
+                val copy = VolumeUiSymbols.newInstance(builder, row)
+                VolumeUiSymbols.callMethod(copy, "isIconClickable", true)
+                updated.set(i, VolumeUiSymbols.callMethod(copy, "build"))
             }
             return updated
         } catch (ignored: Throwable) {
@@ -349,19 +351,19 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
     fun redirectLocalUi(controller: Any, flags: Int): Boolean {
         if (closed || audio.getMode() != AudioManager.MODE_NORMAL) return false
         try {
-            val sessions = XposedHelpers.getObjectField(controller, "mMediaSessions")
+            val sessions = VolumeUiSymbols.getObjectField(controller, "mMediaSessions")
             val token = remoteController.getSessionToken()
-            val records = XposedHelpers.getObjectField(sessions, "mRecords")
+            val records = VolumeUiSymbols.getObjectField(sessions, "mRecords")
             if (records is MutableMap<*, *> && !records.containsKey(token)) {
                 try {
-                    XposedHelpers.callStaticMethod(
-                        sessions.javaClass,
+                    VolumeUiSymbols.callStaticMethod(
+                        sessions!!.javaClass,
                         "access\$onActiveSessionsUpdatedH",
                         sessions,
                         mediaSessions.getActiveSessions(null),
                     )
                 } catch (ignored: Throwable) {
-                    XposedHelpers.callMethod(
+                    VolumeUiSymbols.callMethod(
                         sessions,
                         "onActiveSessionsUpdatedH",
                         mediaSessions.getActiveSessions(null),
@@ -374,22 +376,24 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                 if (metadata == null) null
                 else metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
             if (name == null) name = "HomePod Bridge"
-            XposedHelpers.callMethod(
+            VolumeUiSymbols.callMethod(
                 sessions,
                 "updateRemoteH",
                 token,
                 name,
                 remoteController.getPlaybackInfo(),
             )
-            val callbacks = XposedHelpers.getObjectField(controller, "mMediaSessionsCallbacksW")
+            val callbacks = VolumeUiSymbols.getObjectField(controller, "mMediaSessionsCallbacksW")
             val idClass =
-                XposedHelpers.findClassIfExists(
+                VolumeUiSymbols.findClassIfExists(
                     "com.android.settingslib.volume.MediaSessions\$SessionId\$Media",
                     controller.javaClass.getClassLoader(),
                 )
-            val id: Any? = if (idClass == null) token else XposedHelpers.newInstance(idClass, token)
-            XposedHelpers.callMethod(callbacks, "onRemoteVolumeChanged", id, flags)
-            val fromKey = XposedHelpers.getStaticIntField(AudioManager::class.java, "FLAG_FROM_KEY")
+            val id: Any? =
+                if (idClass == null) token else VolumeUiSymbols.newInstance(idClass, token)
+            VolumeUiSymbols.callMethod(callbacks, "onRemoteVolumeChanged", id, flags)
+            val fromKey =
+                VolumeUiSymbols.getStaticIntField(AudioManager::class.java, "FLAG_FROM_KEY")
             if (
                 (flags and (fromKey or AudioManager.FLAG_SHOW_UI)) ==
                     (fromKey or AudioManager.FLAG_SHOW_UI)
@@ -418,12 +422,12 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
     private fun restoreLocalVolume() {
         if (previousFineVolume >= 0) {
             val now: Int =
-                XposedHelpers.callMethod(audio, "semGetFineVolume", AudioManager.STREAM_MUSIC, 2)
+                VolumeUiSymbols.callMethod(audio, "semGetFineVolume", AudioManager.STREAM_MUSIC, 2)
                     as Int
             if (now == previousFineVolume) return
             val bypass =
-                XposedHelpers.getStaticIntField(AudioManager::class.java, "FLAG_ABSOLUTE_VOLUME")
-            XposedHelpers.callMethod(
+                VolumeUiSymbols.getStaticIntField(AudioManager::class.java, "FLAG_ABSOLUTE_VOLUME")
+            VolumeUiSymbols.callMethod(
                 audio,
                 "semSetFineVolume",
                 AudioManager.STREAM_MUSIC,
@@ -432,13 +436,18 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                 2,
             )
         } else {
-            val now = XposedHelpers.callMethod(manager, "getDeviceVolume", previousVolume, device)
+            val now = VolumeUiSymbols.callMethod(manager, "getDeviceVolume", previousVolume, device)
             if (
-                XposedHelpers.callMethod(now, "getVolumeIndex") ==
-                    XposedHelpers.callMethod(previousVolume, "getVolumeIndex")
+                VolumeUiSymbols.callMethod(now, "getVolumeIndex") ==
+                    VolumeUiSymbols.callMethod(previousVolume, "getVolumeIndex")
             )
                 return
-            XposedHelpers.callMethod(manager, "notifyAbsoluteVolumeChanged", previousVolume, device)
+            VolumeUiSymbols.callMethod(
+                manager,
+                "notifyAbsoluteVolumeChanged",
+                previousVolume,
+                device,
+            )
         }
     }
 
@@ -485,12 +494,12 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
         if (registered) {
             try {
                 if (
-                    XposedHelpers.callMethod(manager, "getDeviceVolumeBehavior", device) as Int? ==
-                        3
+                    VolumeUiSymbols.callMethod(manager, "getDeviceVolumeBehavior", device)
+                        as Int? == 3
                 ) {
-                    XposedHelpers.callMethod(manager, "resetDeviceAbsoluteVolumeBehavior", device)
+                    VolumeUiSymbols.callMethod(manager, "resetDeviceAbsoluteVolumeBehavior", device)
                     if (previousFineVolume >= 0)
-                        XposedHelpers.callMethod(
+                        VolumeUiSymbols.callMethod(
                             audio,
                             "semSetFineVolume",
                             AudioManager.STREAM_MUSIC,
@@ -499,7 +508,12 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                             2,
                         )
                     else
-                        XposedHelpers.callMethod(manager, "setDeviceVolume", previousVolume, device)
+                        VolumeUiSymbols.callMethod(
+                            manager,
+                            "setDeviceVolume",
+                            previousVolume,
+                            device,
+                        )
                 }
             } catch (ignored: Throwable) {}
         }

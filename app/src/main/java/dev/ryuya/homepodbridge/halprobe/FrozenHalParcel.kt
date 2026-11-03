@@ -4,6 +4,8 @@ import android.os.IBinder
 import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import android.os.Parcelable
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import java.util.ArrayList
 import java.util.function.Consumer
 import kotlin.jvm.JvmField
@@ -84,8 +86,8 @@ object FrozenHalParcel {
     fun writeOpenArgs(p: Parcel, config: Int, frames: Long, input: Boolean) {
         if (config <= 0 || frames < 1 || frames > 262144) throw FrozenHalParcel.bad()!!
         val mask =
-            Class.forName("android.media.audio.common.AudioChannelLayout")
-                .getMethod("layoutMask", Int::class.javaPrimitiveType)
+            DexSymbols.findClass("android.media.audio.common.AudioChannelLayout")
+                .compatibleMethod("layoutMask", Int::class.javaPrimitiveType)
                 .invoke(null, 3)
         p.writeInt(1)
         val args = FrozenHalParcel.begin(p)

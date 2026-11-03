@@ -5,6 +5,8 @@ import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.net.LocalSocketAddress.Namespace
 import android.os.Looper
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import java.io.DataOutputStream
 import java.io.IOException
 import java.util.UUID
@@ -35,10 +37,10 @@ object HalCaptureHost {
             state = ReadOnlyHalState()
             baseline = state.snapshot().toString()
             if (Looper.myLooper() == null) Looper.prepare()
-            val activity = Class.forName("android.app.ActivityThread")
-            val thread = activity.getMethod("systemMain").invoke(null)
+            val activity = DexSymbols.findClass("android.app.ActivityThread")
+            val thread = activity.compatibleMethod("systemMain").invoke(null)
             val context: Context? =
-                activity.getMethod("getSystemContext").invoke(thread) as Context?
+                activity.compatibleMethod("getSystemContext").invoke(thread) as Context?
             val bridgeUid =
                 context!!.getPackageManager().getApplicationInfo("dev.ryuya.homepodbridge", 0).uid
             val selectedUid = context!!.getPackageManager().getApplicationInfo(args[2], 0).uid

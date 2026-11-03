@@ -3,6 +3,10 @@ package dev.ryuya.homepodbridge.halprobe
 import android.content.Context
 import android.media.AudioManager
 import android.os.IBinder
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleField
+import dev.ryuya.homepodbridge.compat.compatibleMethod
+import dev.ryuya.homepodbridge.compat.compatibleName
 import kotlin.jvm.JvmField
 import kotlin.jvm.JvmStatic
 
@@ -17,42 +21,44 @@ class PolicyInputLease private constructor(context: Context, address: String?) :
     init {
         if (address == null || !address.matches("[0-9]+:ap:[0-9]+mixp:[0-9]+".toRegex()))
             throw SecurityException("Unrecognized policy address")
-        api = Class.forName("android.media.IAudioPolicyService")
+        api = DexSymbols.findClass("android.media.IAudioPolicyService")
         val binder: IBinder? =
-            Class.forName("android.os.ServiceManager")
-                .getMethod("getService", String::class.java)
+            DexSymbols.findClass("android.os.ServiceManager")
+                .compatibleMethod("getService", String::class.java)
                 .invoke(null, "media.audio_policy") as IBinder?
-        if (binder == null || api.getName() != binder.getInterfaceDescriptor())
+        if (binder == null || api.compatibleName() != binder.getInterfaceDescriptor())
             throw SecurityException("Policy service unavailable")
         service =
-            Class.forName(api.getName() + "\$Stub")
-                .getMethod("asInterface", IBinder::class.java)
+            DexSymbols.findClass(api.compatibleName() + "\$Stub")
+                .compatibleMethod("asInterface", IBinder::class.java)
                 .invoke(null, binder)
-        val attrType = Class.forName("android.media.audio.common.AudioAttributes")
+        val attrType = DexSymbols.findClass("android.media.audio.common.AudioAttributes")
         val attributes = attrType.getConstructor().newInstance()
-        attrType.getField("source").setInt(attributes, 8)
-        attrType.getField("tags").set(attributes, arrayOf<String>("addr=" + address, "fixedVolume"))
-        val configType = Class.forName("android.media.audio.common.AudioConfigBase")
+        attrType.compatibleField("source").setInt(attributes, 8)
+        attrType
+            .compatibleField("tags")
+            .set(attributes, arrayOf<String>("addr=" + address, "fixedVolume"))
+        val configType = DexSymbols.findClass("android.media.audio.common.AudioConfigBase")
         val config = configType.getConstructor().newInstance()
-        configType.getField("sampleRate").setInt(config, 44100)
-        val layout = Class.forName("android.media.audio.common.AudioChannelLayout")
+        configType.compatibleField("sampleRate").setInt(config, 44100)
+        val layout = DexSymbols.findClass("android.media.audio.common.AudioChannelLayout")
         configType
-            .getField("channelMask")
+            .compatibleField("channelMask")
             .set(
                 config,
-                layout.getMethod("layoutMask", Int::class.javaPrimitiveType).invoke(null, 3),
+                layout.compatibleMethod("layoutMask", Int::class.javaPrimitiveType).invoke(null, 3),
             )
-        val formatType = Class.forName("android.media.audio.common.AudioFormatDescription")
+        val formatType = DexSymbols.findClass("android.media.audio.common.AudioFormatDescription")
         val format = formatType.getConstructor().newInstance()
-        formatType.getField("type").setByte(format, 1.toByte())
-        formatType.getField("pcm").setByte(format, 1.toByte())
-        formatType.getField("encoding").set(format, "")
-        configType.getField("format").set(config, format)
+        formatType.compatibleField("type").setByte(format, 1.toByte())
+        formatType.compatibleField("pcm").setByte(format, 1.toByte())
+        formatType.compatibleField("encoding").set(format, "")
+        configType.compatibleField("format").set(config, format)
         val attribution =
             context
                 .getAttributionSource()
                 .javaClass
-                .getMethod("asState")
+                .compatibleMethod("asState")
                 .invoke(context.getAttributionSource())
         val session =
             context
@@ -60,7 +66,7 @@ class PolicyInputLease private constructor(context: Context, address: String?) :
                 .generateAudioSessionId()
         check(session > 0) { "No audio session" }
         val response =
-            api.getMethod(
+            api.compatibleMethod(
                     "getInputForAttr",
                     attrType,
                     Int::class.javaPrimitiveType,
@@ -72,16 +78,16 @@ class PolicyInputLease private constructor(context: Context, address: String?) :
                     Int::class.javaPrimitiveType,
                 )
                 .invoke(service, attributes, 0, -1, session, attribution, config, 0, 0)
-        port = response.javaClass.getField("portId").getInt(response)
-        input = response.javaClass.getField("input").getInt(response)
+        port = response.javaClass.compatibleField("portId").getInt(response)
+        input = response.javaClass.compatibleField("input").getInt(response)
         try {
             if (
                 port <= 0 ||
                     input <= 0 ||
-                    response.javaClass.getField("source").getInt(response) != 8
+                    response.javaClass.compatibleField("source").getInt(response) != 8
             )
                 throw SecurityException("Unexpected input source")
-            val selected = response.javaClass.getField("selectedDeviceId").getInt(response)
+            val selected = response.javaClass.compatibleField("selectedDeviceId").getInt(response)
             var matched: Boolean = false
             for (device in
                 context
@@ -91,7 +97,7 @@ class PolicyInputLease private constructor(context: Context, address: String?) :
             )
                 matched = true
             if (!matched) throw SecurityException("Input did not select the owned virtual mix")
-            api.getMethod("startInput", Int::class.javaPrimitiveType).invoke(service, port)
+            api.compatibleMethod("startInput", Int::class.javaPrimitiveType).invoke(service, port)
             started = true
         } catch (failure: Exception) {
             close()
@@ -106,9 +112,11 @@ class PolicyInputLease private constructor(context: Context, address: String?) :
         port = 0
         try {
             if (started)
-                api.getMethod("stopInput", Int::class.javaPrimitiveType).invoke(service, owned)
+                api.compatibleMethod("stopInput", Int::class.javaPrimitiveType)
+                    .invoke(service, owned)
         } finally {
-            api.getMethod("releaseInput", Int::class.javaPrimitiveType).invoke(service, owned)
+            api.compatibleMethod("releaseInput", Int::class.javaPrimitiveType)
+                .invoke(service, owned)
             started = false
         }
     }

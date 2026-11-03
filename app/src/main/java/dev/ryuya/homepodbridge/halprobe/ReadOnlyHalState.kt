@@ -3,6 +3,10 @@ package dev.ryuya.homepodbridge.halprobe
 import android.os.IBinder
 import android.os.Parcel
 import android.os.Parcelable.Creator
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleDeclaredMethod
+import dev.ryuya.homepodbridge.compat.compatibleField
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import java.util.HashSet
 import kotlin.jvm.JvmStatic
 import org.json.JSONArray
@@ -14,8 +18,8 @@ class ReadOnlyHalState {
 
     init {
         val candidate =
-            (Class.forName("android.os.ServiceManager")
-                .getDeclaredMethod("getService", String::class.java)
+            (DexSymbols.findClass("android.os.ServiceManager")
+                .compatibleDeclaredMethod("getService", String::class.java)
                 .invoke(null, ReadOnlyHalState.DESCRIPTOR + "/r_submix") as IBinder?)
         if (candidate == null || ReadOnlyHalState.DESCRIPTOR != candidate.getInterfaceDescriptor())
             throw SecurityException()
@@ -69,7 +73,8 @@ class ReadOnlyHalState {
             reply!!.setDataPosition(reply!!.dataPosition() - 4)
             val result =
                 reply!!.createTypedArray<Any?>(
-                    (Class.forName(type).getField("CREATOR").get(null) as Creator<Any?>?)!!
+                    (DexSymbols.findClass(type).compatibleField("CREATOR").get(null)
+                        as Creator<Any?>?)!!
                 )
             require(reply!!.dataAvail() == 0) { "Trailing inventory data" }
             return result
@@ -167,7 +172,7 @@ class ReadOnlyHalState {
         @kotlin.jvm.JvmStatic
         @Throws(Exception::class)
         fun field(`object`: Any, name: String?): Any? {
-            return `object`.javaClass.getField(name).get(`object`)
+            return `object`.javaClass.compatibleField(name).get(`object`)
         }
 
         @kotlin.jvm.JvmStatic
@@ -179,14 +184,14 @@ class ReadOnlyHalState {
         @kotlin.jvm.JvmStatic
         @Throws(Exception::class)
         fun call(`object`: Any, name: String?): Any? {
-            return `object`.javaClass.getMethod(name).invoke(`object`)
+            return `object`.javaClass.compatibleMethod(name).invoke(`object`)
         }
 
         @kotlin.jvm.JvmStatic
         @Throws(Exception::class)
         fun tag(`object`: Any, name: String?): Boolean {
             return ((ReadOnlyHalState.call(`object`, "getTag") as Number).toInt() ==
-                `object`.javaClass.getField(name).getInt(null))
+                `object`.javaClass.compatibleField(name).getInt(null))
         }
 
         @kotlin.jvm.JvmStatic

@@ -2,6 +2,8 @@ package dev.ryuya.homepodbridge.halprobe
 
 import android.content.Context
 import android.os.Looper
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -36,9 +38,10 @@ object OutputPeriodProbe {
         val baseline = state.snapshot().toString()
         val result = JSONObject().put("playbackCreated", false).put("networkStarted", false)
         if (Looper.myLooper() == null) Looper.prepare()
-        val activity = Class.forName("android.app.ActivityThread")
-        val thread = activity.getMethod("systemMain").invoke(null)
-        val context: Context? = activity.getMethod("getSystemContext").invoke(thread) as Context?
+        val activity = DexSymbols.findClass("android.app.ActivityThread")
+        val thread = activity.compatibleMethod("systemMain").invoke(null)
+        val context: Context? =
+            activity.compatibleMethod("getSystemContext").invoke(thread) as Context?
         try {
             RegisteredPolicy(context!!, CaptureScope(false, 0, -1, true, false)).use { policy ->
                 val before = state.snapshot()

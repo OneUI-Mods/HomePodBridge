@@ -6,6 +6,9 @@ import android.os.Parcelable
 import android.os.Parcelable.Creator
 import android.os.Process
 import dev.ryuya.homepodbridge.TextCompatibility
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleField
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.IOException
@@ -233,45 +236,50 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
             port = candidate
         checkNotNull(port) { "Owned port unavailable" }
         val requested =
-            Class.forName("android.media.audio.common.AudioPortConfig")
+            DexSymbols.findClass("android.media.audio.common.AudioPortConfig")
                 .getConstructor()
                 .newInstance()
         HalPortProbe.number(requested, "portId", portId)
-        val sampleField = requested.javaClass.getField("sampleRate")
+        val sampleField = requested.javaClass.compatibleField("sampleRate")
         val sample = sampleField.getType().getConstructor().newInstance()
         HalPortProbe.number(sample, "value", rate)
         sampleField.set(requested, sample)
-        val maskField = requested.javaClass.getField("channelMask")
+        val maskField = requested.javaClass.compatibleField("channelMask")
         maskField.set(
             requested,
             maskField
                 .getType()
-                .getMethod("layoutMask", Int::class.javaPrimitiveType)
+                .compatibleMethod("layoutMask", Int::class.javaPrimitiveType)
                 .invoke(null, 3),
         )
-        val formatField = requested.javaClass.getField("format")
+        val formatField = requested.javaClass.compatibleField("format")
         val format = formatField.getType().getConstructor().newInstance()
         HalPortProbe.number(format, "type", 1)
         HalPortProbe.number(format, "pcm", 1)
-        format.javaClass.getField("encoding").set(format, "")
+        format.javaClass.compatibleField("encoding").set(format, "")
         formatField.set(requested, format)
-        requested.javaClass.getField("flags").set(requested, ReadOnlyHalState.field(port, "flags"))
+        requested.javaClass
+            .compatibleField("flags")
+            .set(requested, ReadOnlyHalState.field(port, "flags"))
         var requestedFlags: Int = 0
         if (fast && mix) {
             val bit =
-                Class.forName(
+                DexSymbols.findClass(
                         "android.media.audio.common." +
                             (if (input) "AudioInputFlags" else "AudioOutputFlags")
                     )
-                    .getField("FAST")
+                    .compatibleField("FAST")
                     .getInt(null)
             requestedFlags = 1 shl bit
-            val field = requested.javaClass.getField("flags")
+            val field = requested.javaClass.compatibleField("flags")
             field.set(
                 requested,
                 field
                     .getType()
-                    .getMethod(if (input) "input" else "output", Int::class.javaPrimitiveType)
+                    .compatibleMethod(
+                        if (input) "input" else "output",
+                        Int::class.javaPrimitiveType,
+                    )
                     .invoke(null, requestedFlags),
             )
         }
@@ -286,14 +294,17 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
                 "handle",
                 if (input) tag.inputHandle else tag.outputHandle,
             )
-            val use = detail.javaClass.getField("usecase")
+            val use = detail.javaClass.compatibleField("usecase")
             use.set(
                 detail,
                 use.getType()
-                    .getMethod(if (input) "source" else "stream", Int::class.javaPrimitiveType)
+                    .compatibleMethod(
+                        if (input) "source" else "stream",
+                        Int::class.javaPrimitiveType,
+                    )
                     .invoke(null, if (input) 8 else 3),
             )
-            ext = ext!!.javaClass.getMethod("mix", detail.javaClass).invoke(null, detail)
+            ext = ext!!.javaClass.compatibleMethod("mix", detail.javaClass).invoke(null, detail)
         } else if (
             snapshot()!!
                 .ports!!
@@ -305,7 +316,7 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
                 })
         )
             throw SecurityException("Not an owned virtual device")
-        requested.javaClass.getField("ext").set(requested, ext)
+        requested.javaClass.compatibleField("ext").set(requested, ext)
         val before = snapshot()
         val data = Parcel.obtain()
         val reply = Parcel.obtain()
@@ -317,7 +328,7 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
             val accepted = reply.readBoolean()
             val suggested =
                 reply.readTypedObject<Any?>(
-                    (requested.javaClass.getField("CREATOR").get(null) as Creator<Any?>?)!!
+                    (requested.javaClass.compatibleField("CREATOR").get(null) as Creator<Any?>?)!!
                 )
             val id: Int = if (suggested == null) 0 else ReadOnlyHalState.integer(suggested, "id")
             check(
@@ -416,10 +427,10 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
                 "device",
             )
         val value =
-            Class.forName("android.media.audio.common.AudioDeviceAddress")
-                .getMethod("id", String::class.java)
+            DexSymbols.findClass("android.media.audio.common.AudioDeviceAddress")
+                .compatibleMethod("id", String::class.java)
                 .invoke(null, address)
-        device!!.javaClass.getField("address").set(device, value)
+        device!!.javaClass.compatibleField("address").set(device, value)
         val input = Parcel.obtain()
         val reply = Parcel.obtain()
         try {
@@ -429,8 +440,8 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
             reply.readException()
             val returned =
                 reply.readTypedObject<Any?>(
-                    (Class.forName("android.media.audio.common.AudioPort")
-                        .getField("CREATOR")
+                    (DexSymbols.findClass("android.media.audio.common.AudioPort")
+                        .compatibleField("CREATOR")
                         .get(null) as Creator<Any?>?)!!
                 )
             val id = ReadOnlyHalState.integer(returned!!, "id")
@@ -1053,7 +1064,7 @@ private constructor(nonce: UUID, rate: Int, fast: Boolean, registration: String?
         @JvmStatic
         @Throws(Exception::class)
         private fun number(`object`: Any, field: String?, value: Int) {
-            val f = `object`.javaClass.getField(field)
+            val f = `object`.javaClass.compatibleField(field)
             if (f.getType() == Byte::class.javaPrimitiveType) f.setByte(`object`, value.toByte())
             else if (f.getType() == Short::class.javaPrimitiveType)
                 f.setShort(`object`, value.toShort())

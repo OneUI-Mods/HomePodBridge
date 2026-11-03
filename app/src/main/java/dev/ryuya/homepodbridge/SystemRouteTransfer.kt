@@ -11,6 +11,7 @@ import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodHook.MethodHookParam
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
+import dev.ryuya.homepodbridge.compat.compatibleName
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.Volatile
 import kotlin.jvm.JvmField
@@ -29,7 +30,7 @@ object SystemRouteTransfer {
 
     @JvmStatic
     fun install(manager: Class<*>) {
-        val proxy = manager.getName().contains("\$ProxyMediaRouter2Impl")
+        val proxy = manager.compatibleName().contains("\$ProxyMediaRouter2Impl")
         val transfer: XC_MethodHook =
             object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
@@ -165,7 +166,9 @@ object SystemRouteTransfer {
         try {
             XposedHelpers.callMethod(
                 pending.manager,
-                if (pending.manager!!.javaClass.getName().contains("\$ProxyMediaRouter2Impl"))
+                if (
+                    pending.manager!!.javaClass.compatibleName().contains("\$ProxyMediaRouter2Impl")
+                )
                     "onTransferFailed"
                 else "notifyTransferFailed",
                 pending.old,

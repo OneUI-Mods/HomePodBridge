@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Process
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import kotlin.jvm.JvmStatic
 
 /* A connection for one currently registered self-UID virtual mix; never a physical device. */
@@ -33,8 +35,8 @@ class PolicyRouteLease private constructor(context: Context, address: String?) :
         )
             input = true
         if (!input) throw SecurityException("Owned policy input missing")
-        system = Class.forName("android.media.AudioSystem")
-        attributesType = Class.forName("android.media.AudioDeviceAttributes")
+        system = DexSymbols.findClass("android.media.AudioSystem")
+        attributesType = DexSymbols.findClass("android.media.AudioDeviceAttributes")
         // The native type is fixed AUDIO_DEVICE_OUT_REMOTE_SUBMIX, never supplied by a caller.
         attributes =
             attributesType
@@ -50,14 +52,18 @@ class PolicyRouteLease private constructor(context: Context, address: String?) :
     @Throws(Exception::class)
     private fun state(): Int {
         return system
-            .getMethod("getDeviceConnectionState", Int::class.javaPrimitiveType, String::class.java)
+            .compatibleMethod(
+                "getDeviceConnectionState",
+                Int::class.javaPrimitiveType,
+                String::class.java,
+            )
             .invoke(null, 0x8000, address) as Int
     }
 
     @Throws(Exception::class)
     private fun change(value: Int): Int {
         return system
-            .getMethod(
+            .compatibleMethod(
                 "setDeviceConnectionState",
                 attributesType,
                 Int::class.javaPrimitiveType,

@@ -8,6 +8,9 @@ import android.os.Binder
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
+import dev.ryuya.homepodbridge.compat.compatibleName
 import kotlin.jvm.JvmField
 import kotlin.jvm.JvmOverloads
 
@@ -36,21 +39,27 @@ constructor(
 
     init {
         manager = context.getSystemService<AudioManager?>(AudioManager::class.java)
-        policyType = Class.forName("android.media.audiopolicy.AudioPolicy")
+        policyType = DexSymbols.findClass("android.media.audiopolicy.AudioPolicy")
         callbacks.start()
         try {
-            val ruleType = Class.forName("android.media.audiopolicy.AudioMixingRule")
+            val ruleType = DexSymbols.findClass("android.media.audiopolicy.AudioMixingRule")
             val rules =
-                Class.forName(ruleType.getName() + "\$Builder").getConstructor().newInstance()
+                DexSymbols.findClass(ruleType.compatibleName() + "\$Builder")
+                    .getConstructor()
+                    .newInstance()
             if (scope.whole) {
                 rules.javaClass
-                    .getMethod("setTargetMixRole", Int::class.javaPrimitiveType)
+                    .compatibleMethod("setTargetMixRole", Int::class.javaPrimitiveType)
                     .invoke(rules, 0)
                 rules.javaClass
-                    .getMethod("excludeMixRule", Int::class.javaPrimitiveType, Any::class.java)
+                    .compatibleMethod(
+                        "excludeMixRule",
+                        Int::class.javaPrimitiveType,
+                        Any::class.java,
+                    )
                     .invoke(rules, 4, Integer.valueOf(scope.excludedUid))
                 for (usage in scope.excludedUsages()!!) rules.javaClass
-                    .getMethod(
+                    .compatibleMethod(
                         "excludeRule",
                         AudioAttributes::class.java,
                         Int::class.javaPrimitiveType,
@@ -62,7 +71,11 @@ constructor(
                     )
             } else {
                 rules.javaClass
-                    .getMethod("addRule", AudioAttributes::class.java, Int::class.javaPrimitiveType)
+                    .compatibleMethod(
+                        "addRule",
+                        AudioAttributes::class.java,
+                        Int::class.javaPrimitiveType,
+                    )
                     .invoke(
                         rules,
                         android.media.AudioAttributes.Builder()
@@ -71,17 +84,19 @@ constructor(
                         1,
                     )
                 rules.javaClass
-                    .getMethod("addMixRule", Int::class.javaPrimitiveType, Any::class.java)
+                    .compatibleMethod("addMixRule", Int::class.javaPrimitiveType, Any::class.java)
                     .invoke(rules, 4, Integer.valueOf(scope.selectedUid))
             }
-            val mixType = Class.forName("android.media.audiopolicy.AudioMix")
+            val mixType = DexSymbols.findClass("android.media.audiopolicy.AudioMix")
             val mix =
-                Class.forName(mixType.getName() + "\$Builder")
+                DexSymbols.findClass(mixType.compatibleName() + "\$Builder")
                     .getConstructor(ruleType)
-                    .newInstance(rules.javaClass.getMethod("build").invoke(rules))
-            mix.javaClass.getMethod("setRouteFlags", Int::class.javaPrimitiveType).invoke(mix, 2)
+                    .newInstance(rules.javaClass.compatibleMethod("build").invoke(rules))
             mix.javaClass
-                .getMethod("setFormat", AudioFormat::class.java)
+                .compatibleMethod("setRouteFlags", Int::class.javaPrimitiveType)
+                .invoke(mix, 2)
+            mix.javaClass
+                .compatibleMethod("setFormat", AudioFormat::class.java)
                 .invoke(
                     mix,
                     android.media.AudioFormat.Builder()
@@ -90,39 +105,39 @@ constructor(
                         .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                         .build(),
                 )
-            val audioMix = mix.javaClass.getMethod("build").invoke(mix)
+            val audioMix = mix.javaClass.compatibleMethod("build").invoke(mix)
             val builder =
-                Class.forName(policyType.getName() + "\$Builder")
+                DexSymbols.findClass(policyType.compatibleName() + "\$Builder")
                     .getConstructor(Context::class.java)
                     .newInstance(context)
             builder.javaClass
-                .getMethod("setLooper", Looper::class.java)
+                .compatibleMethod("setLooper", Looper::class.java)
                 .invoke(builder, callbacks.getLooper())
-            builder.javaClass.getMethod("addMix", mixType).invoke(builder, audioMix)
-            policy = builder.javaClass.getMethod("build").invoke(builder)
+            builder.javaClass.compatibleMethod("addMix", mixType).invoke(builder, audioMix)
+            policy = builder.javaClass.compatibleMethod("build").invoke(builder)
             val status: Int =
                 AudioManager::class
                     .java
-                    .getMethod("registerAudioPolicy", policyType)
+                    .compatibleMethod("registerAudioPolicy", policyType)
                     .invoke(manager, policy) as Int
             check(status == 0) { "Playback policy refused" }
-            address = (mixType.getMethod("getRegistration").invoke(audioMix) as String?)!!
+            address = (mixType.compatibleMethod("getRegistration").invoke(audioMix) as String?)!!
             before.ready(address)
             route = PolicyRouteLease.open(context, address)
             // Match AudioRecord's fixed-volume submix lease without changing the phone/receiver
             // volume.
             val binder: IBinder? =
-                Class.forName("android.os.ServiceManager")
-                    .getMethod("getService", String::class.java)
+                DexSymbols.findClass("android.os.ServiceManager")
+                    .compatibleMethod("getService", String::class.java)
                     .invoke(null, Context.AUDIO_SERVICE) as IBinder?
-            audioServiceType = Class.forName("android.media.IAudioService")
+            audioServiceType = DexSymbols.findClass("android.media.IAudioService")
             audioService =
-                Class.forName("android.media.IAudioService\$Stub")
-                    .getMethod("asInterface", IBinder::class.java)
+                DexSymbols.findClass("android.media.IAudioService\$Stub")
+                    .compatibleMethod("asInterface", IBinder::class.java)
                     .invoke(null, binder)
             volumeRequested = true
             audioServiceType!!
-                .getMethod(
+                .compatibleMethod(
                     "forceRemoteSubmixFullVolume",
                     Boolean::class.javaPrimitiveType,
                     IBinder::class.java,
@@ -140,7 +155,7 @@ constructor(
             try {
                 if (volumeRequested)
                     audioServiceType!!
-                        .getMethod(
+                        .compatibleMethod(
                             "forceRemoteSubmixFullVolume",
                             Boolean::class.javaPrimitiveType,
                             IBinder::class.java,
@@ -155,7 +170,7 @@ constructor(
                 if (policy != null)
                     AudioManager::class
                         .java
-                        .getMethod("unregisterAudioPolicy", policyType)
+                        .compatibleMethod("unregisterAudioPolicy", policyType)
                         .invoke(manager, policy)
             } finally {
                 policy = null

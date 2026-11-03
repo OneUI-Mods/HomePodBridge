@@ -21,6 +21,9 @@ catalog = json.loads((root / "licenses/runtime-components.json").read_text())
 listed = {entry['coordinate'] for entry in catalog}
 resolved = set((root / "app/build/runtime-dependencies.txt").read_text().splitlines())
 assert listed == resolved, "Update the reviewed runtime license catalog when dependencies change"
-assert all(entry['license'] == 'Apache-2.0' and entry.get('licensePom') for entry in catalog)
+reviewed = {'Apache-2.0', 'LGPL-3.0-or-later AND Apache-2.0', 'Apache-2.0 WITH LLVM-exception'}
+assert all(entry['license'] in reviewed and entry.get('licensePom') for entry in catalog)
+for name in ['DEXKIT-2.3.0.txt', 'FLATBUFFERS-23.5.26.txt', 'LIBCXX-1.2.0.txt']:
+    assert (root / 'licenses' / name).read_text() in asset
 assert all(coordinate in asset for coordinate in listed)
 print("Native dependencies are pinned; licenses and in-app notices match")

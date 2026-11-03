@@ -18,6 +18,7 @@ import de.robv.android.xposed.XC_MethodHook.MethodHookParam
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
+import dev.ryuya.homepodbridge.compat.DexSymbols
 import java.util.ArrayList
 import java.util.LinkedHashMap
 import kotlin.jvm.JvmStatic
@@ -37,7 +38,6 @@ class VectorModule : IXposedHookLoadPackage, IXposedHookZygoteInit {
             if (VectorModule.installed) return
             VectorModule.installed = true
         }
-        SystemVolumeUi.install(load.classLoader)
         XposedHelpers.findAndHookMethod(
             Application::class.java,
             "attach",
@@ -45,6 +45,7 @@ class VectorModule : IXposedHookLoadPackage, IXposedHookZygoteInit {
             object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     val context: Context? = param.args[0] as Context?
+                    DexSymbols.whenPrepared(context!!) { SystemVolumeUi.install(load.classLoader) }
                     SystemRouteTransfer.context = context
                     try {
                         val bridge = SystemAudioBridge(context!!, modulePath)

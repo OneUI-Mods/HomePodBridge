@@ -31,5 +31,9 @@
         <service android:name=".HomePodRoutes" android:exported="true" android:permission="android.permission.BIND_MEDIA_ROUTE_PROVIDER_SERVICE">
             <intent-filter><action android:name="android.media.MediaRoute2ProviderService" /></intent-filter>
         </service>
+            <provider android:name="dev.ryuya.homepodbridge.compat.DexKitProvider" android:authorities="${applicationId}.dexkit" android:exported="true" />
+        <receiver android:name="dev.ryuya.homepodbridge.compat.DexKitPackageReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.PACKAGE_REPLACED"/><action android:name="android.intent.action.PACKAGE_ADDED"/><data android:scheme="package"/></intent-filter>
+        </receiver>
     </application>
 </manifest>

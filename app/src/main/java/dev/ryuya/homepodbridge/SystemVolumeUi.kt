@@ -5,7 +5,7 @@ import android.util.Log
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodHook.MethodHookParam
 import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import dev.ryuya.homepodbridge.compat.VolumeUiSymbols
 import kotlin.concurrent.Volatile
 import kotlin.jvm.JvmField
 import kotlin.jvm.JvmStatic
@@ -20,11 +20,11 @@ object SystemVolumeUi {
     fun install(loader: ClassLoader?) {
         try {
             val controller =
-                XposedHelpers.findClass(
+                VolumeUiSymbols.findClass(
                     "com.android.systemui.volume.VolumeDialogControllerImpl",
                     loader,
                 )
-            XposedHelpers.findAndHookMethod(
+            VolumeUiSymbols.findAndHookMethod(
                 controller,
                 "onVolumeChangedW",
                 Int::class.javaPrimitiveType,
@@ -40,11 +40,11 @@ object SystemVolumeUi {
                 },
             )
             val callbacks =
-                XposedHelpers.findClass(
+                VolumeUiSymbols.findClass(
                     "com.android.systemui.volume.VolumeDialogControllerImpl\$MediaSessionsCallbacks",
                     loader,
                 )
-            XposedBridge.hookAllMethods(
+            VolumeUiSymbols.hookAllMethods(
                 callbacks,
                 "onRemoteUpdate",
                 object : XC_MethodHook() {
@@ -65,12 +65,12 @@ object SystemVolumeUi {
             )
             SystemVolumeUi.available = true
             val reducer =
-                XposedHelpers.findClassIfExists(
+                VolumeUiSymbols.findClassIfExists(
                     "com.android.systemui.volume.reducer.VolumePanelReducer",
                     loader,
                 )
             if (reducer != null) {
-                XposedBridge.hookAllMethods(
+                VolumeUiSymbols.hookAllMethods(
                     reducer,
                     "reduce",
                     object : XC_MethodHook() {

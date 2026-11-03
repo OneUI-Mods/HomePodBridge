@@ -7,3 +7,4 @@ local.properties
 dist/
 *.log
 __pycache__/
+.signing

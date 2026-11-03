@@ -7,6 +7,9 @@ import android.media.AudioManager
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
+import dev.ryuya.homepodbridge.compat.compatibleName
 import java.util.UUID
 import kotlin.jvm.JvmStatic
 import org.json.JSONArray
@@ -26,14 +29,18 @@ object PolicyInputProbe {
         val state = ReadOnlyHalState()
         val baseline = state.snapshot().toString()
         if (Looper.myLooper() == null) Looper.prepare()
-        val activity = Class.forName("android.app.ActivityThread")
-        val thread = activity.getMethod("systemMain").invoke(null)
-        val context: Context? = activity.getMethod("getSystemContext").invoke(thread) as Context?
+        val activity = DexSymbols.findClass("android.app.ActivityThread")
+        val thread = activity.compatibleMethod("systemMain").invoke(null)
+        val context: Context? =
+            activity.compatibleMethod("getSystemContext").invoke(thread) as Context?
         val manager = context!!.getSystemService<AudioManager?>(AudioManager::class.java)
-        val ruleType = Class.forName("android.media.audiopolicy.AudioMixingRule")
-        val rules = Class.forName(ruleType.getName() + "\$Builder").getConstructor().newInstance()
+        val ruleType = DexSymbols.findClass("android.media.audiopolicy.AudioMixingRule")
+        val rules =
+            DexSymbols.findClass(ruleType.compatibleName() + "\$Builder")
+                .getConstructor()
+                .newInstance()
         rules.javaClass
-            .getMethod("addRule", AudioAttributes::class.java, Int::class.javaPrimitiveType)
+            .compatibleMethod("addRule", AudioAttributes::class.java, Int::class.javaPrimitiveType)
             .invoke(
                 rules,
                 android.media.AudioAttributes.Builder()
@@ -42,19 +49,19 @@ object PolicyInputProbe {
                 1,
             )
         rules.javaClass
-            .getMethod("addMixRule", Int::class.javaPrimitiveType, Any::class.java)
+            .compatibleMethod("addMixRule", Int::class.javaPrimitiveType, Any::class.java)
             .invoke(rules, 4, Process.myUid())
-        val rule = rules.javaClass.getMethod("build").invoke(rules)
-        val mixType = Class.forName("android.media.audiopolicy.AudioMix")
+        val rule = rules.javaClass.compatibleMethod("build").invoke(rules)
+        val mixType = DexSymbols.findClass("android.media.audiopolicy.AudioMix")
         val mixBuilder =
-            Class.forName(mixType.getName() + "\$Builder")
+            DexSymbols.findClass(mixType.compatibleName() + "\$Builder")
                 .getConstructor(ruleType)
                 .newInstance(rule)
         mixBuilder.javaClass
-            .getMethod("setRouteFlags", Int::class.javaPrimitiveType)
+            .compatibleMethod("setRouteFlags", Int::class.javaPrimitiveType)
             .invoke(mixBuilder, 2)
         mixBuilder.javaClass
-            .getMethod("setFormat", AudioFormat::class.java)
+            .compatibleMethod("setFormat", AudioFormat::class.java)
             .invoke(
                 mixBuilder,
                 android.media.AudioFormat.Builder()
@@ -63,10 +70,10 @@ object PolicyInputProbe {
                     .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                     .build(),
             )
-        val mix = mixBuilder.javaClass.getMethod("build").invoke(mixBuilder)
-        val policyType = Class.forName("android.media.audiopolicy.AudioPolicy")
+        val mix = mixBuilder.javaClass.compatibleMethod("build").invoke(mixBuilder)
+        val policyType = DexSymbols.findClass("android.media.audiopolicy.AudioPolicy")
         val builder =
-            Class.forName(policyType.getName() + "\$Builder")
+            DexSymbols.findClass(policyType.compatibleName() + "\$Builder")
                 .getConstructor(Context::class.java)
                 .newInstance(context)
         val callbacks = HandlerThread("HomePod-policy-input-probe")
@@ -80,19 +87,20 @@ object PolicyInputProbe {
         var phase: String = "buildPolicy"
         try {
             builder.javaClass
-                .getMethod("setLooper", Looper::class.java)
+                .compatibleMethod("setLooper", Looper::class.java)
                 .invoke(builder, callbacks.getLooper())
-            builder.javaClass.getMethod("addMix", mixType).invoke(builder, mix)
-            policy = builder.javaClass.getMethod("build").invoke(builder)
+            builder.javaClass.compatibleMethod("addMix", mixType).invoke(builder, mix)
+            policy = builder.javaClass.compatibleMethod("build").invoke(builder)
             phase = "registerPolicy"
             val status: Int =
                 AudioManager::class
                     .java
-                    .getMethod("registerAudioPolicy", policyType)
+                    .compatibleMethod("registerAudioPolicy", policyType)
                     .invoke(manager, policy) as Int
             check(status == 0) { "Self-UID policy registration refused" }
             registered = true
-            val address: String? = mixType.getMethod("getRegistration").invoke(mix) as String?
+            val address: String? =
+                mixType.compatibleMethod("getRegistration").invoke(mix) as String?
             phase = "openInput"
             if (routeOnly) route = PolicyRouteLease.open(context!!, address!!)
             else lease = PolicyInputLease.open(context!!, address!!)
@@ -121,7 +129,7 @@ object PolicyInputProbe {
                 if (registered)
                     AudioManager::class
                         .java
-                        .getMethod("unregisterAudioPolicy", policyType)
+                        .compatibleMethod("unregisterAudioPolicy", policyType)
                         .invoke(manager, policy)
             } catch (error: Exception) {
                 failure = error

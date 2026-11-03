@@ -8,6 +8,7 @@ import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
+import dev.ryuya.homepodbridge.compat.compatibleName
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -111,7 +112,7 @@ object HalQueueMapping {
                     ProcessBuilder(
                         "app_process",
                         "/system/bin",
-                        HalQueueMapping::class.java.getName(),
+                        HalQueueMapping::class.java.compatibleName(),
                         name,
                         nonce,
                         android.os.Process.myPid().toString(),
@@ -632,7 +633,7 @@ object HalQueueMapping {
                     ProcessBuilder(
                             "app_process",
                             "/system/bin",
-                            HalQueueMapping::class.java.getName(),
+                            HalQueueMapping::class.java.compatibleName(),
                             "hpb-map-" + nonce,
                             nonce,
                             android.os.Process.myPid().toString(),

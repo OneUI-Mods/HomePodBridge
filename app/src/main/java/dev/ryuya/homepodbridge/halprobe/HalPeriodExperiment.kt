@@ -3,6 +3,8 @@ package dev.ryuya.homepodbridge.halprobe
 import android.content.Context
 import android.os.Looper
 import dev.ryuya.homepodbridge.TextCompatibility
+import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.compat.compatibleMethod
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
@@ -380,10 +382,10 @@ constructor(address: String?, mixer: Boolean, timing: PhoneTiming = PhoneTiming.
             val state = ReadOnlyHalState()
             val baseline = state.snapshot().toString()
             if (Looper.myLooper() == null) Looper.prepare()
-            val activity = Class.forName("android.app.ActivityThread")
-            val thread = activity.getMethod("systemMain").invoke(null)
+            val activity = DexSymbols.findClass("android.app.ActivityThread")
+            val thread = activity.compatibleMethod("systemMain").invoke(null)
             val context: Context? =
-                activity.getMethod("getSystemContext").invoke(thread) as Context?
+                activity.compatibleMethod("getSystemContext").invoke(thread) as Context?
             val owner = arrayOf<HalPeriodExperiment?>(null, null)
             val result = JSONObject().put("playbackCreated", capture).put("networkStarted", false)
             try {
