@@ -213,7 +213,13 @@ object DexSymbols {
                 val actual =
                     source.bindings[key]
                         ?: throw ClassNotFoundException("Unproven updated class: $name")
-                return Class.forName(actual, initialize, loader)
+                val resolved = Class.forName(actual, false, loader)
+                // A renamed plugin class can collide with a parent-loader class from another APK.
+                // Identity mappings retain Java's normal delegation for shared dependencies.
+                if (actual != name && group(resolved.classLoader) !== source) {
+                    throw ClassNotFoundException("Updated class belongs to another APK: $name")
+                }
+                return if (initialize) Class.forName(actual, true, loader) else resolved
             }
         }
         if (existing != null) return if (initialize) Class.forName(name, true, loader) else existing
