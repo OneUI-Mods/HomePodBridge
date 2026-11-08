@@ -4,16 +4,14 @@ import android.content.*
 import android.database.Cursor
 import android.net.Uri
 import android.os.*
+import dev.ryuya.homepodbridge.BackgroundExecutors
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import org.json.JSONObject
 
 /** Fixed, module-owned target list. External callers cannot supply APK paths or queries. */
 class DexKitProvider : ContentProvider() {
-    private val worker = Executors.newSingleThreadExecutor { task ->
-        Thread(task, "DexKitFirstStartup")
-    }
+    private val worker = BackgroundExecutors.serial("DexKitFirstStartup")
     private val results = ConcurrentHashMap<String, Pair<String, GenerationStore.Result>>()
     private val pending = ConcurrentHashMap.newKeySet<String>()
     private val discoveryStarts = java.util.concurrent.atomic.AtomicInteger()
@@ -129,7 +127,7 @@ class DexKitProvider : ContentProvider() {
         require(
             method in setOf("bindings", "feature_begin", "feature_finish") &&
                 arg != null &&
-                (own || arg in DexKitConfig.HOSTS)
+                (own || arg in DexKitConfig.HOSTS),
         ) {
             "Unsupported request"
         }

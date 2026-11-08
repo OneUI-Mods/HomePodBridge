@@ -25,7 +25,7 @@ class GenerationStore(private val directory: File) {
         }
         val key = digest(generation)
         return synchronized(
-            locks.computeIfAbsent(File(directory, "$key.bin").absolutePath) { Any() }
+            locks.computeIfAbsent(File(directory, "$key.bin").absolutePath) { Any() },
         ) {
             FileChannel.open(
                     File(directory, "$key.lock").toPath(),
@@ -112,10 +112,18 @@ class GenerationStore(private val directory: File) {
         const val MAX_BYTES = 16 * 1024 * 1024
         private const val MAGIC = 0x4f554431
 
-        fun digest(value: String): String =
-            MessageDigest.getInstance("SHA-256")
-                .digest(value.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
+        fun digest(value: String): String {
+            val bytes =
+                MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+            val hex = "0123456789abcdef"
+            val output = CharArray(bytes.size * 2)
+            for (i in bytes.indices) {
+                val byte = bytes[i].toInt() and 255
+                output[i * 2] = hex[byte ushr 4]
+                output[i * 2 + 1] = hex[byte and 15]
+            }
+            return output.concatToString()
+        }
 
         fun encode(result: Result): ByteArray =
             ByteArrayOutputStream()

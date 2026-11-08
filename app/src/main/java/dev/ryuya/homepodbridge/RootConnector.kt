@@ -11,7 +11,6 @@ import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import kotlin.concurrent.Volatile
 import kotlin.jvm.JvmOverloads
 import kotlin.jvm.JvmRecord
@@ -42,7 +41,7 @@ object RootConnector {
     @Volatile private var bridge: IBinder? = null
     private val captureBridges: ConcurrentHashMap<IBinder?, IBinder?> =
         ConcurrentHashMap<IBinder?, IBinder?>()
-    private val controls: ExecutorService? = Executors.newSingleThreadExecutor()
+    private val controls: ExecutorService? = BackgroundExecutors.serial("HomePodControls")
 
     @JvmStatic
     fun volumeEndpoint(lifetime: IBinder?, callback: IBinder?) {
@@ -64,7 +63,7 @@ object RootConnector {
                     input.recycle()
                     output.recycle()
                 }
-            }
+            },
         )
     }
 
