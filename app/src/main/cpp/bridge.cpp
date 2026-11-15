@@ -231,6 +231,9 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                     nextStatistics = now + std::chrono::seconds(1);
                 }
             }
+            // Clear this receiver's last track on deliberate disconnect before the flushed TEARDOWN.
+            if (engine->metadataApplied > 0 && engine->state.load() == 2)
+                sender.setNowPlaying("", "", "");
             sender.stop();
         } catch (const std::exception& error) {
             { std::lock_guard<std::mutex> lock(engine->diagnosticMutex); engine->diagnostic += std::string("Exception: ") + error.what() + "\n"; }
