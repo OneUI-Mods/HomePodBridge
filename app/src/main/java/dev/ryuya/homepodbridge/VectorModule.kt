@@ -19,6 +19,7 @@ import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
 import dev.ryuya.homepodbridge.compat.DexSymbols
+import dev.ryuya.homepodbridge.startup.FirstUnlockGate
 import java.util.ArrayList
 import java.util.LinkedHashMap
 import kotlin.jvm.JvmStatic
@@ -27,6 +28,7 @@ import kotlin.math.log
 /* Publishes our routes inside SystemUI. Original routes and system_server are untouched. */
 class VectorModule : IXposedHookLoadPackage, IXposedHookZygoteInit {
     private var modulePath: String? = null
+    private val firstUnlock = FirstUnlockGate()
 
     override fun initZygote(startup: StartupParam) {
         modulePath = startup.modulePath
@@ -44,65 +46,71 @@ class VectorModule : IXposedHookLoadPackage, IXposedHookZygoteInit {
             Context::class.java,
             object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
-                    val context: Context? = param.args[0] as Context?
-                    DexSymbols.whenPrepared(context!!) { SystemVolumeUi.install(load.classLoader) }
-                    SystemRouteTransfer.context = context
-                    try {
-                        val bridge = SystemAudioBridge(context!!, modulePath)
-                        val register = Runnable {
-                            Thread(
-                                    Runnable {
-                                        try {
-                                            val registration = Bundle()
-                                            registration.putBinder("bridge", bridge)
-                                            context!!
-                                                .getContentResolver()
-                                                .call(
-                                                    Uri.parse(
-                                                        "content://" + RootProtocol.AUTHORITY
-                                                    ),
-                                                    "register",
-                                                    null,
-                                                    registration,
-                                                )
-                                            XposedBridge.log(
-                                                "HomePod Bridge: system audio bridge registered"
-                                            )
-                                        } catch (e: Throwable) {
-                                            XposedBridge.log(
-                                                ("HomePod Bridge: system audio bridge unavailable (" +
-                                                    e.javaClass.getSimpleName() +
-                                                    ")")
-                                            )
-                                        }
-                                    },
-                                    "HomePod-register",
-                                )
-                                .start()
+                    val context = param.args[0] as? Context ?: return
+                    firstUnlock.run(context) {
+                        DexSymbols.whenPrepared(context) {
+                            SystemVolumeUi.install(load.classLoader)
                         }
-                        context!!.registerReceiver(
-                            object : BroadcastReceiver() {
-                                private var last: Long = 0
+                        SystemRouteTransfer.context = context
+                        try {
+                            val bridge = SystemAudioBridge(context, modulePath)
+                            val register = Runnable {
+                                Thread(
+                                        Runnable {
+                                            try {
+                                                val registration = Bundle()
+                                                registration.putBinder("bridge", bridge)
+                                                context
+                                                    .getContentResolver()
+                                                    .call(
+                                                        Uri.parse(
+                                                            "content://" + RootProtocol.AUTHORITY,
+                                                        ),
+                                                        "register",
+                                                        null,
+                                                        registration,
+                                                    )
+                                                XposedBridge.log(
+                                                    "HomePod Bridge: system audio bridge registered",
+                                                )
+                                            } catch (e: Throwable) {
+                                                XposedBridge.log(
+                                                    ("HomePod Bridge: system audio bridge unavailable (" +
+                                                        e.javaClass.getSimpleName() +
+                                                        ")"),
+                                                )
+                                            }
+                                        },
+                                        "HomePod-register",
+                                    )
+                                    .start()
+                            }
+                            context.registerReceiver(
+                                object : BroadcastReceiver() {
+                                    private var last: Long = 0
 
-                                override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                                    val now = SystemClock.elapsedRealtime()
-                                    if (now - last < 1000) return
-                                    last = now
-                                    register
-                                        .run() // A request can only register our Binder with our
-                                    // own provider.
-                                }
-                            },
-                            IntentFilter(RootProtocol.REQUEST),
-                            Context.RECEIVER_EXPORTED,
-                        )
-                        register.run()
-                    } catch (e: Throwable) {
-                        XposedBridge.log(
-                            ("HomePod Bridge: bridge initialization failed (" +
-                                e.javaClass.getSimpleName() +
-                                ")")
-                        )
+                                    override fun onReceive(
+                                        receiverContext: Context?,
+                                        intent: Intent?,
+                                    ) {
+                                        val now = SystemClock.elapsedRealtime()
+                                        if (now - last < 1000) return
+                                        last = now
+                                        // Requests only register our Binder with our own provider.
+                                        register.run()
+                                    }
+                                },
+                                IntentFilter(RootProtocol.REQUEST),
+                                Context.RECEIVER_EXPORTED,
+                            )
+                            register.run()
+                        } catch (e: Throwable) {
+                            XposedBridge.log(
+                                ("HomePod Bridge: bridge initialization failed (" +
+                                    e.javaClass.getSimpleName() +
+                                    ")"),
+                            )
+                        }
                     }
                 }
             },

@@ -6,6 +6,10 @@ An Android app and Vector module, under development, for sending audio from Gala
 
 Apple Music is not modified or hooked. The bridge registers HomePod as an Android media route and sends media audio from the app selected in SystemUI over AirPlay 2. Ordinary sharing does not use the microphone. Only explicitly requested development latency measurements use it briefly; microphone recordings are never forwarded to HomePod.
 
+## First unlock after boot
+
+Hook initialization that needs settings or cached discovery results waits for the first user unlock after boot. A later ordinary screen lock does not repeat initialization. Existing screen-off power-saving and security behavior is preserved. Unlock delivery is event-driven, with no polling or new resident service.
+
 ## Requirements
 
 - Android 16/17, arm64 or x86_64.
