@@ -1,5 +1,7 @@
 # HomePod Bridge
 
+[日本語](README.md) · [English](README.en.md)
+
 Galaxyのシステムの「メディア出力」からHomePodへ音声を送る、開発中のAndroidアプリとVectorモジュールです。
 
 Apple Musicは変更・フックしません。HomePodをAndroidのメディアルートとして登録し、SystemUIから選択したアプリのメディア音声をAirPlay 2で送ります。通常の転送にマイクは使いません。明示的な開発用の遅延測定だけ、マイクを短時間使用します。録音音声をHomePodへ転送することはありません。
