@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <exception>
+#include <optional>
 #include <stdexcept>
 #include <sys/resource.h>
 #include "raop_loop.h"
@@ -17,7 +18,15 @@
 #include "lossless_alac.h"
 
 namespace {
+std::atomic<jlong> nextInstance{1};
+struct NowPlaying {
+    std::string title, artist, album, cover;
+    int64_t positionMs = -1, durationMs = -1;
+};
 struct Engine {
+    const jlong instance = nextInstance.fetch_add(1);
+    std::mutex metadataMutex;
+    std::optional<NowPlaying> metadata;
     fxchain::RingBuffer<int16_t> ring{1u << 16};
     std::atomic<bool> stop{false};
     std::atomic<int> state{1}; // connecting, 2=RECORD accepted, negative=failure
@@ -30,6 +39,8 @@ struct Engine {
     jint timing[8] = {0, 0, -1, 0, 0, 0, -1, 0}; // requested / effective target / reported minimum / fallback
     jint rejection[2] = {0, 0}; // receiver stream response / terminal refusal
     jlong network[17] = {0,0,0,-1,-1,0,-1,-1,-1,0,-1,-1,0,0,0,0,0};
+    jlong metadataStatus[3] = {0, 0, 0};
+    uint64_t metadataApplied = 0;
     jlong pipeline[13] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1};
     std::atomic<uint64_t> backpressure{0};
     std::thread worker;
@@ -128,6 +139,21 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
             auto nextStatistics = std::chrono::steady_clock::now();
             while (!engine->stop.load() && engine->state.load() > 0) {
                 if(engine->inputReady.exchange(false))sender.releaseInput();
+                // At most one latest update, consumed on this sender's own thread. Never block audio
+                // behind Binder/bitmap work and never apply a previous connection's callback.
+                if (engine->state.load() == 2) {
+                    std::optional<NowPlaying> metadata;
+                    {
+                        std::unique_lock<std::mutex> lock(engine->metadataMutex, std::try_to_lock);
+                        if (lock.owns_lock()) metadata.swap(engine->metadata);
+                    }
+                    if (metadata) {
+                        ++engine->metadataApplied;
+                        sender.setNowPlaying(metadata->title, metadata->artist, metadata->album,
+                                             metadata->cover, "image/jpeg");
+                        sender.setProgress(metadata->positionMs, metadata->durationMs);
+                    }
+                }
                 const int volume = engine->volume.exchange(-1);
                 if (volume >= 0) sender.setVolume(volume);
                 loop.pump(sender, std::chrono::milliseconds(latencyMs <= 100 ? 2 : 20));
@@ -137,6 +163,9 @@ Java_dev_ryuya_homepodbridge_NativeSender_start(JNIEnv* env, jclass, jstring hos
                 if (now >= nextStatistics) {
                     std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
                     auto ms = [](uint32_t frames) { return static_cast<jint>((uint64_t(frames) * 1000 + 44099) / 44100); };
+                    engine->metadataStatus[0] = static_cast<jlong>(engine->metadataApplied);
+                    engine->metadataStatus[1] = static_cast<jlong>(sender.metadataResponses());
+                    engine->metadataStatus[2] = sender.metadataResponseCode();
                     engine->timing[0] = ms(sender.requestedLatencyFrames());
                     engine->timing[1] = ms(sender.presentationLatencyFrames());
                     engine->timing[2] = sender.receiverMinimumLatencyFrames() < 0 ? -1 : ms(sender.receiverMinimumLatencyFrames());
@@ -316,4 +345,41 @@ Java_dev_ryuya_homepodbridge_NativeSender_encodeZeroProbe(JNIEnv* env,jclass,job
 extern "C" JNIEXPORT void JNICALL
 Java_dev_ryuya_homepodbridge_NativeSender_closeZeroCodecProbe(JNIEnv*,jclass) {
     std::lock_guard<std::mutex> lock(codecProbeMutex);codecProbe.reset();
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_instanceId(JNIEnv*, jclass) {
+    auto engine = getEngine();
+    return engine ? engine->instance : 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_nowPlaying(JNIEnv* env, jclass, jlong instance,
+        jbyteArray title, jbyteArray artist, jbyteArray album, jbyteArray artwork,
+        jlong positionMs, jlong durationMs) {
+    auto engine = getEngine();
+    if (!engine || engine->instance != instance || engine->stop.load()) return;
+    if (!title || !artist || !album || !artwork || env->GetArrayLength(title) > 4096 ||
+        env->GetArrayLength(artist) > 4096 || env->GetArrayLength(album) > 4096 ||
+        env->GetArrayLength(artwork) > 256 * 1024) return;
+    auto bytes = [env](jbyteArray value) {
+        std::string result(static_cast<size_t>(env->GetArrayLength(value)), '\0');
+        if (!result.empty()) env->GetByteArrayRegion(value, 0, static_cast<jsize>(result.size()),
+                                                    reinterpret_cast<jbyte*>(result.data()));
+        return result;
+    };
+    NowPlaying metadata{bytes(title), bytes(artist), bytes(album), bytes(artwork), positionMs, durationMs};
+    if (env->ExceptionCheck()) return;
+    std::lock_guard<std::mutex> lock(engine->metadataMutex);
+    engine->metadata = std::move(metadata);
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_dev_ryuya_homepodbridge_NativeSender_metadataStatus(JNIEnv* env, jclass) {
+    auto engine = getEngine();
+    if (!engine) return nullptr;
+    std::lock_guard<std::mutex> lock(engine->diagnosticMutex);
+    auto result = env->NewLongArray(3);
+    if (result) env->SetLongArrayRegion(result, 0, 3, engine->metadataStatus);
+    return result;
 }

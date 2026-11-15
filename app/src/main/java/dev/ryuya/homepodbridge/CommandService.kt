@@ -62,6 +62,100 @@ class CommandService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val command: String? = if (intent == null) "status" else intent.getStringExtra("command")
         if (command == null || command == "status") return Service.START_NOT_STICKY
+        if (command == "metadata-check") {
+            if (BridgeState.capture != null || BridgeState.connected) {
+                commandStatus = "Stop sharing before metadata inspection"
+                return START_NOT_STICKY
+            }
+            val source = intent?.getStringExtra("source") ?: BridgeState.MUSIC
+            val whole = intent?.getBooleanExtra("whole", true) ?: true
+            commandStatus = "Inspecting source metadata without starting playback"
+            commands!!.execute {
+                val lifetime = android.os.Binder()
+                try {
+                    if (
+                        BridgeState.capture != null ||
+                            !RootConnector.openExternal(lifetime, whole, source)
+                    ) {
+                        commandStatus = "Metadata bridge unavailable"
+                    } else {
+                        val result = RootConnector.readMediaSession(lifetime)
+                        val metadata =
+                            result.token?.let {
+                                android.media.session.MediaController(this, it).metadata
+                            }
+                        commandStatus =
+                            "Metadata check: protocol=" +
+                                result.supported +
+                                " source=" +
+                                (result.token != null) +
+                                " title=" +
+                                (metadata
+                                    ?.getText(android.media.MediaMetadata.METADATA_KEY_TITLE)
+                                    ?.isNotBlank() == true) +
+                                " artist=" +
+                                (metadata
+                                    ?.getText(android.media.MediaMetadata.METADATA_KEY_ARTIST)
+                                    ?.isNotBlank() == true) +
+                                " artwork=" +
+                                (metadata?.getBitmap(
+                                    android.media.MediaMetadata.METADATA_KEY_ALBUM_ART
+                                ) != null ||
+                                    metadata?.getBitmap(
+                                        android.media.MediaMetadata.METADATA_KEY_ART
+                                    ) != null)
+                    }
+                } catch (_: Exception) {
+                    commandStatus = "Metadata inspection unavailable"
+                } finally {
+                    RootConnector.close(lifetime)
+                }
+            }
+            return START_NOT_STICKY
+        }
+        if (command == "metadata-probe") {
+            if (
+                !BridgeState.connected ||
+                    BridgeState.volume != 0 ||
+                    BridgeState.capture?.diagnosticAudio() != true
+            ) {
+                commandStatus = "Metadata test requires a muted zero-input diagnostic connection"
+                return START_NOT_STICKY
+            }
+            val instance = NativeSender.instanceId()
+            commands!!.execute {
+                if (
+                    NativeSender.instanceId() != instance ||
+                        BridgeState.volume != 0 ||
+                        BridgeState.capture?.diagnosticAudio() != true
+                )
+                    return@execute
+                val image =
+                    android.graphics.Bitmap.createBitmap(
+                        16,
+                        16,
+                        android.graphics.Bitmap.Config.ARGB_8888,
+                    )
+                val bytes = java.io.ByteArrayOutputStream()
+                try {
+                    image.eraseColor(android.graphics.Color.BLUE)
+                    image.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bytes)
+                    NativeSender.nowPlaying(
+                        instance,
+                        "HomePod Bridge".toByteArray(Charsets.UTF_8),
+                        "Metadata check".toByteArray(Charsets.UTF_8),
+                        byteArrayOf(),
+                        bytes.toByteArray(),
+                        0,
+                        180000,
+                    )
+                    commandStatus = "Metadata test queued; receiver responses in metadataStatus"
+                } finally {
+                    image.recycle()
+                }
+            }
+            return START_NOT_STICKY
+        }
         if (command == "network-priority-on" || command == "network-priority-off") {
             if (BridgeState.capture != null || BridgeState.connected) {
                 commandStatus = "Stop sharing before changing network priority"
@@ -548,6 +642,7 @@ class CommandService : Service() {
         writer.println("Command service: " + commandStatus)
         writer.println("connected=" + BridgeState.connected + " volume=" + BridgeState.volume)
         writer.println("systemBridgeReady=" + RootConnector.available())
+        writer.println("metadataStatus=" + java.util.Arrays.toString(NativeSender.metadataStatus()))
         if (BridgeState.connectionTiming != null)
             writer.println(BridgeState.connectionTiming!!.summary())
         writer.println("networkPriorityPreference=" + NetworkSettings.load(this)!!.priority)

@@ -459,6 +459,8 @@ void RaopSender::start(const std::string& host, uint16_t port, const std::string
     eventEncBuf_.clear();
     eventPlainBuf_.clear();
     pendingMethods_.clear();
+    metadataResponses_ = 0;
+    metadataResponseCode_ = 0;
     rtspSession_.clear();
     serverPort_ = controlPort_ = timingPort_ = 0;
     framesSent_ = 0;
@@ -678,9 +680,10 @@ void RaopSender::setNowPlaying(const std::string& title, const std::string& arti
                                const std::string& album,
                                const std::string& cover,
                                const std::string& coverMime) {
-    const bool changed = (title != npTitle_) || (artist != npArtist_)
+    const bool changed = !npKnown_ || (title != npTitle_) || (artist != npArtist_)
                          || (album != npAlbum_) || (cover != npCover_)
                          || (coverMime != npCoverMime_);
+    npKnown_ = true;
     npTitle_ = title; npArtist_ = artist; npAlbum_ = album;
     npCover_ = cover; npCoverMime_ = coverMime;
     // While streaming, push the new track to the receiver right away;
@@ -690,9 +693,7 @@ void RaopSender::setNowPlaying(const std::string& title, const std::string& arti
 
 void RaopSender::sendMetadata_() {
     if (state_ != State::Streaming) return;
-    if (npTitle_.empty() && npArtist_.empty() && npAlbum_.empty()
-        && npCover_.empty())
-        return;
+    if (!npKnown_) return;
     // RTP-Info ties the metadata to the audio timeline (pyatv form:
     // "seq=<rtpseq>;rtptime=<rtptime>"). Session present for AP1; for
     // AP2 it may be empty (the receiver tolerates its absence).
@@ -709,10 +710,10 @@ void RaopSender::sendMetadata_() {
     if (!npTitle_.empty())  inner += dmapTag("minm", npTitle_);
     if (!npAlbum_.empty())  inner += dmapTag("asal", npAlbum_);
     if (!npArtist_.empty()) inner += dmapTag("asar", npArtist_);
-    if (!inner.empty()) {
-        const std::string body = dmapTag("mlit", inner);
-        sendRequest_("SET_PARAMETER", rtspUri_(), "application/x-dmap-tagged", body, hdr);
-    }
+    // An explicit empty mlit clears the previous source/track. Omitting the request
+    // would leave stale music visible on iPhones controlling this receiver.
+    const std::string body = dmapTag("mlit", inner);
+    sendRequest_("SET_PARAMETER", rtspUri_(), "application/x-dmap-tagged", body, hdr);
 
     // Cover artwork as raw image bytes (pyatv: image/jpeg; PNG honoured).
     // Cap matches CastBridge's 8 MB cover read so nothing is silently
@@ -728,8 +729,25 @@ void RaopSender::sendMetadata_() {
                   npCover_.size());
         }
     }
-    info_("Cast: RAOP now-playing pushed, '{}' / '{}'{}",
-          npTitle_, npArtist_, coverSent ? " + cover" : "");
+    if (npCover_.empty() && npCoverPublished_)
+        sendRequest_("SET_PARAMETER", rtspUri_(), "image/jpeg", {}, hdr);
+    npCoverPublished_ = coverSent;
+    info_("Cast: RAOP now-playing metadata pushed{}", coverSent ? " + cover" : "");
+}
+
+void RaopSender::setProgress(int64_t positionMs, int64_t durationMs) {
+    if (state_ != State::Streaming || !inputReady_ || positionMs < 0 || durationMs <= 0 ||
+        durationMs > 86400000) return;
+    const uint32_t current = rtptime32_();
+    const uint32_t position = uint32_t(uint64_t(std::min(positionMs, durationMs)) * kRaopRate / 1000);
+    const uint32_t duration = uint32_t(uint64_t(durationMs) * kRaopRate / 1000);
+    const uint32_t start = current - position;
+    Extra hdr;
+    if (!rtspSession_.empty()) hdr.push_back({"Session", rtspSession_});
+    hdr.push_back({"RTP-Info", "seq=" + std::to_string(seq_) + ";rtptime=" + std::to_string(current)});
+    sendRequest_("SET_PARAMETER", rtspUri_(), "text/parameters",
+        "progress: " + std::to_string(start) + "/" + std::to_string(current) + "/" +
+        std::to_string(uint32_t(start + duration)), hdr);
 }
 
 // -- RTSP plumbing ---------------------------------------------------
@@ -761,11 +779,13 @@ void RaopSender::sendRequest_(const std::string& method, const std::string& uri,
         req += h.first + ": " + h.second + "\r\n";
     if (!contentType.empty())
         req += "Content-Type: " + contentType + "\r\n";
-    if (!body.empty())
+    if (!body.empty() || !contentType.empty())
         req += "Content-Length: " + std::to_string(body.size()) + "\r\n";
     req += "\r\n";
     req += body;
-    pendingMethods_.push_back(method);
+    const bool metadata = method == "SET_PARAMETER" && (contentType == "application/x-dmap-tagged" ||
+        contentType == "image/jpeg" || contentType == "image/png" || body.rfind("progress: ", 0) == 0);
+    pendingMethods_.push_back(metadata ? "METADATA" : method);
     pendingIsHttp_.push_back(false);       // RTSP reply
     // Remember the last handshake request so a 401 can re-issue it with auth.
     pendingDigestMethod_ = method;
@@ -976,6 +996,12 @@ void RaopSender::onRtspReadyRead_(std::span<const uint8_t> bytes) {
 }
 
 void RaopSender::handleResponse_(const std::string& method, int code, const Headers& headers) {
+    if (method == "METADATA") {
+        ++metadataResponses_;
+        metadataResponseCode_ = code;
+        if (code != 200) warn_("Cast: receiver rejected now-playing metadata ({})", code);
+        return;
+    }
     // Streaming-time auxiliaries first, failures are non-fatal there.
     if (method == "SET_PARAMETER") {
         if (waitingInitialVolume_) {
@@ -983,6 +1009,7 @@ void RaopSender::handleResponse_(const std::string& method, int code, const Head
             if (code != 200) { fail_("Receiver rejected the initial volume; audio was not started"); return; }
             disarm_(timeout_);
             state_ = State::Streaming;
+            sendMetadata_();
             if(inputReady_) {
                 startAudioClock_();
                 if (events_.launched) events_.launched(true, std::string());

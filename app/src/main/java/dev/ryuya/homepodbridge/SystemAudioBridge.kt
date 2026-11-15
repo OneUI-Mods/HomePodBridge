@@ -64,6 +64,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                 code != RootProtocol.CAPTURE_TIMING &&
                 code != RootProtocol.OPEN_SILENT_PROBE &&
                 code != RootProtocol.OPEN_EXTERNAL &&
+                code != RootProtocol.MEDIA_SESSION &&
                 code != RootProtocol.VOLUME_ENDPOINT &&
                 code != RootProtocol.CLOSE
         )
@@ -90,6 +91,16 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
         requireNotNull(client) { "Client lifetime token required" }
         val identity = Binder.clearCallingIdentity()
         try {
+            if (code == RootProtocol.MEDIA_SESSION) {
+                val ownedStream = stream?.takeIf { it.client == client && !it.closed.get() }
+                val ownedExternal = external?.takeIf { it.client == client && !it.closed }
+                val source = ownedStream?.sourcePackage ?: ownedExternal?.sourcePackage
+                val whole = ownedStream?.wholeDevice ?: ownedExternal?.whole ?: false
+                val token = if (source == null) null else sourceSession(source, whole)
+                reply!!.writeNoException()
+                reply.writeTypedObject(token, 0)
+                return true
+            }
             if (code == RootProtocol.CAPTURE_TIMING) {
                 reply!!.writeNoException()
                 reply!!.writeLongArray(
@@ -125,12 +136,18 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
             }
             if (code == RootProtocol.OPEN_EXTERNAL) {
                 val whole = data.readBoolean()
+                val source = if (data.dataAvail() > 0) data.readString() else null
+                require(
+                    source == null ||
+                        (source != RootProtocol.PACKAGE &&
+                            source.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")))
+                )
                 if (stream != null) {
                     stream!!.close()
                     stream = null
                 }
                 if (external != null) external!!.close()
-                external = ExternalSession(client, whole)
+                external = ExternalSession(client, whole, source)
                 reply!!.writeNoException()
                 return true
             }
@@ -169,6 +186,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                 stream =
                     Stream(
                         client,
+                        targetPackage,
                         targetUid,
                         appUid(),
                         pipe[1],
@@ -198,7 +216,30 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
         return context.getPackageManager().getApplicationInfo(RootProtocol.PACKAGE, 0).uid
     }
 
-    private inner class ExternalSession(client: IBinder, whole: Boolean) : DeathRecipient {
+    private fun sourceSession(
+        source: String,
+        whole: Boolean,
+    ): android.media.session.MediaSession.Token? {
+        val manager =
+            context.getSystemService(android.media.session.MediaSessionManager::class.java)
+        val sessions = manager.getActiveSessions(null)
+        val choices = sessions.map { controller ->
+            val usage = controller.playbackInfo?.audioAttributes?.usage
+            MediaSessionChoice(
+                controller.packageName,
+                controller.playbackState?.state ?: 0,
+                usage == AudioAttributes.USAGE_VOICE_COMMUNICATION ||
+                    usage == AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING,
+            )
+        }
+        return MediaSessionChoice.choose(choices, source, whole)?.let { sessions[it].sessionToken }
+    }
+
+    private inner class ExternalSession(
+        client: IBinder,
+        whole: Boolean,
+        val sourcePackage: String?,
+    ) : DeathRecipient {
         @JvmField val client: IBinder
         @JvmField val whole: Boolean
         @JvmField var endpoint: SystemVolumeEndpoint? = null
@@ -237,6 +278,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
 
     private inner class Stream(
         client: IBinder,
+        val sourcePackage: String,
         uid: Int,
         bridgeUid: Int,
         writePipe: ParcelFileDescriptor,

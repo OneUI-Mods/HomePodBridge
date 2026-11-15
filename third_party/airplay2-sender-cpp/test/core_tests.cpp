@@ -706,6 +706,75 @@ void runAp2Handshake(Rig& r, FakeReceiver::Mode mode, RaopDeviceInfo::Auth auth,
 
 // ── the tests ────────────────────────────────────────────────────────
 
+void testNowPlayingMetadata() {
+    g_test = "receiver now-playing, UTF-8, mute ordering, artwork removal and progress";
+    for (bool ap2 : {false, true}) {
+        Rig r;
+        r.sender->setVolumePolicy(0, 5);
+        // Japanese + a non-BMP musical note, already encoded as standard UTF-8 by Android.
+        const std::string title = "\xe5\xa4\x9c \xf0\x9f\x8e\xb5";
+        r.sender->setNowPlaying(title, "Artist", "Album", "JPEG", "image/jpeg");
+        CHECK(r.io.takeTcp(RaopTcp::Control).empty(), "no metadata before a transport exists");
+        if (ap2) runAp2Handshake(r, FakeReceiver::Mode::Ap2Transient, RaopDeviceInfo::Auth::HapTransient);
+        else {
+            r.sender->setAuth(RaopDeviceInfo::Auth::None, false, "box", "", "");
+            r.sender->start(r.peerIp, 5000, "FakeBox");
+            r.connectControl();
+            r.exchange();
+        }
+        REQUIRE(r.launchedOk && *r.launchedOk, "starts at acknowledged mute");
+        size_t metadataAt = r.rx.requests.size(), muteAt = r.rx.requests.size();
+        for (size_t i = 0; i < r.rx.requests.size(); ++i) {
+            const auto& q = r.rx.requests[i];
+            if (q.body == "volume: -144.000000") muteAt = i;
+            if (q.h("content-type") == "application/x-dmap-tagged") {
+                metadataAt = i;
+                CHECK(q.body.find(title) != std::string::npos, "Japanese and emoji bytes reach the receiver");
+                CHECK(q.body.substr(0, 4) == "mlit" && be32(q.body, 4) == q.body.size() - 8, "DMAP byte lengths");
+                CHECK(!q.h("rtp-info").empty(), "metadata anchored on the stream timeline");
+            }
+        }
+        CHECK(metadataAt < r.rx.requests.size() && muteAt < metadataAt, "preloaded track follows initial mute acknowledgement");
+        CHECK(r.sender->metadataResponses() >= 2 && r.sender->metadataResponseCode() == 200, "receiver acknowledged text and artwork");
+        CHECK(!r.logHas(title.c_str()) && !r.logHas("Artist"), "private song details omitted from diagnostics");
+        auto before = r.rx.requests.size();
+        r.sender->setNowPlaying(title, "Artist", "Album", "JPEG", "image/jpeg");
+        r.exchange();
+        CHECK(r.rx.requests.size() == before, "unchanged metadata does not resend cover art");
+        r.sender->setNowPlaying("Second", "", "", "", "image/jpeg");
+        r.exchange();
+        REQUIRE(r.rx.requests.size() == before + 2, "track update plus explicit artwork removal");
+        CHECK(r.rx.requests.back().h("content-type") == "image/jpeg" &&
+              r.rx.requests.back().body.empty() && r.rx.requests.back().h("content-length") == "0", "missing artwork cannot retain the previous song image");
+        r.sender->setProgress(1200, 180000);
+        r.exchange();
+        const auto& progress = r.rx.requests.back();
+        REQUIRE(progress.body.rfind("progress: ", 0) == 0, "source progress sent separately from audio");
+        const auto first = progress.body.find('/'), second = progress.body.find('/', first + 1);
+        REQUIRE(first != std::string::npos && second != std::string::npos, "three RTP progress anchors");
+        const uint32_t start = uint32_t(std::stoull(progress.body.substr(10, first - 10)));
+        const uint32_t current = uint32_t(std::stoull(progress.body.substr(first + 1, second - first - 1)));
+        const uint32_t end = uint32_t(std::stoull(progress.body.substr(second + 1)));
+        CHECK(uint32_t(current - start) == 52920 && uint32_t(end - start) == 7938000,
+              "position and duration preserve 44.1kHz arithmetic through RTP wrap");
+        before = r.rx.requests.size();
+        r.sender->setProgress(-1, 180000);
+        r.sender->setProgress(0, -1);
+        r.sender->setProgress(0, 86400001);
+        r.exchange();
+        CHECK(r.rx.requests.size() == before, "unknown and unrepresentable progress omitted");
+        r.sender->setNowPlaying("", "", "");
+        r.exchange();
+        CHECK(r.rx.requests.back().body == std::string("mlit\0\0\0\0", 8), "destroyed or absent media session clears stale track text");
+        r.rx.rejectVolume = true; // Refuse only after the initial mute was acknowledged.
+        r.sender->setNowPlaying("Unsupported", "", "");
+        r.exchange();
+        CHECK(r.sender->metadataResponseCode() == 400 && r.sender->active() && r.launchedCount == 1,
+              "metadata refusal remains observable without disconnecting audio");
+        r.sender->stop();
+    }
+}
+
 void testFormatter() {
     g_test = "formatter";
     CHECK(raopFormat("{} of {}", 1, "two") == "1 of two", "positional {} substitution");
@@ -2055,6 +2124,7 @@ void testCompressedAp2Audio() {
 int main() {
     std::printf("== raop core tests (in-process fake receiver, no sockets) ==\n");
     testFormatter();
+    testNowPlayingMetadata();
     testCredsCodec();
     testAp1Session();
     testAp2Transient();

@@ -232,6 +232,11 @@ public:
                        const std::string& cover = {},
                        const std::string& coverMime = {});
 
+    // Source playback position in milliseconds; audio RTP timestamps are never rebased.
+    void setProgress(int64_t positionMs, int64_t durationMs);
+    uint64_t metadataResponses() const { return metadataResponses_; }
+    int metadataResponseCode() const { return metadataResponseCode_; }
+
     // ── host i/o api: the host pushes in what happened ────────────────
     // (RaopLoop / RaopQtHost call these; an application never does.)
 
@@ -467,6 +472,9 @@ private:
     std::vector<std::string> backlog_;
     std::vector<int32_t>     backlogSeq_;
 
+    uint64_t metadataResponses_ = 0;
+    int metadataResponseCode_ = 0;
+    bool npKnown_ = false, npCoverPublished_ = false;
     std::string npTitle_, npArtist_, npAlbum_;   // now-playing metadata
     std::string npCover_, npCoverMime_;          // cover art bytes + MIME
 

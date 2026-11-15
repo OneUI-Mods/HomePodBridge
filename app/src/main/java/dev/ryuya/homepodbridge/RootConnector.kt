@@ -19,7 +19,7 @@ import kotlin.jvm.JvmStatic
 object RootConnector {
     @JvmStatic
     @Throws(RemoteException::class)
-    fun openExternal(lifetime: IBinder?, whole: Boolean): Boolean {
+    fun openExternal(lifetime: IBinder?, whole: Boolean, sourcePackage: String? = null): Boolean {
         val target = RootConnector.bridge
         if (target == null) return false
         val input = Parcel.obtain()
@@ -28,6 +28,7 @@ object RootConnector {
             input.writeInterfaceToken(RootProtocol.DESCRIPTOR)
             input.writeStrongBinder(lifetime)
             input.writeBoolean(whole)
+            input.writeString(sourcePackage)
             if (!target.transact(RootProtocol.OPEN_EXTERNAL, input, output, 0)) return false
             output.readException()
             RootConnector.captureBridges.put(lifetime, target)
@@ -63,7 +64,7 @@ object RootConnector {
                     input.recycle()
                     output.recycle()
                 }
-            },
+            }
         )
     }
 
@@ -95,6 +96,35 @@ object RootConnector {
     fun available(): Boolean {
         val value = RootConnector.bridge
         return value != null && value.isBinderAlive()
+    }
+
+    internal data class MediaSessionRead(
+        val supported: Boolean,
+        val token: android.media.session.MediaSession.Token?,
+    )
+
+    internal fun readMediaSession(lifetime: IBinder): MediaSessionRead {
+        val target = captureBridges[lifetime] ?: return MediaSessionRead(false, null)
+        val input = Parcel.obtain()
+        val output = Parcel.obtain()
+        try {
+            input.writeInterfaceToken(RootProtocol.DESCRIPTOR)
+            input.writeStrongBinder(lifetime)
+            if (!target.transact(RootProtocol.MEDIA_SESSION, input, output, 0))
+                return MediaSessionRead(false, null)
+            output.readException()
+            return MediaSessionRead(
+                true,
+                output.readTypedObject(android.media.session.MediaSession.Token.CREATOR),
+            )
+        } catch (_: RemoteException) {
+            return MediaSessionRead(false, null)
+        } catch (_: RuntimeException) {
+            return MediaSessionRead(false, null)
+        } finally {
+            input.recycle()
+            output.recycle()
+        }
     }
 
     @JvmStatic

@@ -16,6 +16,7 @@ object RootProtocol {
     @JvmField val CAPTURE_TIMING: Int = RootProtocol.OPEN_TIMED + 1
     @JvmField val OPEN_SILENT_PROBE: Int = RootProtocol.CAPTURE_TIMING + 1
     @JvmField val OPEN_EXTERNAL: Int = RootProtocol.OPEN_SILENT_PROBE + 1
+    @JvmField val MEDIA_SESSION: Int = RootProtocol.OPEN_EXTERNAL + 1
     @JvmField val VOLUME_CALLBACK: String = RootProtocol.PACKAGE + ".VolumeCallback"
     @JvmField val ADJUST_VOLUME: Int = IBinder.FIRST_CALL_TRANSACTION
     @JvmField val SET_VOLUME: Int = RootProtocol.ADJUST_VOLUME + 1

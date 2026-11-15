@@ -267,6 +267,7 @@ class CaptureService : Service() {
         var localRoute: LocalRoute? = null
         var networkLease: NetworkLease? = null
         var devicePath: OwnedAudioPath? = null
+        var nowPlaying: NowPlayingPublisher? = null
         var started: Boolean = false
         var capturedFrames: Long = 0
         var signalBlocks: Long = 0
@@ -321,9 +322,16 @@ class CaptureService : Service() {
             networkLease = NetworkLease(this, networkSettings!!.priority)
             connection.mark(ConnectionTiming.Stage.NETWORK)
             var rootInput: PcmPipe? = null
-            if (dedicatedHal && settings!!.wholeDevice) {
+            if (dedicatedHal) {
                 try {
-                    if (!RootConnector.openExternal(connectionLifetime, true)) dedicatedHal = false
+                    if (
+                        !RootConnector.openExternal(
+                            connectionLifetime,
+                            settings!!.wholeDevice,
+                            sourcePackage,
+                        )
+                    )
+                        dedicatedHal = false
                 } catch (unavailable: RemoteException) {
                     RootConnector.close(connectionLifetime)
                     dedicatedHal = false
@@ -535,6 +543,18 @@ class CaptureService : Service() {
                     )
                     connection.mark(ConnectionTiming.Stage.READY)
                     started = true
+                    if (systemMode && !zeroProbe) {
+                        try {
+                            nowPlaying =
+                                NowPlayingPublisher(
+                                    this,
+                                    connectionLifetime!!,
+                                    NativeSender.instanceId(),
+                                )
+                        } catch (_: RuntimeException) {
+                            /* Metadata is optional; keep audio alive. */
+                        }
+                    }
                     main.post(
                         Runnable {
                             if (generation.get() != token || destroyed) return@Runnable
@@ -651,6 +671,7 @@ class CaptureService : Service() {
                 }
                 val response = ReceiverRejection.fromNative(NativeSender.receiverRejection())
                 if (!destroyed && generation.get() == token) response!!.save(this)
+                nowPlaying?.close()
                 NativeSender.stop()
                 if (zeroHal != null)
                     CaptureService.halCleanupUnconfirmed = !zeroHal.awaitCleanup(5000)

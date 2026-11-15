@@ -46,6 +46,22 @@ object NativeSender {
 
     @JvmStatic external fun volume(volume: Int)
 
+    @JvmStatic external fun metadataStatus(): LongArray?
+
+    @JvmStatic external fun instanceId(): Long
+
+    // Text bytes are standard UTF-8, including non-BMP song names; never JNI modified UTF-8.
+    @JvmStatic
+    external fun nowPlaying(
+        instance: Long,
+        title: ByteArray,
+        artist: ByteArray,
+        album: ByteArray,
+        artwork: ByteArray,
+        positionMs: Long,
+        durationMs: Long,
+    )
+
     @JvmStatic external fun stop()
 
     @JvmStatic external fun diagnostic(): String?
