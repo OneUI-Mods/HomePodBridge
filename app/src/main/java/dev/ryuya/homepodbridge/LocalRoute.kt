@@ -1,9 +1,11 @@
 package dev.ryuya.homepodbridge
 
-import java.io.BufferedReader
 import java.io.IOException
-import java.io.InputStreamReader
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.jvm.JvmStatic
 
 /* Temporary, destination- and UID-scoped Wi-Fi route when a VPN prevents normal binding. */
@@ -15,14 +17,27 @@ class LocalRoute private constructor(process: java.lang.Process) : AutoCloseable
     }
 
     override fun close() {
+        // Give the helper's EXIT trap time to remove its own rule even after cancellation.
+        var interrupted = Thread.interrupted()
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1500)
         try {
-            process.getOutputStream().close()
-        } catch (ignored: IOException) {}
-        try {
-            if (!process.waitFor(1500, TimeUnit.MILLISECONDS)) process.destroy()
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            process.destroy()
+            try {
+                process.outputStream.close()
+            } catch (_: IOException) {}
+            while (process.isAlive) {
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0) {
+                    process.destroy()
+                    break
+                }
+                try {
+                    process.waitFor(remaining, TimeUnit.NANOSECONDS)
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
         }
     }
 
@@ -50,19 +65,54 @@ class LocalRoute private constructor(process: java.lang.Process) : AutoCloseable
                     " || exit 4; " +
                     "echo HOMEPOD_ROUTE_READY; read -r lifetime")
             val helper = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+            return awaitHelper(helper)
+        }
+
+        /** Reading a partial line must not bypass the deadline or strand the scoped helper. */
+        internal fun awaitHelper(helper: Process, timeoutMillis: Long = 20_000): LocalRoute {
             val route = LocalRoute(helper)
-            val response = BufferedReader(InputStreamReader(helper.getInputStream()))
-            val deadline: Long = System.nanoTime() + 20000000000L
-            while (System.nanoTime() < deadline) {
-                if (response.ready()) {
-                    val line = response.readLine()
-                    if ("HOMEPOD_ROUTE_READY" == line) return route
-                }
-                if (!helper.isAlive()) break
-                Thread.sleep(50)
+            val reader = Executors.newSingleThreadExecutor { task ->
+                Thread(task, "HomePodRouteReady").apply { isDaemon = true }
             }
-            route.close()
-            throw IOException("Root permission is required to route local audio around this VPN")
+            val marker =
+                reader.submit(
+                    Callable {
+                        helper.inputStream.bufferedReader().use { input ->
+                            val line = StringBuilder()
+                            var total = 0
+                            while (true) {
+                                val char = input.read()
+                                if (char < 0) return@Callable false
+                                if (++total > 8192)
+                                    throw IOException("Route readiness output too large")
+                                if (char == '\n'.code) {
+                                    if (line.toString().trimEnd('\r') == "HOMEPOD_ROUTE_READY")
+                                        return@Callable true
+                                    line.setLength(0)
+                                } else line.append(char.toChar())
+                            }
+                            @Suppress("UNREACHABLE_CODE") false
+                        }
+                    },
+                )
+            var ready = false
+            try {
+                if (!marker.get(timeoutMillis, TimeUnit.MILLISECONDS))
+                    throw IOException("Route helper unavailable")
+                ready = true
+                return route
+            } catch (error: TimeoutException) {
+                throw IOException("Route helper timed out", error)
+            } catch (error: ExecutionException) {
+                throw IOException("Route helper unavailable", error.cause)
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw error
+            } finally {
+                if (!ready) route.close()
+                marker.cancel(true)
+                reader.shutdownNow()
+            }
         }
 
         @JvmStatic
