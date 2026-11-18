@@ -38,7 +38,10 @@ constructor(
     }
 
     init {
-        manager = context.getSystemService<AudioManager?>(AudioManager::class.java)
+        manager =
+            checkNotNull(context.getSystemService<AudioManager?>(AudioManager::class.java)) {
+                "AudioManager unavailable"
+            }
         policyType = DexSymbols.findClass("android.media.audiopolicy.AudioPolicy")
         callbacks.start()
         try {

@@ -450,12 +450,12 @@
     "project": "https://kotlinlang.org/"
   },
   {
-    "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.10",
+    "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
     "license": "Apache-2.0",
     "declaredLicense": "The Apache License, Version 2.0",
     "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt",
-    "pom": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.10/kotlin-stdlib-2.2.10.pom",
-    "licensePom": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.10/kotlin-stdlib-2.2.10.pom",
+    "pom": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.pom",
+    "licensePom": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.pom",
     "project": "https://kotlinlang.org/"
   },
   {

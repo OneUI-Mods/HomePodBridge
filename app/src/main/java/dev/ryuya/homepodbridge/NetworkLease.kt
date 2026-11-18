@@ -54,7 +54,9 @@ class NetworkLease(context: Context, requested: Boolean) : AutoCloseable {
         ActivityManager.getMyMemoryState(process)
         val eligible: Boolean =
             NetworkLease.onWifi(context) &&
-                context.getSystemService<PowerManager?>(PowerManager::class.java).isInteractive() &&
+                (context
+                    .getSystemService<PowerManager?>(PowerManager::class.java)
+                    ?.isInteractive() == true) &&
                 process.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
         return if (eligible) 2 else 1
     }
@@ -73,7 +75,7 @@ class NetworkLease(context: Context, requested: Boolean) : AutoCloseable {
         @JvmStatic
         private fun onWifi(context: Context): Boolean {
             val manager =
-                context.getSystemService<ConnectivityManager?>(ConnectivityManager::class.java)
+                context.getSystemService<ConnectivityManager?>(ConnectivityManager::class.java) ?: return false
             var network = manager.getBoundNetworkForProcess()
             if (network == null) network = manager.getActiveNetwork()
             val capabilities: NetworkCapabilities? =

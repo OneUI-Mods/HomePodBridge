@@ -138,7 +138,13 @@ class CaptureService : Service() {
             if (!StreamSettings.load(this)!!.wholeDevice)
                 musicUid = getPackageManager().getApplicationInfo(BridgeState.MUSIC, 0).uid
             projection =
-                getSystemService<MediaProjectionManager?>(MediaProjectionManager::class.java)
+                checkNotNull(
+                        getSystemService<MediaProjectionManager?>(
+                            MediaProjectionManager::class.java,
+                        ),
+                    ) {
+                        "MediaProjectionManager unavailable"
+                    }
                     .getMediaProjection(intent.getIntExtra("result", 0), consent)
             checkNotNull(projection) { "Projection not available" }
             projection!!.registerCallback(projectionCallback, main)
@@ -243,7 +249,7 @@ class CaptureService : Service() {
                     pulse,
                     connection,
                 )
-            }
+            },
         )
     }
 
@@ -261,7 +267,10 @@ class CaptureService : Service() {
         connection.mark(ConnectionTiming.Stage.WORKER)
         var recorder: AudioRecord? = null
         var zeroHal: RootHalInput? = null
-        val connectivity = getSystemService<ConnectivityManager?>(ConnectivityManager::class.java)
+        val connectivity =
+            checkNotNull(getSystemService<ConnectivityManager?>(ConnectivityManager::class.java)) {
+                "ConnectivityManager unavailable"
+            }
         val previousNetwork = connectivity.getBoundNetworkForProcess()
         var networkBound: Boolean = false
         var localRoute: LocalRoute? = null
@@ -284,7 +293,9 @@ class CaptureService : Service() {
             else BridgeState.CaptureBackend.STANDARD,
         )
         val wake =
-            getSystemService<PowerManager?>(PowerManager::class.java)
+            checkNotNull(getSystemService<PowerManager?>(PowerManager::class.java)) {
+                    "PowerManager unavailable"
+                }
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HomePodBridge:stream")
         wake.setReferenceCounted(false)
         var failure = R.string.connection_failed
@@ -374,7 +385,7 @@ class CaptureService : Service() {
                                     if (settings!!.effectiveShortMixerPeriod())
                                         settings!!.effectivePhoneTiming()
                                     else null
-                        }
+                        },
                     )
                     setBackend(
                         token,
@@ -432,7 +443,7 @@ class CaptureService : Service() {
                                             deviceBufferSuppressed = true
                                             reconfigure()
                                         }
-                                    }
+                                    },
                                 )
                             },
                             settings.deviceBufferFrames,
@@ -450,7 +461,7 @@ class CaptureService : Service() {
                                     )
                                 BridgeState.publishTiming()
                             }
-                        }
+                        },
                     )
                 }
             } else if (!systemMode) {
@@ -530,7 +541,7 @@ class CaptureService : Service() {
                                 BridgeState.pipeline = pipeline
                                 BridgeState.networkTiming = networkTiming
                                 BridgeState.publishTiming()
-                            }
+                            },
                         )
                     }
                     nextTiming = now + 2000
@@ -563,12 +574,12 @@ class CaptureService : Service() {
                             BridgeState.status = R.string.playing
                             BridgeState.publish()
                             getSystemService<NotificationManager?>(NotificationManager::class.java)
-                                .notify(
+                                ?.notify(
                                     1,
                                     notification(getString(R.string.playing, receiver.name)),
                                 )
                             complete(token, true)
-                        }
+                        },
                     )
                 }
                 val read: Int =
@@ -613,8 +624,8 @@ class CaptureService : Service() {
                     openFileOutput("last-capture-error.txt", Context.MODE_PRIVATE).use { error ->
                         error.write(
                             (e.javaClass.getSimpleName() + ": " + e.message).toByteArray(
-                                StandardCharsets.UTF_8
-                            )
+                                StandardCharsets.UTF_8,
+                            ),
                         )
                     }
                 } catch (ignored: IOException) {}
@@ -629,7 +640,7 @@ class CaptureService : Service() {
                 try {
                     openFileOutput("last-connection.txt", Context.MODE_PRIVATE).use { diagnostics ->
                         diagnostics.write(
-                            NativeSender.diagnostic()!!.toByteArray(StandardCharsets.UTF_8)
+                            NativeSender.diagnostic()!!.toByteArray(StandardCharsets.UTF_8),
                         )
                         diagnostics.write(
                             (("\ncapturedFrames=" +
@@ -657,7 +668,7 @@ class CaptureService : Service() {
                                     " adaptiveBuffer=" +
                                     settings!!.effectiveAdaptiveBuffer() +
                                     "\n"))
-                                .toByteArray(StandardCharsets.UTF_8)
+                                .toByteArray(StandardCharsets.UTF_8),
                         )
                     }
                 } catch (ignored: IOException) {}
@@ -690,9 +701,9 @@ class CaptureService : Service() {
                         BridgeState.publish()
                         if (response!!.code !== 0)
                             getSystemService<NotificationManager?>(NotificationManager::class.java)
-                                .notify(1, notification(response!!.message(this, false)))
+                                ?.notify(1, notification(response!!.message(this, false)))
                         if (!wasStarted) complete(token, false)
-                    }
+                    },
                 )
             } finally {
                 if (networkLease != null) networkLease.close()
@@ -737,7 +748,7 @@ class CaptureService : Service() {
         BridgeState.status = R.string.sharing
         BridgeState.publish()
         getSystemService<NotificationManager?>(NotificationManager::class.java)
-            .notify(1, notification(getString(R.string.sharing)))
+            ?.notify(1, notification(getString(R.string.sharing)))
     }
 
     private fun closeSystemInput() {
@@ -768,7 +779,7 @@ class CaptureService : Service() {
                     BridgeState.captureBackend = backend
                     BridgeState.publishTiming()
                 }
-            }
+            },
         )
     }
 
@@ -813,7 +824,7 @@ class CaptureService : Service() {
                 NotificationManager.IMPORTANCE_LOW,
             )
         channel.setDescription(getString(R.string.channel_description))
-        manager.createNotificationChannel(channel)
+        manager?.createNotificationChannel(channel)
         val open =
             PendingIntent.getActivity(
                 this,
@@ -836,7 +847,7 @@ class CaptureService : Service() {
             .setOngoing(true)
             .addAction(
                 android.app.Notification.Action.Builder(null, getString(R.string.stop), stop)
-                    .build()
+                    .build(),
             )
             .build()
     }
@@ -876,7 +887,7 @@ class CaptureService : Service() {
                 " volume=" +
                 BridgeState.volume +
                 " wholeDevice=" +
-                StreamSettings.load(this)!!.wholeDevice)
+                StreamSettings.load(this)!!.wholeDevice),
         )
         writer.println(NativeSender.diagnostic())
         if (BridgeState.connectionTiming != null)
@@ -885,13 +896,13 @@ class CaptureService : Service() {
         writer.println(
             "wifiRequest=" +
                 (if (BridgeState.networkTiming == null) -1
-                else BridgeState.networkTiming!!.wifiRequest)
+                else BridgeState.networkTiming!!.wifiRequest),
         )
         writer.println(
             ("captureBackend=" +
                 BridgeState.captureBackend +
                 " dedicatedRequested=" +
-                StreamSettings.load(this)!!.effectiveDedicatedCapture())
+                StreamSettings.load(this)!!.effectiveDedicatedCapture()),
         )
         writer.println(
             ("dedicatedHalProbe=" +
@@ -901,7 +912,7 @@ class CaptureService : Service() {
                 " halNonce=" +
                 halNonce +
                 " captureScope=" +
-                (if (dedicatedHalProbe) "self-root-zero" else "configured"))
+                (if (dedicatedHalProbe) "self-root-zero" else "configured")),
         )
         writer.println(
             ("zeroProbe=" +
@@ -909,7 +920,7 @@ class CaptureService : Service() {
                 " zeroProbeFrames=" +
                 zeroProbeFrames +
                 " effectiveWholeDevice=" +
-                (zeroProbeActive || StreamSettings.load(this)!!.wholeDevice))
+                (zeroProbeActive || StreamSettings.load(this)!!.wholeDevice)),
         )
         val path = BridgeState.phonePath
         writer.println(
@@ -918,7 +929,7 @@ class CaptureService : Service() {
                 " deviceBufferSuppressed=" +
                 deviceBufferSuppressed +
                 " phonePath=" +
-                (if (path == null) "OFF" else path.state))
+                (if (path == null) "OFF" else path.state)),
         )
         if (path != null) writer.println(path.report)
         val pipeline = BridgeState.pipeline

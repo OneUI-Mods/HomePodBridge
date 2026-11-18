@@ -141,8 +141,8 @@ object CaptureProbe {
                                 tuningReport = report
                                 check(
                                     report.contains(
-                                        "Owned reserve changed: 2587 -> " + targetFrames
-                                    )
+                                        "Owned reserve changed: 2587 -> " + targetFrames,
+                                    ),
                                 ) {
                                     "Owned tuning was refused"
                                 }
@@ -159,7 +159,7 @@ object CaptureProbe {
                             } else
                                 check(
                                     !(update != null &&
-                                        update.state !== OwnedAudioPath.State.CHECKING)
+                                        update.state !== OwnedAudioPath.State.CHECKING),
                                 ) {
                                     "Production lease did not activate"
                                 }
@@ -213,7 +213,7 @@ object CaptureProbe {
                 }
             }
             check(zeroSourceFrames != 0L) { "Zero source did not run" }
-            Collections.sort<Long?>(ages)
+            Collections.sort(ages)
             synchronized(CaptureProbe::class.java) {
                 CaptureProbe.status =
                     ("Capture-only complete; frames=" +

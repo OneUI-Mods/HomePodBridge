@@ -69,7 +69,7 @@ root接続の準備中は標準のミラーリング許可へ自動移行しま�
 
 ## 開発
 
-JDK 21、Android SDK / Build Tools 37、NDK 30.0.14904198、CMake 4.1.2を使用します。
+JDK 27、Android SDK / Build Tools 37、NDK 30.0.16248370、CMake 4.1.2を使用します。
 
 ```sh
 ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
@@ -101,3 +101,5 @@ AirMusicのソースやAPKを流用していません。Apple、Samsung、AirMus
 再生元のメディアセッションから曲名・アーティスト・アルバム名・画像・再生位置と長さを取得し、音声と一緒にHomePodへ送ります。iPhoneからHomePodを開いたときに表示する再生情報にも使われます。選択アプリモードは選んだアプリのみ、端末全体モードは再生中のアプリを参照します。音源アプリが公開していない項目は表示できません。
 
 0.2.2への更新後はGalaxyReloadでSystemUIを再読み込みしてください。追加の通知アクセスやユーザー補助の許可は不要です。Android標準の画面共有だけを使う場合は曲情報を取得しません。
+
+[Build environment / ビルド環境](docs/build-environment.md)

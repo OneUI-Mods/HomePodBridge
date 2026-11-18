@@ -67,7 +67,10 @@ class PhoneAcousticReference(context: Context) : AutoCloseable {
 
     private fun pump() {
         var track: AudioTrack? = null
-        val manager = context.getSystemService<AudioManager?>(AudioManager::class.java)
+        val manager =
+            checkNotNull(context.getSystemService<AudioManager?>(AudioManager::class.java)) {
+                "AudioManager unavailable"
+            }
         try {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
             maxVolume = manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -99,14 +102,14 @@ class PhoneAcousticReference(context: Context) : AutoCloseable {
                         android.media.AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build()
+                            .build(),
                     )
                     .setAudioFormat(
                         android.media.AudioFormat.Builder()
                             .setSampleRate(PhoneAcousticReference.RATE)
                             .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .build()
+                            .build(),
                     )
                     .setBufferSizeInBytes(max(minimum, 480 * 4))
                     .setTransferMode(AudioTrack.MODE_STREAM)
@@ -114,7 +117,7 @@ class PhoneAcousticReference(context: Context) : AutoCloseable {
                     .build()
             check(
                 !(track.getState() != AudioTrack.STATE_INITIALIZED ||
-                    !track.setPreferredDevice(speaker))
+                    !track.setPreferredDevice(speaker)),
             ) {
                 "Phone speaker route refused"
             }
@@ -216,7 +219,7 @@ class PhoneAcousticReference(context: Context) : AutoCloseable {
                             timestamp.nanoTime,
                             written,
                             System.nanoTime(),
-                        )
+                        ),
                     )
             }
         } catch (error: Exception) {
@@ -270,7 +273,7 @@ class PhoneAcousticReference(context: Context) : AutoCloseable {
                 .put("trackFrame", markerFrames[i])
                 .put("lowHz", PhoneAcousticReference.LOW!![i])
                 .put("highHz", PhoneAcousticReference.HIGH!![i])
-                .put("phaseCode", PhoneAcousticReference.CODE!![i])
+                .put("phaseCode", PhoneAcousticReference.CODE!![i]),
         )
         return result.put("anchors", anchors).put("tones", tones)
     }

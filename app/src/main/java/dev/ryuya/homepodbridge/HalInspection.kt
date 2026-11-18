@@ -39,8 +39,10 @@ object HalInspection {
             return "Owned registration unavailable"
         if (
             operation != 0 &&
-                (context.getSystemService<AudioManager?>(AudioManager::class.java).getMode() !=
-                    AudioManager.MODE_NORMAL)
+                (checkNotNull(context.getSystemService<AudioManager?>(AudioManager::class.java)) {
+                        "AudioManager unavailable"
+                    }
+                    .getMode() != AudioManager.MODE_NORMAL)
         )
             return "Device buffer operation skipped during communication"
         val apk = context.getApplicationInfo().sourceDir
@@ -90,8 +92,10 @@ object HalInspection {
         if (HalInspection.running) return
         if (
             operation != 0 &&
-                (context.getSystemService<AudioManager?>(AudioManager::class.java).getMode() !=
-                    AudioManager.MODE_NORMAL)
+                (checkNotNull(context.getSystemService<AudioManager?>(AudioManager::class.java)) {
+                        "AudioManager unavailable"
+                    }
+                    .getMode() != AudioManager.MODE_NORMAL)
         ) {
             HalInspection.status =
                 "Device buffer operation skipped during communication; writeAttempts=0"
@@ -161,7 +165,7 @@ object HalInspection {
                         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
                         val hex = StringBuilder()
                         for (value in digest) hex.append(
-                            String.format("%02x", value.toInt() and 255)
+                            String.format("%02x", value.toInt() and 255),
                         )
                         synchronized(HalInspection::class.java) {
                             HalInspection.image = bytes
@@ -246,7 +250,7 @@ object HalInspection {
                             if (!partial) throw IOException("Read unavailable")
                             bytes.write(
                                 "\nRoot helper exited without confirming the operation"
-                                    .toByteArray(StandardCharsets.UTF_8)
+                                    .toByteArray(StandardCharsets.UTF_8),
                             )
                         }
                         return bytes.toByteArray()
@@ -267,7 +271,7 @@ object HalInspection {
                 " running=" +
                 HalInspection.running +
                 " " +
-                HalInspection.status
+                HalInspection.status,
         )
         if (includeImage && HalInspection.image != null) {
             writer.println("HOMEPOD_HAL_IMAGE_BEGIN")

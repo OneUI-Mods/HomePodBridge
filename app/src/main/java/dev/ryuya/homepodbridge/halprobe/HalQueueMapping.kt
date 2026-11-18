@@ -24,7 +24,6 @@ import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.util.ArrayList
-import java.util.List
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.function.BooleanSupplier
@@ -176,7 +175,7 @@ object HalQueueMapping {
                 server.accept().use { socket ->
                     socket.setSoTimeout(
                         if (scenario.live()) 0
-                        else if (scenario == ProbeScenario.POLICY_FORWARD) 15000 else 3000
+                        else if (scenario == ProbeScenario.POLICY_FORWARD) 15000 else 3000,
                     )
                     val peer = socket.getPeerCredentials()
                     val peerStat =
@@ -221,10 +220,10 @@ object HalQueueMapping {
                     metadata.writeUTF(nonce)
                     metadata.writeInt(streams.size * 3)
                     for (stream in streams) for (queue in
-                        List.of<FrozenHalParcel.Queue?>(
-                            stream!!.command,
-                            stream!!.reply,
-                            stream!!.data,
+                        listOf(
+                            checkNotNull(stream!!.command),
+                            checkNotNull(stream.reply),
+                            checkNotNull(stream.data),
                         )) {
                         metadata.writeInt(queue.quantum)
                         metadata.writeInt(queue.flags)
@@ -422,7 +421,7 @@ object HalQueueMapping {
                             .put("quantum", quantum)
                             .put("capacityBytes", result[0])
                             .put("readBytes", result[1])
-                            .put("writtenBytes", result[2])
+                            .put("writtenBytes", result[2]),
                     )
                 }
                 val direct = metadata.readBoolean()
@@ -518,7 +517,7 @@ object HalQueueMapping {
                 if (scenario!!.zeroFrames > 0) {
                     try {
                         android.os.Process.setThreadPriority(
-                            android.os.Process.THREAD_PRIORITY_AUDIO
+                            android.os.Process.THREAD_PRIORITY_AUDIO,
                         )
                     } catch (unavailable: RuntimeException) {}
                     if (scenario == ProbeScenario.ZERO_INPUT_EXIT) {
@@ -562,7 +561,7 @@ object HalQueueMapping {
                                 .put("mappedQueues", 6)
                                 .put("started", flow[10] != 0L)
                                 .put("zeroTransfer", transfer)
-                                .toString()
+                                .toString(),
                         )
                     return
                 }
@@ -583,7 +582,7 @@ object HalQueueMapping {
                             .put("roundTripUs", result[0])
                             .put("state", result[1])
                             .put("audioBytes", result[2])
-                            .put("xrunFrames", result[3])
+                            .put("xrunFrames", result[3]),
                     )
                 }
                 DataOutputStream(socket.getOutputStream())
@@ -593,7 +592,7 @@ object HalQueueMapping {
                             .put("queues", reports)
                             .put("started", false)
                             .put("statusCommands", control)
-                            .toString()
+                            .toString(),
                     )
             }
         } finally {

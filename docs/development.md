@@ -538,3 +538,5 @@ DUMP-only metadata-check requires sharing stopped, briefly owns an external life
 
 
 Physical verification of the signed 0.2.2 build preserved saved audio/manual/network preferences. The authenticated metadata transaction returned supported with stopped source sessions, so this check does not certify live Android song extraction. A muted zero-input connection sent a fixed title, tiny JPEG and progress, and HomePod acknowledged all three with 200. Transfer then stopped, its routes and Wi-Fi lease were absent, and volume stayed at zero. No microphone or audible source was started. The GalaxyReload CLI reported UNLOCK_NEEDED; no alternate restart was attempted. Metadata support was observed on subsequent registration, without treating that message as proof of a successful reload. Actual iPhone UI rendering remains outside these command-only checks.
+
+[Build environment / ビルド環境](build-environment.md)

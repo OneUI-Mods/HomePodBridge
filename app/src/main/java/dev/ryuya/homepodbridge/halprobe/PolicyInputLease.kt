@@ -61,8 +61,11 @@ class PolicyInputLease private constructor(context: Context, address: String?) :
                 .compatibleMethod("asState")
                 .invoke(context.getAttributionSource())
         val session =
-            context
-                .getSystemService<AudioManager?>(AudioManager::class.java)
+            checkNotNull(
+                    context.getSystemService<AudioManager?>(AudioManager::class.java),
+                ) {
+                    "AudioManager unavailable"
+                }
                 .generateAudioSessionId()
         check(session > 0) { "No audio session" }
         val response =
@@ -90,8 +93,11 @@ class PolicyInputLease private constructor(context: Context, address: String?) :
             val selected = response.javaClass.compatibleField("selectedDeviceId").getInt(response)
             var matched: Boolean = false
             for (device in
-                context
-                    .getSystemService<AudioManager?>(AudioManager::class.java)
+                checkNotNull(
+                        context.getSystemService<AudioManager?>(AudioManager::class.java),
+                    ) {
+                        "AudioManager unavailable"
+                    }
                     .getDevices(AudioManager.GET_DEVICES_INPUTS)) if (
                 device.getId() == selected && device.isSource() && address == device.getAddress()
             )

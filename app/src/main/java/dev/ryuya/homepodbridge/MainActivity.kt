@@ -170,14 +170,14 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 this,
                 com.google.android.material.R.attr.colorSurface,
                 Color.BLACK,
-            )
+            ),
         )
         root.setOnApplyWindowInsetsListener(
             OnApplyWindowInsetsListener { view: View?, insets: WindowInsets? ->
                 val bars = insets!!.getInsets(Type.systemBars())
                 root.setPadding(bars.left, bars.top, bars.right, bars.bottom)
                 insets!!
-            }
+            },
         )
         val title = label(getString(R.string.intro), 30)
         title.setTypeface(null, Typeface.BOLD)
@@ -213,13 +213,13 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 override fun onTabUnselected(tab: Tab?) {}
 
                 override fun onTabReselected(tab: Tab?) {}
-            }
+            },
         )
         pages.getChildAt(1).setVisibility(View.GONE)
         pages.getChildAt(2).setVisibility(View.GONE)
         pages.getChildAt(3).setVisibility(View.GONE)
         tabs!!.selectTab(
-            tabs!!.getTabAt(if (state == null) 0 else max(0, min(3, state.getInt("tab", 0))))
+            tabs!!.getTabAt(if (state == null) 0 else max(0, min(3, state.getInt("tab", 0)))),
         )
         var body: LinearLayout? = connectionBody
         body!!.addView(label(getString(R.string.explanation), 16))
@@ -243,7 +243,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             val mode = MaterialButton(this)
             mode.setId(modeId)
             mode.setText(
-                if (modeId == selectedModeId) R.string.mode_selected else R.string.mode_whole
+                if (modeId == selectedModeId) R.string.mode_selected else R.string.mode_whole,
             )
             mode.setBackgroundTintList(getColorStateList(R.color.mode_background))
             mode.setTextColor(getColorStateList(R.color.mode_text))
@@ -265,7 +265,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 previous!!.withWholeDevice(id == wholeModeId)!!.save(this)
                 updateModeSelection(group!!)
                 if (BridgeState.capture != null) BridgeState.capture!!.reconfigure()
-            }
+            },
         )
         modeControls.addView(modes)
         modeControls.addView(label(getString(R.string.mode_description), 14))
@@ -290,7 +290,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     ColorUtils.setAlphaComponent(textColor, 31),
                     MaterialColors.getColor(share!!, androidx.appcompat.R.attr.colorPrimary),
                 ),
-            )
+            ),
         )
         share!!.setTextColor(
             ColorStateList(
@@ -302,7 +302,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                         com.google.android.material.R.attr.colorOnPrimary,
                     ),
                 ),
-            )
+            ),
         )
         (share as MaterialButton).setStrokeWidth(0)
         val speakerHeader = LinearLayout(this)
@@ -319,7 +319,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             controlColors(
                 MaterialColors.getColor(search, androidx.appcompat.R.attr.colorPrimary),
                 97,
-            )
+            ),
         )
         search.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT))
         search.setStrokeWidth(0)
@@ -347,7 +347,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
         volume!!.setValueTo((BuildConfig.VOLUME_LIMIT).toFloat())
         volume!!.setStepSize(1f)
         volume!!.setLabelFormatter(
-            LabelFormatter { value: Float -> Math.round(value).toString() + "%" }
+            LabelFormatter { value: Float -> Math.round(value).toString() + "%" },
         )
         volume!!.addOnChangeListener(
             OnChangeListener { slider: Slider?, value: Float, fromUser: Boolean ->
@@ -355,7 +355,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 BridgeState.volume = VolumePolicy.apply(Math.round(value))
                 NativeSender.volume(BridgeState.volume)
                 BridgeState.publish()
-            }
+            },
         )
         volumeControls.addView(volume)
         exactVolume =
@@ -372,7 +372,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     val music = getPackageManager().getLaunchIntentForPackage(BridgeState.MUSIC)
                     if (music == null) toast(R.string.music_missing) else startActivity(music)
                 },
-            )
+            ),
         )
         body = audioBody
         val latencyControls = LinearLayout(this)
@@ -397,13 +397,13 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             button(
                 getString(R.string.manual_settings),
                 android.view.View.OnClickListener { view: View? -> manualSettings() },
-            )
+            ),
         )
         body.addView(
             button(
                 getString(R.string.network_settings),
                 android.view.View.OnClickListener { view: View? -> networkSettings() },
-            )
+            ),
         )
         manualSummary = label("", 14)
         body.addView(manualSummary)
@@ -414,7 +414,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             button(
                 getString(R.string.licenses),
                 android.view.View.OnClickListener { view: View? -> licenses() },
-            )
+            ),
         )
         body = diagnosticsBody
         diagnosticsEmpty = label(getString(R.string.diagnostics_idle), 16)
@@ -481,7 +481,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     which: Int ->
                     applySettings(
                         if (which == 3) StreamSettings.savedManual(this)
-                        else StreamSettings.load(this)!!.preset(which)!!
+                        else StreamSettings.load(this)!!.preset(which)!!,
                     )
                     dialog!!.dismiss()
                 },
@@ -513,9 +513,9 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     if (settings!!.lowLatency) R.string.low_latency_mode
                     else if (settings!!.highQuality) R.string.high_quality_mode
                     else if (settings!!.manualMode) R.string.profile_manual
-                    else R.string.profile_balanced
+                    else R.string.profile_balanced,
                 ),
-            )
+            ),
         )
         if (settings!!.effectiveAdaptiveBuffer()) {
             profileDetails!!.setText(
@@ -523,7 +523,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     R.string.profile_values_adaptive,
                     settings!!.captureUnitMs(),
                     settings!!.requestedPresentationMs(),
-                )
+                ),
             )
         } else
             profileDetails!!.setText(
@@ -532,7 +532,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     settings!!.effectiveBufferMs(),
                     settings!!.captureUnitMs(),
                     settings!!.requestedPresentationMs(),
-                )
+                ),
             )
         val manual = StreamSettings.savedManual(this)
         manualSummary!!.setText(
@@ -542,7 +542,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 manual!!.phoneTiming!!.reserveMs(),
                 manual!!.effectiveBufferMs(),
                 manual!!.requestedPacketFrames(),
-            )
+            ),
         )
         receiverTimingSelection!!.setText(
             getString(
@@ -551,7 +551,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 settings!!.requestedReceiverMinimumMs(),
                 settings!!.requestedReceiverMaximumMs(),
                 settings!!.requestedPresentationMs(),
-            )
+            ),
         )
     }
 
@@ -625,7 +625,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             awaitingSystemBridge = false
             changed()
             startForegroundService(
-                Intent(this, CaptureService::class.java).putExtra("system", true)
+                Intent(this, CaptureService::class.java).putExtra("system", true),
             )
             return
         }
@@ -675,10 +675,15 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             )
             return
         }
-        val manager = getSystemService<MediaProjectionManager?>(MediaProjectionManager::class.java)
+        val manager =
+            checkNotNull(
+                getSystemService<MediaProjectionManager?>(MediaProjectionManager::class.java),
+            ) {
+                "MediaProjectionManager unavailable"
+            }
         startActivityForResult(
             manager.createScreenCaptureIntent(
-                MediaProjectionConfig.createConfigForDefaultDisplay()
+                MediaProjectionConfig.createConfigForDefaultDisplay(),
             ),
             1,
         )
@@ -704,7 +709,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
         startForegroundService(
             Intent(this, CaptureService::class.java)
                 .putExtra("consent", data)
-                .putExtra("result", resultCode)
+                .putExtra("result", resultCode),
         )
     }
 
@@ -715,12 +720,12 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
         updateConnectionStatus()
         share!!.setText(
             if (awaitingSystemBridge) R.string.preparing_sharing
-            else if (BridgeState.capture == null) R.string.enable else R.string.stop
+            else if (BridgeState.capture == null) R.string.enable else R.string.stop,
         )
         share!!.setEnabled(!awaitingSystemBridge)
         systemStatus!!.setText(
             if (awaitingSystemBridge) R.string.system_connecting
-            else if (RootConnector.available()) R.string.system_ready else R.string.system_missing
+            else if (RootConnector.available()) R.string.system_ready else R.string.system_missing,
         )
         updateVolumeControls()
         updateSpeakers()
@@ -729,11 +734,11 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
     private fun updateSpeakers() {
         val ready: Boolean = BridgeState.capture != null && !awaitingSystemBridge
         speakerHint!!.setText(
-            if (ready) R.string.speaker_choose_hint else R.string.speaker_enable_hint
+            if (ready) R.string.speaker_choose_hint else R.string.speaker_enable_hint,
         )
         speakerHint!!.setVisibility(
             if (BridgeState.receivers!!.isEmpty() || BridgeState.selected != null) View.GONE
-            else View.VISIBLE
+            else View.VISIBLE,
         )
         speakers!!.removeAllViews()
         if (BridgeState.receivers!!.isEmpty()) {
@@ -766,14 +771,14 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     getString(
                         if (connected) R.string.speaker_connected
                         else if (selected) R.string.speaker_connecting
-                        else R.string.speaker_available
+                        else R.string.speaker_available,
                     ),
                     14,
                 )
             state.setPadding(0, 0, 0, dp(8))
             if (selected)
                 state.setTextColor(
-                    MaterialColors.getColor(state, androidx.appcompat.R.attr.colorPrimary)
+                    MaterialColors.getColor(state, androidx.appcompat.R.attr.colorPrimary),
                 )
             details.addView(state)
             val detailsLayout = LayoutParams(0, -2, 1f)
@@ -788,7 +793,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                         },
                     )
                 connect.setContentDescription(
-                    getString(R.string.speaker_connect_description, receiver!!.name)
+                    getString(R.string.speaker_connect_description, receiver!!.name),
                 )
                 connect.setEnabled(ready)
                 connect.setMinWidth(dp(64))
@@ -800,8 +805,8 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 check.setImageResource(R.drawable.ic_check)
                 check.setImageTintList(
                     ColorStateList.valueOf(
-                        MaterialColors.getColor(check, androidx.appcompat.R.attr.colorPrimary)
-                    )
+                        MaterialColors.getColor(check, androidx.appcompat.R.attr.colorPrimary),
+                    ),
                 )
                 check.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO)
                 row.addView(check, LayoutParams(dp(24), dp(24)))
@@ -810,7 +815,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             if (selected) {
                 device.setStrokeWidth(dp(2))
                 device.setStrokeColor(
-                    MaterialColors.getColor(device, androidx.appcompat.R.attr.colorPrimary)
+                    MaterialColors.getColor(device, androidx.appcompat.R.attr.colorPrimary),
                 )
             }
             speakers!!.addView(device)
@@ -861,11 +866,11 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             else getString(R.string.volume_unavailable)
         volumeLabel!!.setText(title)
         volumeLabel!!.setTextColor(
-            if (connected) textColor else ColorUtils.setAlphaComponent(textColor, 97)
+            if (connected) textColor else ColorUtils.setAlphaComponent(textColor, 97),
         )
         volumeHint!!.setVisibility(if (connected) View.GONE else View.VISIBLE)
         volume!!.setContentDescription(
-            if (connected) title else title + ". " + getString(R.string.volume_unavailable_hint)
+            if (connected) title else title + ". " + getString(R.string.volume_unavailable_hint),
         )
         volume!!.setValue((if (connected) VolumePolicy.apply(BridgeState.volume) else 0).toFloat())
         volume!!.setEnabled(connected)
@@ -902,7 +907,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     (if (timing.size >= 8 && timing[7] != 0)
                         "\n" + getString(R.string.receiver_timing_explicit)
                     else "") +
-                    (if (timing[3] != 0) "\n" + getString(R.string.latency_fallback) else ""))
+                    (if (timing[3] != 0) "\n" + getString(R.string.latency_fallback) else "")),
             )
         }
     }
@@ -958,12 +963,12 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
         diagnosticsEmptyCard!!.setVisibility(if (t == null) View.VISIBLE else View.GONE)
         diagnosticsEmpty!!.setText(
             if (BridgeState.connected) R.string.diagnostics_waiting
-            else if (connecting) R.string.diagnostics_connecting else R.string.diagnostics_idle
+            else if (connecting) R.string.diagnostics_connecting else R.string.diagnostics_idle,
         )
         diagnosticsDetails!!.setVisibility(if (t == null) View.GONE else View.VISIBLE)
         connectionTimingCard!!.setVisibility(
             if (connection != null && (BridgeState.connected || connecting)) View.VISIBLE
-            else View.GONE
+            else View.GONE,
         )
         connectionTiming!!.setText(
             if (connection == null) getString(R.string.diagnostics_idle)
@@ -974,33 +979,33 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                         connection.micros(
                             ConnectionTiming.Stage.SELECTED,
                             ConnectionTiming.Stage.READY,
-                        )
+                        ),
                     ),
                     millis(
                         connection.micros(
                             ConnectionTiming.Stage.SELECTED,
                             ConnectionTiming.Stage.WORKER,
-                        )
+                        ),
                     ),
                     millis(
                         connection.micros(
                             ConnectionTiming.Stage.WORKER,
                             ConnectionTiming.Stage.NETWORK,
-                        )
+                        ),
                     ),
                     millis(
                         connection.micros(
                             ConnectionTiming.Stage.NETWORK,
                             ConnectionTiming.Stage.CAPTURE,
-                        )
+                        ),
                     ),
                     millis(
                         connection.micros(
                             ConnectionTiming.Stage.SENDER,
                             ConnectionTiming.Stage.AUTHENTICATED,
-                        )
+                        ),
                     ),
-                )
+                ),
         )
         if (captureBackendStatus != null)
             captureBackendStatus!!.setText(
@@ -1013,7 +1018,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                         BridgeState.CaptureBackend.DEDICATED_SHORT -> R.string.capture_backend_short
                         BridgeState.CaptureBackend.DEDICATED_TEST -> R.string.capture_backend_test
                         BridgeState.CaptureBackend.FALLBACK -> R.string.capture_backend_fallback
-                    }
+                    },
             )
         if (
             BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED_SHORT &&
@@ -1024,7 +1029,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 getString(
                     R.string.capture_backend_period,
                     BridgeState.activePhoneTiming!!.actualPeriodMs(),
-                )
+                ),
             )
         val live: Boolean =
             BridgeState.captureBackend == BridgeState.CaptureBackend.DEDICATED ||
@@ -1035,7 +1040,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 if (t.capture(9) == 1L) R.string.capture_fast_requested
                 else if (t.capture(9) == 2L) R.string.capture_fast_fallback
                 else if (t.capture(9) == 0L) R.string.capture_standard
-                else R.string.diagnostics_unknown
+                else R.string.diagnostics_unknown,
             )
         val path = BridgeState.phonePath
         phoneBufferTiming!!.setText(
@@ -1050,7 +1055,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                                 if (BridgeState.activePhoneTiming == null) 800
                                 else BridgeState.activePhoneTiming!!.reserveFrames
                             else 800)
-                            .toLong()
+                            .toLong(),
                     ),
                 )
             else if (t.halQueuedFrames >= 0) getString(R.string.device_buffer_hal_test)
@@ -1066,7 +1071,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     OwnedAudioPath.State.STANDARD -> getString(R.string.device_buffer_standard)
                     OwnedAudioPath.State.RECOVERY_REQUIRED ->
                         getString(R.string.device_buffer_recovering)
-                }
+                },
         )
         captureTiming!!.setText(
             if (live)
@@ -1088,7 +1093,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     framesTime(t.capture(8)),
                     framesTime(t.capture(7)),
                     request,
-                )
+                ),
         )
         pipeTiming!!.setText(
             getString(
@@ -1096,7 +1101,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 millis(t.pipeMicros),
                 millis(t.capture(5)),
                 millis(t.capture(6)),
-            )
+            ),
         )
         senderTiming!!.setText(
             getString(
@@ -1106,7 +1111,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 millis(t.sender(2)),
                 framesTime(t.sender(10)),
                 framesTime(t.sender(7)),
-            )
+            ),
         )
         // Negative lead is meaningful lateness, unlike an unavailable positive duration.
         val last: String? =
@@ -1125,7 +1130,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 max(0L, t.sender(6)),
                 if (targets == null) getString(R.string.diagnostics_unknown)
                 else millis(targets[1] * 1000L),
-            )
+            ),
         )
         val network: NetworkTiming =
             (if (BridgeState.networkTiming == null) NetworkTiming(null, 0)
@@ -1148,7 +1153,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                     max(0L, network.value(14)),
                     max(0L, network.value(15)),
                     max(0L, network.value(16)),
-                ))
+                )),
         )
     }
 
@@ -1182,7 +1187,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             controlColors(
                 MaterialColors.getColor(button, com.google.android.material.R.attr.colorOutline),
                 31,
-            )
+            ),
         )
         button.setPadding(dp(20), dp(12), dp(20), dp(12))
         val layout = LayoutParams(-1, -2)
@@ -1271,7 +1276,7 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
             mode!!.setStrokeWidth(dp(if (mode!!.isChecked()) 2 else 1))
             mode!!.setTypeface(null, if (mode!!.isChecked()) Typeface.BOLD else Typeface.NORMAL)
             mode!!.setStateDescription(
-                getString(if (mode!!.isChecked()) R.string.mode_active else R.string.mode_inactive)
+                getString(if (mode!!.isChecked()) R.string.mode_active else R.string.mode_inactive),
             )
         }
         modeSelection!!.setText(
@@ -1279,9 +1284,9 @@ class MainActivity : AppCompatActivity(), BridgeState.Observer {
                 R.string.capture_mode,
                 getString(
                     if (StreamSettings.load(this)!!.wholeDevice) R.string.mode_whole
-                    else R.string.mode_selected
+                    else R.string.mode_selected,
                 ),
-            )
+            ),
         )
     }
 

@@ -69,7 +69,7 @@ In whole-device mode, phone-speaker media-volume operations control HomePod whil
 
 ## Development
 
-Use JDK 21, Android SDK / Build Tools 37, NDK 30.0.14904198, and CMake 4.1.2.
+Use JDK 27, Android SDK / Build Tools 37, NDK 30.0.16248370, and CMake 4.1.2.
 
 ```sh
 ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
@@ -101,3 +101,5 @@ After a target-app update, open this module once to finish preparation, then reo
 The bridge reads title, artist, album, artwork, playback position, and duration from the source media session and sends them alongside audio to HomePod. This also supplies playback information when viewing HomePod from an iPhone. Selected-app mode reads only the selected app; whole-device mode uses the playing app. Fields the source app does not publish cannot be displayed.
 
 After updating to 0.2.2, reload SystemUI with GalaxyReload. No additional notification-access or accessibility permission is required. Track information is not collected when using only Android's standard screen-sharing path.
+
+[Build environment / ビルド環境](docs/build-environment.md)

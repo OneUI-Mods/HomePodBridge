@@ -40,7 +40,7 @@ class Discovery(context: Context, listener: Discovery.Listener) : AutoCloseable 
                     Runnable {
                         close()
                         listener.failed()
-                    }
+                    },
                 )
             }
 
@@ -57,7 +57,10 @@ class Discovery(context: Context, listener: Discovery.Listener) : AutoCloseable 
 
     init {
         this.listener = listener
-        nsd = context.getSystemService<NsdManager?>(NsdManager::class.java)
+        nsd =
+            checkNotNull(context.getSystemService<NsdManager?>(NsdManager::class.java)) {
+                "NsdManager unavailable"
+            }
         val wifi =
             context.getApplicationContext().getSystemService<WifiManager?>(WifiManager::class.java)
         if (wifi != null) {

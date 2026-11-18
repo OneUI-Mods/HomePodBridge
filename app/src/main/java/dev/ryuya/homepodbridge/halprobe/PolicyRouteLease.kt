@@ -26,8 +26,11 @@ class PolicyRouteLease private constructor(context: Context, address: String?) :
         this.address = address
         var input: Boolean = false
         for (device in
-            context
-                .getSystemService<AudioManager?>(AudioManager::class.java)
+            checkNotNull(
+                    context.getSystemService<AudioManager?>(AudioManager::class.java),
+                ) {
+                    "AudioManager unavailable"
+                }
                 .getDevices(AudioManager.GET_DEVICES_INPUTS)) if (
             device.isSource() &&
                 address == device.getAddress() &&

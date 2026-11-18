@@ -41,7 +41,7 @@ class CommandService : Service() {
                 NotificationManager.IMPORTANCE_LOW,
             )
         channel.setSound(null, null)
-        manager.createNotificationChannel(channel)
+        manager?.createNotificationChannel(channel)
         startForeground(
             2,
             Builder(this, channel.getId())
@@ -99,10 +99,10 @@ class CommandService : Service() {
                                     ?.isNotBlank() == true) +
                                 " artwork=" +
                                 (metadata?.getBitmap(
-                                    android.media.MediaMetadata.METADATA_KEY_ALBUM_ART
+                                    android.media.MediaMetadata.METADATA_KEY_ALBUM_ART,
                                 ) != null ||
                                     metadata?.getBitmap(
-                                        android.media.MediaMetadata.METADATA_KEY_ART
+                                        android.media.MediaMetadata.METADATA_KEY_ART,
                                     ) != null)
                     }
                 } catch (_: Exception) {
@@ -188,14 +188,14 @@ class CommandService : Service() {
                         .setContentTitle(
                             getString(
                                 if (paired) R.string.acoustic_paired_title
-                                else R.string.acoustic_title
-                            )
+                                else R.string.acoustic_title,
+                            ),
                         )
                         .setContentText(
                             getString(
                                 if (paired) R.string.acoustic_paired_description
-                                else R.string.acoustic_description
-                            )
+                                else R.string.acoustic_description,
+                            ),
                         )
                         .setSmallIcon(R.drawable.ic_speaker)
                         .setSound(null)
@@ -247,13 +247,13 @@ class CommandService : Service() {
                                         commandStatus = "System bridge unavailable"
                                         prepared!!.connected(false)
                                     }
-                                }
+                                },
                             )
                         } catch (interrupted: InterruptedException) {
                             Thread.currentThread().interrupt()
                             prepared!!.close()
                         }
-                    }
+                    },
                 )
             } catch (failure: RuntimeException) {
                 commandStatus =
@@ -340,7 +340,9 @@ class CommandService : Service() {
                 else if (command.endsWith("mid")) PhoneTiming(11, 448) else PhoneTiming(21, 800)
             commandStatus = "Checking bounded phone timing with fixed zeros"
             commands!!.execute(
-                Runnable { commandStatus = "Local HAL: " + LocalHalProbe.runTiming(this, timing!!) }
+                Runnable {
+                    commandStatus = "Local HAL: " + LocalHalProbe.runTiming(this, timing!!)
+                },
             )
             return Service.START_NOT_STICKY
         }
@@ -350,7 +352,7 @@ class CommandService : Service() {
             commands!!.execute(
                 Runnable {
                     commandStatus = "HAL period: " + HalTransportProbe.ownedPeriod(this, period)
-                }
+                },
             )
             return Service.START_NOT_STICKY
         }
@@ -358,7 +360,9 @@ class CommandService : Service() {
             commandStatus = "Checking manual phone timing with fixed zeros"
             val timing = StreamSettings.load(this)!!.phoneTiming
             commands!!.execute(
-                Runnable { commandStatus = "Local HAL: " + LocalHalProbe.runTiming(this, timing!!) }
+                Runnable {
+                    commandStatus = "Local HAL: " + LocalHalProbe.runTiming(this, timing!!)
+                },
             )
             return Service.START_NOT_STICKY
         }
@@ -369,14 +373,14 @@ class CommandService : Service() {
                     commandStatus =
                         "Local HAL: " +
                             LocalHalProbe.run(this, 800, command.endsWith("cycle"), true)
-                }
+                },
             )
             return Service.START_NOT_STICKY
         }
         if (command == "probe-period-capture") {
             commandStatus = "Checking fixed-zero input with a short owned mixer period"
             commands!!.execute(
-                Runnable { commandStatus = "HAL period: " + HalTransportProbe.periodCapture(this) }
+                Runnable { commandStatus = "HAL period: " + HalTransportProbe.periodCapture(this) },
             )
             return Service.START_NOT_STICKY
         }
@@ -386,7 +390,7 @@ class CommandService : Service() {
                 Runnable {
                     commandStatus =
                         "Audio server image: " + HalTransportProbe.exportAudioServer(this)
-                }
+                },
             )
             return Service.START_NOT_STICKY
         }
@@ -397,7 +401,7 @@ class CommandService : Service() {
                     commandStatus =
                         ("HAL period: " +
                             HalTransportProbe.getterPeriod(this, command == "probe-mixer-period"))
-                }
+                },
             )
             return Service.START_NOT_STICKY
         }
@@ -406,14 +410,14 @@ class CommandService : Service() {
             commands!!.execute(
                 Runnable {
                     commandStatus = "Output period: " + HalTransportProbe.outputPeriod(this)
-                }
+                },
             )
             return Service.START_NOT_STICKY
         }
         if (command == "probe-packet-handoff") {
             commandStatus = "Checking zero-only packet assembly without network output"
             commands!!.execute(
-                Runnable { commandStatus = "Packet handoff: " + PacketHandoffProbe.run(this) }
+                Runnable { commandStatus = "Packet handoff: " + PacketHandoffProbe.run(this) },
             )
             return Service.START_NOT_STICKY
         }
@@ -438,7 +442,7 @@ class CommandService : Service() {
                 if (command.endsWith("752")) 752 else if (command.endsWith("768")) 768 else 800
             commandStatus = "Checking fixed zero-only reserve candidate"
             commands!!.execute(
-                Runnable { commandStatus = "Local HAL: " + LocalHalProbe.run(this, target, false) }
+                Runnable { commandStatus = "Local HAL: " + LocalHalProbe.run(this, target, false) },
             )
             return Service.START_NOT_STICKY
         }
@@ -478,7 +482,7 @@ class CommandService : Service() {
             commandStatus = "Preparing record-free self-UID policy input"
             val routeOnly: Boolean = command == "probe-policy-route"
             commands!!.execute(
-                Runnable { commandStatus = (HalTransportProbe.policyInput(this, routeOnly))!! }
+                Runnable { commandStatus = (HalTransportProbe.policyInput(this, routeOnly))!! },
             )
             return Service.START_NOT_STICKY
         }
@@ -497,7 +501,7 @@ class CommandService : Service() {
             commandStatus = "Preparing open-only HAL transport probe"
             val requested: String? = command
             commands!!.execute(
-                Runnable { commandStatus = (HalTransportProbe.run(this, requested))!! }
+                Runnable { commandStatus = (HalTransportProbe.run(this, requested))!! },
             )
             return Service.START_NOT_STICKY
         }
@@ -505,14 +509,14 @@ class CommandService : Service() {
             val nonce = intent!!.getStringExtra("owned_nonce")
             commandStatus = "Checking explicit audio-service recovery"
             commands!!.execute(
-                Runnable { commandStatus = (AudioServiceRecovery.restart(this, nonce))!! }
+                Runnable { commandStatus = (AudioServiceRecovery.restart(this, nonce))!! },
             )
             return Service.START_NOT_STICKY
         }
         if (command == "reload-status") {
             commandStatus = "Checking GalaxyReload CLI"
             commands!!.execute(
-                Runnable { commandStatus = "GalaxyReload CLI: " + GalaxyReloadCli.check(this) }
+                Runnable { commandStatus = "GalaxyReload CLI: " + GalaxyReloadCli.check(this) },
             )
             return Service.START_NOT_STICKY
         }
@@ -522,7 +526,7 @@ class CommandService : Service() {
                 Runnable {
                     commandStatus = "GalaxyReload CLI: " + GalaxyReloadCli.reload(this)
                     main.post(Runnable { RootConnector.request(this) })
-                }
+                },
             )
             return Service.START_NOT_STICKY
         }
@@ -562,13 +566,13 @@ class CommandService : Service() {
                             .sleep(25)
                         if (RootConnector.available())
                             main.post(
-                                Runnable { playback!!.start(dedicated, whole, pulse, normal) }
+                                Runnable { playback!!.start(dedicated, whole, pulse, normal) },
                             )
                         else commandStatus = "System bridge unavailable"
                     } catch (interrupted: InterruptedException) {
                         Thread.currentThread().interrupt()
                     }
-                }
+                },
             )
             return Service.START_NOT_STICKY
         }
@@ -602,7 +606,7 @@ class CommandService : Service() {
                 try {
                     val deadline: Long = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
                     while (!RootConnector.available() && System.nanoTime() < deadline) Thread.sleep(
-                        25
+                        25,
                     )
                     if (!RootConnector.available()) {
                         commandStatus = "System bridge unavailable"
@@ -624,7 +628,7 @@ class CommandService : Service() {
                     Thread.currentThread().interrupt()
                     commandStatus = "Command cancelled"
                 }
-            }
+            },
         )
         return Service.START_NOT_STICKY
     }
@@ -651,7 +655,7 @@ class CommandService : Service() {
         writer.println(
             "wifiRequest=" +
                 (if (BridgeState.networkTiming == null) -1
-                else BridgeState.networkTiming!!.wifiRequest)
+                else BridgeState.networkTiming!!.wifiRequest),
         )
         val receiverResponse: ReceiverRejection? =
             if (BridgeState.connected) BridgeState.receiverRejection
@@ -660,19 +664,19 @@ class CommandService : Service() {
             ("receiverRejection=" +
                 receiverResponse!!.code +
                 " terminal=" +
-                receiverResponse!!.terminal)
+                receiverResponse!!.terminal),
         )
         writer.println("receiverMessage=" + receiverResponse!!.message(this, BridgeState.connected))
         writer.println(
             ("captureBackend=" +
                 BridgeState.captureBackend +
                 " dedicatedPreference=" +
-                StreamSettings.load(this)!!.dedicatedCapture)
+                StreamSettings.load(this)!!.dedicatedCapture),
         )
         try {
             openFileInput("last-hal-capture.txt").use { report ->
                 writer.println(
-                    "Last HAL capture: " + String(report.readNBytes(16384), StandardCharsets.UTF_8)
+                    "Last HAL capture: " + String(report.readNBytes(16384), StandardCharsets.UTF_8),
                 )
             }
         } catch (absent: IOException) {}
@@ -680,7 +684,7 @@ class CommandService : Service() {
             openFileInput("last-hal-zero.txt").use { report ->
                 writer.println(
                     "Last zero HAL result: " +
-                        String(report.readNBytes(8192), StandardCharsets.UTF_8)
+                        String(report.readNBytes(8192), StandardCharsets.UTF_8),
                 )
             }
         } catch (absent: IOException) {}
@@ -688,7 +692,7 @@ class CommandService : Service() {
             try {
                 openFileInput(name).use { report ->
                     writer.println(
-                        (name + ": " + String(report.readNBytes(8192), StandardCharsets.UTF_8))
+                        (name + ": " + String(report.readNBytes(8192), StandardCharsets.UTF_8)),
                     )
                 }
             } catch (absent: IOException) {}
@@ -698,7 +702,7 @@ class CommandService : Service() {
             ("shortAudioPackets=" +
                 settings!!.shortAudioPackets +
                 " requestedPacketFrames=" +
-                settings!!.requestedPacketFrames())
+                settings!!.requestedPacketFrames()),
         )
         writer.println(
             ("independentReceiverTiming=" +
@@ -708,7 +712,7 @@ class CommandService : Service() {
                 " requestedReceiverMaximumMs=" +
                 settings!!.requestedReceiverMaximumMs() +
                 " requestedPresentationMs=" +
-                settings!!.requestedPresentationMs())
+                settings!!.requestedPresentationMs()),
         )
         writer.println(
             ("wholeDevice=" +
@@ -720,7 +724,7 @@ class CommandService : Service() {
                 " deviceBufferFrames=" +
                 settings.deviceBufferFrames +
                 " receiverTargetMs=" +
-                settings!!.effectiveLatencyMs())
+                settings!!.effectiveLatencyMs()),
         )
         writer.println("shortMixerPeriod=" + settings.shortMixerPeriod)
         writer.println(
@@ -731,7 +735,7 @@ class CommandService : Service() {
                 " phonePeriodFrames=" +
                 settings.phoneTiming!!.periodFrames() +
                 " phoneReserveFrames=" +
-                settings.phoneTiming.reserveFrames)
+                settings.phoneTiming.reserveFrames),
         )
         CaptureProbe.dump(writer)
         HalInspection.dump(writer, false)

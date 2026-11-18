@@ -107,7 +107,7 @@ object LocalHalProbe {
                 }
             }
             val elapsedUs: Long = (System.nanoTime() - begin) / 1000
-            Collections.sort<Long?>(transits)
+            Collections.sort(transits)
             val realtime: Boolean =
                 frames * 1000000L >= elapsedUs * 44100L * 95 / 100 &&
                     frames * 1000000L <= elapsedUs * 44100L * 105 / 100

@@ -144,8 +144,11 @@ class AcousticProbe(
                 throw SecurityException("Microphone permission missing")
             val unprocessed: Boolean =
                 ("true" ==
-                    context
-                        .getSystemService<AudioManager?>(AudioManager::class.java)
+                    checkNotNull(
+                            context.getSystemService<AudioManager?>(AudioManager::class.java),
+                        ) {
+                            "AudioManager unavailable"
+                        }
                         .getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED))
             source = if (unprocessed) AudioSource.UNPROCESSED else AudioSource.VOICE_RECOGNITION
             val minimum =
@@ -167,7 +170,7 @@ class AcousticProbe(
                             .setSampleRate(AcousticProbe.MIC_RATE)
                             .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .build()
+                            .build(),
                     )
                     .setBufferSizeInBytes(max(minimum, AcousticProbe.MIC_RATE * 2 / 5))
                     .build()
@@ -193,9 +196,9 @@ class AcousticProbe(
                     armedAt = System.nanoTime() + 750000000L
                     armed = true
                     status.accept(
-                        "ACOUSTIC_RECORDING volume=" + volume + " phoneSpeakerSignal=" + paired
+                        "ACOUSTIC_RECORDING volume=" + volume + " phoneSpeakerSignal=" + paired,
                     )
-                }
+                },
             )
             val block = ShortArray(480)
             val timestamp = AudioTimestamp()
@@ -227,7 +230,7 @@ class AcousticProbe(
                             timestamp.framePosition,
                             timestamp.nanoTime,
                             readAt,
-                        )
+                        ),
                     )
             }
             if (anchors.size < 5) failure = "Reliable microphone timestamps unavailable"
@@ -262,13 +265,13 @@ class AcousticProbe(
                                         sampleCount +
                                         " anchors=" +
                                         anchors.size)
-                                else "ACOUSTIC_FAILED " + failure
+                                else "ACOUSTIC_FAILED " + failure,
                             )
                             finishedCallback.run()
                         },
                         (if (ownsConnection()) 200 else 0).toLong(),
                     )
-                }
+                },
             )
         }
     }
@@ -333,7 +336,7 @@ class AcousticProbe(
                         )
                         .put("phaseCode", AcousticSignal.PHASE_CODE!![i])
                         .put("lowHz", AcousticSignal.LOW!![i])
-                        .put("highHz", AcousticSignal.HIGH!![i])
+                        .put("highHz", AcousticSignal.HIGH!![i]),
                 )
             }
             if (phone != null) {

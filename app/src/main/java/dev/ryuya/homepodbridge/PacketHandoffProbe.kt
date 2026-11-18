@@ -74,7 +74,7 @@ object PacketHandoffProbe {
                         packet.clear().limit(packetFrames * 4)
                     }
                 }
-                Collections.sort<Long?>(ages)
+                Collections.sort(ages)
                 phases.put(
                     JSONObject()
                         .put("packetFrames", packetFrames)
@@ -87,7 +87,7 @@ object PacketHandoffProbe {
                         .put(
                             "firstReadToEncodedMaximumUs",
                             PacketHandoffProbe.percentile(ages, 100),
-                        )
+                        ),
                 )
             }
             result.put("phases", phases).put("zeroOnly", true).put("networkStarted", false)

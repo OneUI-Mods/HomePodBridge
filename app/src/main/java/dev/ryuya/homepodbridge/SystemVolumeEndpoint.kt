@@ -51,9 +51,16 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
     init {
         this.callback = callback
         check(SystemVolumeUi.available) { "Remote volume panel not available" }
-        audio = context.getSystemService<AudioManager?>(AudioManager::class.java)
+        audio =
+            checkNotNull(context.getSystemService<AudioManager?>(AudioManager::class.java)) {
+                "AudioManager unavailable"
+            }
         mediaSessions =
-            context.getSystemService<MediaSessionManager?>(MediaSessionManager::class.java)
+            checkNotNull(
+                context.getSystemService<MediaSessionManager?>(MediaSessionManager::class.java),
+            ) {
+                "MediaSessionManager unavailable"
+            }
         remoteController =
             mediaSessions
                 .getActiveSessions(null)
@@ -67,7 +74,7 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                 }
                 .findFirst()
                 .orElseThrow<IllegalStateException?>(
-                    Supplier { IllegalStateException("Owned remote session unavailable") }
+                    Supplier { IllegalStateException("Owned remote session unavailable") },
                 )
         val loader = context.getClassLoader()
         val managerClass =
@@ -405,7 +412,7 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
                             volumeKeys.key(now)
                             scheduleKeys()
                         }
-                    }
+                    },
                 )
             }
             return true

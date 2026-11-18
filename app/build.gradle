@@ -1,8 +1,10 @@
 plugins { id 'com.android.application' }
 android {
     namespace 'dev.ryuya.homepodbridge'
-    compileSdk 37
-    ndkVersion '30.0.14904198'
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
+    ndkVersion '30.0.16248370'
     defaultConfig {
         applicationId 'dev.ryuya.homepodbridge'
         minSdk 36
