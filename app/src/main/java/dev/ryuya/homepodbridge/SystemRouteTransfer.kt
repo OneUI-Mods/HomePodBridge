@@ -7,10 +7,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XC_MethodHook.MethodHookParam
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import dev.ryuya.homepodbridge.hook.HookCallback
+import dev.ryuya.homepodbridge.hook.HookCallback.MethodHookParam
+import dev.ryuya.homepodbridge.hook.Hooks
+import dev.ryuya.homepodbridge.hook.Reflect
 import dev.ryuya.homepodbridge.compat.compatibleName
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.Volatile
@@ -28,11 +28,15 @@ object SystemRouteTransfer {
     private val stops: ConcurrentHashMap<String?, SystemRouteTransfer.Stop?> =
         ConcurrentHashMap<String?, SystemRouteTransfer.Stop?>()
 
+    fun readyForHotReload(): Boolean = selections.isEmpty() && stops.isEmpty() && calls.get() == 0
+
+    private val calls = java.util.concurrent.atomic.AtomicInteger()
+
     @JvmStatic
     fun install(manager: Class<*>) {
         val proxy = manager.compatibleName().contains("\$ProxyMediaRouter2Impl")
-        val transfer: XC_MethodHook =
-            object : XC_MethodHook() {
+        val transfer: HookCallback =
+            object : HookCallback() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     val patternPrefix0 = SystemRouteTransfer.context == null || param.args.size < 2
                     val old = if (!patternPrefix0) param.args[0] as? RoutingSessionInfo else null
@@ -68,7 +72,7 @@ object SystemRouteTransfer {
                                     proxy,
                                 )
                             if (local == null) return
-                            if (XposedHelpers.callMethod(route, "isSystemRoute") as Boolean) {
+                            if (Reflect.callMethod(route, "isSystemRoute") as Boolean) {
                                 SystemRouteTransfer.stops.put(
                                     old.getId(),
                                     SystemRouteTransfer.Stop(param.thisObject, local),
@@ -85,7 +89,7 @@ object SystemRouteTransfer {
                             }
                         }
                     } catch (error: Throwable) {
-                        XposedBridge.log(
+                        Hooks.log(
                             ("HomePod Bridge: transfer hook unavailable (" +
                                 error.javaClass.getSimpleName() +
                                 ")")
@@ -94,13 +98,13 @@ object SystemRouteTransfer {
                 }
             }
         var hooks: Int =
-            if (proxy) 0 else XposedBridge.hookAllMethods(manager, "transfer", transfer).size
-        hooks += XposedBridge.hookAllMethods(manager, "requestCreateSession", transfer).size
-        XposedBridge.log("HomePod Bridge: system transfer hooks installed=" + hooks)
-        XposedBridge.hookAllMethods(
+            if (proxy) 0 else Hooks.hookAllMethods(manager, "transfer", transfer).size
+        hooks += Hooks.hookAllMethods(manager, "requestCreateSession", transfer).size
+        Hooks.log("HomePod Bridge: system transfer hooks installed=" + hooks)
+        Hooks.hookAllMethods(
             manager,
             if (proxy) "onSessionCreatedOnHandler" else "createSessionOnHandler",
-            object : XC_MethodHook() {
+            object : HookCallback() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     val patternPrefix2 = param.hasThrowable() || param.args.size != 2
                     val session =
@@ -122,7 +126,7 @@ object SystemRouteTransfer {
                                     pending,
                                 )
                         )
-                            XposedHelpers.callMethod(
+                            Reflect.callMethod(
                                 param.thisObject,
                                 if (proxy) "onTransferred" else "notifyTransferred",
                                 pending.old,
@@ -132,10 +136,10 @@ object SystemRouteTransfer {
                 }
             },
         )
-        XposedBridge.hookAllMethods(
+        Hooks.hookAllMethods(
             manager,
             if (proxy) "onSessionReleasedOnHandler" else "notifySessionReleased",
-            object : XC_MethodHook() {
+            object : HookCallback() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     val patternPrefix3 = param.hasThrowable() || param.args.size != 1
                     val old = if (!patternPrefix3) param.args[0] as? RoutingSessionInfo else null
@@ -148,7 +152,7 @@ object SystemRouteTransfer {
                                 stop.manager === param.thisObject &&
                                 SystemRouteTransfer.stops.remove(old.getId(), stop)
                         )
-                            XposedHelpers.callMethod(
+                            Reflect.callMethod(
                                 param.thisObject,
                                 if (proxy) "onTransferred" else "notifyTransferred",
                                 old,
@@ -164,7 +168,7 @@ object SystemRouteTransfer {
     private fun fail(source: String?, pending: SystemRouteTransfer.Pending) {
         if (!SystemRouteTransfer.selections.remove(source, pending)) return
         try {
-            XposedHelpers.callMethod(
+            Reflect.callMethod(
                 pending.manager,
                 if (
                     pending.manager!!.javaClass.compatibleName().contains("\$ProxyMediaRouter2Impl")
@@ -180,12 +184,12 @@ object SystemRouteTransfer {
     @JvmStatic
     private fun localSession(manager: Any?, source: String?, proxy: Boolean): RoutingSessionInfo? {
         val sessions: Any? =
-            if (proxy) XposedHelpers.callMethod(manager, "getRoutingSessions")
-            else XposedHelpers.callMethod(manager, "getRoutingSessions", source)
+            if (proxy) Reflect.callMethod(manager, "getRoutingSessions")
+            else Reflect.callMethod(manager, "getRoutingSessions", source)
         if (sessions is MutableList<*>)
             for (item in sessions) if (
                 item is RoutingSessionInfo &&
-                    XposedHelpers.callMethod(item, "isSystemSession") as Boolean
+                    Reflect.callMethod(item, "isSystemSession") as Boolean
             )
                 return item
         return null
@@ -204,25 +208,25 @@ object SystemRouteTransfer {
 
     @JvmStatic
     private fun control(method: String?, args: Bundle?, failure: Runnable) {
-        Thread(
-                Runnable {
-                    try {
-                        val result =
-                            SystemRouteTransfer.context!!.getContentResolver()
-                                .call(
-                                    Uri.parse("content://" + RootProtocol.AUTHORITY),
-                                    method!!,
-                                    null,
-                                    args,
-                                )
-                        if (result == null || !result.getBoolean("accepted")) failure.run()
-                    } catch (error: Throwable) {
-                        failure.run()
-                    }
-                },
-                "HomePod-route",
-            )
-            .start()
+        calls.incrementAndGet()
+        val thread = Thread({
+            try {
+                val result = context!!.contentResolver.call(
+                    Uri.parse("content://" + RootProtocol.AUTHORITY), method!!, null, args)
+                if (result == null || !result.getBoolean("accepted")) failure.run()
+            } catch (error: Exception) {
+                failure.run()
+            } finally {
+                calls.decrementAndGet()
+            }
+        }, "HomePod-route")
+        try {
+            thread.start()
+        } catch (error: Throwable) {
+            calls.decrementAndGet()
+            failure.run()
+            throw error
+        }
     }
 
     @JvmRecord

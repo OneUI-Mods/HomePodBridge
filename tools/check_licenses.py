@@ -16,7 +16,7 @@ assert "c38887c5c5e64a4b31108733bd79ca9b2496d987" in (alac / "UPSTREAM.txt").rea
 assert "Copyright (c) 2011 Apple Inc." in asset
 assert re.search(r"GIT_TAG\s+[a-f0-9]{40}", (vendor / "CMakeLists.txt").read_text())
 assert re.search(r"[a-f0-9]{40}", (vendor / "UPSTREAM.txt").read_text())
-assert "compileOnly 'de.robv.android.xposed:api:82'" in (root / "app/build.gradle").read_text()
+assert "compileOnly 'io.github.libxposed:api:102.0.0'" in (root / "app/build.gradle").read_text()
 catalog = json.loads((root / "licenses/runtime-components.json").read_text())
 listed = {entry['coordinate'] for entry in catalog}
 resolved = set((root / "app/build/runtime-dependencies.txt").read_text().splitlines())

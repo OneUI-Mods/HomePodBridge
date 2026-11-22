@@ -40,6 +40,8 @@ object RootConnector {
     }
 
     @Volatile private var bridge: IBinder? = null
+    private val registrationLock = Any()
+    private var bridgeDeath: DeathRecipient? = null
     private val captureBridges: ConcurrentHashMap<IBinder?, IBinder?> =
         ConcurrentHashMap<IBinder?, IBinder?>()
     private val controls: ExecutorService? = BackgroundExecutors.serial("HomePodControls")
@@ -72,17 +74,27 @@ object RootConnector {
     @Throws(RemoteException::class)
     fun register(value: IBinder?) {
         requireNotNull(value) { "Missing system bridge" }
-        RootConnector.bridge = value
-        value.linkToDeath(
-            DeathRecipient {
-                if (RootConnector.bridge === value) RootConnector.bridge = null
-                RootConnector.captureBridges.entries.removeIf {
-                    entry: MutableMap.MutableEntry<IBinder?, IBinder?>? ->
-                    entry!!.value == value
+        synchronized(registrationLock) {
+            val previous = bridge
+            if (previous === value) return
+            val death = DeathRecipient {
+                synchronized(registrationLock) {
+                    if (bridge === value) {
+                        bridge = null
+                        bridgeDeath = null
+                    }
+                    captureBridges.entries.removeIf { it.value == value }
                 }
-            },
-            0,
-        )
+            }
+            value.linkToDeath(death, 0)
+            val previousDeath = bridgeDeath
+            bridge = value
+            bridgeDeath = death
+            if (previous != null && previousDeath != null) {
+                // A successful idle handoff leaves no stream routed through this Binder.
+                runCatching { previous.unlinkToDeath(previousDeath, 0) }
+            }
+        }
         Handler(Looper.getMainLooper()).post(Runnable { BridgeState.publish() })
     }
 

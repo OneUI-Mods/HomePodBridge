@@ -2,9 +2,9 @@ package dev.ryuya.homepodbridge
 
 import android.media.AudioManager
 import android.util.Log
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XC_MethodHook.MethodHookParam
-import de.robv.android.xposed.XposedBridge
+import dev.ryuya.homepodbridge.hook.HookCallback
+import dev.ryuya.homepodbridge.hook.HookCallback.MethodHookParam
+import dev.ryuya.homepodbridge.hook.Hooks
 import dev.ryuya.homepodbridge.compat.VolumeUiSymbols
 import kotlin.concurrent.Volatile
 import kotlin.jvm.JvmField
@@ -29,12 +29,12 @@ object SystemVolumeUi {
                 "onVolumeChangedW",
                 Int::class.javaPrimitiveType,
                 Int::class.javaPrimitiveType,
-                object : XC_MethodHook() {
+                object : HookCallback() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         val endpoint = SystemVolumeUi.active
                         if (endpoint == null || param.args[0] as Int? != AudioManager.STREAM_MUSIC)
                             return
-                        if (endpoint.redirectLocalUi(param.thisObject, param.args[1] as Int))
+                        if (endpoint.redirectLocalUi(param.thisObject ?: return, param.args[1] as Int))
                             param.setResult(false)
                     }
                 },
@@ -47,7 +47,7 @@ object SystemVolumeUi {
             VolumeUiSymbols.hookAllMethods(
                 callbacks,
                 "onRemoteUpdate",
-                object : XC_MethodHook() {
+                object : HookCallback() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         val endpoint = SystemVolumeUi.active
                         if (endpoint != null && param.args.size == 3) {
@@ -73,7 +73,7 @@ object SystemVolumeUi {
                 VolumeUiSymbols.hookAllMethods(
                     reducer,
                     "reduce",
-                    object : XC_MethodHook() {
+                    object : HookCallback() {
                         override fun beforeHookedMethod(param: MethodHookParam) {
                             val endpoint = SystemVolumeUi.active
                             if (endpoint == null || param.args.size != 2) return
@@ -91,7 +91,7 @@ object SystemVolumeUi {
                 Log.i("HomePodBridgeUi", "Volume reducer integration loaded")
             }
         } catch (error: Throwable) {
-            XposedBridge.log(
+            Hooks.log(
                 ("HomePod Bridge: remote volume panel unavailable (" +
                     error.javaClass.getSimpleName() +
                     ")")

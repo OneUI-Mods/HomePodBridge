@@ -41,7 +41,12 @@ def check(apk):
     assert "application-debuggable" not in badging
     assert "application-testOnly" not in badging
     with zipfile.ZipFile(apk) as archive:
-        assert archive.read("assets/xposed_init").strip() == b"dev.ryuya.homepodbridge.VectorModule"
+        xposed = "META-INF/xposed/"
+        assert archive.read(xposed + "java_init.list").strip() == b"dev.ryuya.homepodbridge.VectorModule"
+        assert archive.read(xposed + "scope.list").strip() == b"com.android.systemui"
+        properties = dict(line.split("=", 1) for line in archive.read(xposed + "module.prop").decode().splitlines())
+        assert properties["targetApiVersion"] == "102" and properties["autoHotReload"] == "true"
+        assert "assets/xposed_init" not in archive.namelist()
         assert "Apache License" in archive.read("assets/licenses.txt").decode()
         for abi in ("arm64-v8a", "x86_64"):
             assert f"lib/{abi}/libhomepod_bridge.so" in archive.namelist()
@@ -51,7 +56,9 @@ def check(apk):
             assert ".signing" not in name and not name.endswith((".keystore", ".p12"))
             if name.endswith(".dex"):
                 for cls in defined_classes(archive.read(name)):
-                    assert not cls.startswith("Lde/robv/android/xposed/"), "Xposed framework must remain compileOnly"
+                    assert not cls.startswith(("Lde/robv/android/xposed/", "Lio/github/libxposed/api/")), (
+                        "Xposed framework must remain compileOnly"
+                    )
     manifest = subprocess.check_output([str(tool("aapt2")), "dump", "xmltree", str(apk),
         "--file", "AndroidManifest.xml"], text=True, encoding="utf-8")
     lines = manifest.splitlines()

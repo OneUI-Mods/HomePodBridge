@@ -20,12 +20,15 @@ import android.os.Parcelable
 import android.os.Process
 import android.os.RemoteException
 import android.util.Log
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import dev.ryuya.homepodbridge.hook.Hooks
+import dev.ryuya.homepodbridge.hook.Reflect
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.concurrent.Volatile
 import kotlin.jvm.JvmField
 import kotlin.jvm.Synchronized
@@ -38,6 +41,22 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
     private val moduleSignatures: Array<Signature?>
     private var stream: SystemAudioBridge.Stream? = null
     private var external: SystemAudioBridge.ExternalSession? = null
+    private val transactions = ReentrantLock()
+    private val audioWorkers = AtomicInteger()
+    private var retired = false
+
+    fun tryRetire(save: () -> Unit): Boolean {
+        if (!transactions.tryLock()) return false
+        try {
+            if (audioWorkers.get() != 0 || external?.fullyClosed() == false ||
+                SystemVolumeUi.active != null) return false
+            save()
+            retired = true
+            return true
+        } finally {
+            transactions.unlock()
+        }
+    }
 
     init {
         this.context = context
@@ -50,9 +69,11 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
         attachInterface(null, RootProtocol.DESCRIPTOR)
     }
 
-    @Synchronized
     @Throws(RemoteException::class)
-    override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+    override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean =
+        transactions.withLock { transactBridge(code, data, reply, flags) }
+
+    private fun transactBridge(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
         if (code == IBinder.INTERFACE_TRANSACTION) {
             reply!!.writeString(RootProtocol.DESCRIPTOR)
             return true
@@ -87,6 +108,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
         } catch (e: NameNotFoundException) {
             throw SecurityException("Module not installed")
         }
+        check(!retired) { "Bridge has been updated; request registration again" }
         val client = data.readStrongBinder()
         requireNotNull(client) { "Client lifetime token required" }
         val identity = Binder.clearCallingIdentity()
@@ -251,13 +273,17 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
             client.linkToDeath(this, 0)
         }
 
+        @Volatile private var cleanupComplete = false
+
+        fun fullyClosed() = cleanupComplete
+
         @Synchronized
         fun endpoint(callback: IBinder?) {
             if (closed || !whole || endpoint != null) return
             try {
                 endpoint = SystemVolumeEndpoint(context, callback!!)
             } catch (error: Throwable) {
-                XposedBridge.log("HomePod Bridge: external volume unavailable")
+                Hooks.log("HomePod Bridge: external volume unavailable")
             }
         }
 
@@ -269,6 +295,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
             try {
                 client.unlinkToDeath(this, 0)
             } catch (alreadyDead: RuntimeException) {}
+            cleanupComplete = true
         }
 
         override fun binderDied() {
@@ -310,21 +337,21 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
             blockSamples = settings.samplesPerRead()
             val loader = context.getClassLoader()
             val rule =
-                XposedHelpers.newInstance(
-                    XposedHelpers.findClass(
+                Reflect.newInstance(
+                    Reflect.findClass(
                         "android.media.audiopolicy.AudioMixingRule\$Builder",
                         loader,
                     )
                 )
             if (settings.wholeDevice) {
-                XposedHelpers.callMethod(rule, "setTargetMixRole", 0) // MIX_ROLE_PLAYERS
-                XposedHelpers.callMethod(rule, "excludeMixRule", 4, bridgeUid)
+                Reflect.callMethod(rule, "setTargetMixRole", 0) // MIX_ROLE_PLAYERS
+                Reflect.callMethod(rule, "excludeMixRule", 4, bridgeUid)
                 for (usage in
                     intArrayOf(
                         AudioAttributes.USAGE_VOICE_COMMUNICATION,
                         AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING,
                     )) {
-                    XposedHelpers.callMethod(
+                    Reflect.callMethod(
                         rule,
                         "excludeRule",
                         android.media.AudioAttributes.Builder().setUsage(usage).build(),
@@ -332,7 +359,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                     )
                 }
             } else {
-                XposedHelpers.callMethod(
+                Reflect.callMethod(
                     rule,
                     "addRule",
                     android.media.AudioAttributes.Builder()
@@ -340,12 +367,12 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                         .build(),
                     1,
                 )
-                XposedHelpers.callMethod(rule, "addMixRule", 4, uid) // RULE_MATCH_UID
+                Reflect.callMethod(rule, "addMixRule", 4, uid) // RULE_MATCH_UID
             }
             val mix =
-                XposedHelpers.newInstance(
-                    XposedHelpers.findClass("android.media.audiopolicy.AudioMix\$Builder", loader),
-                    XposedHelpers.callMethod(rule, "build"),
+                Reflect.newInstance(
+                    Reflect.findClass("android.media.audiopolicy.AudioMix\$Builder", loader),
+                    Reflect.callMethod(rule, "build"),
                 )
             val format =
                 android.media.AudioFormat.Builder()
@@ -353,16 +380,16 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                     .setSampleRate(44100)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                     .build()
-            XposedHelpers.callMethod(mix, "setFormat", format)
-            XposedHelpers.callMethod(
+            Reflect.callMethod(mix, "setFormat", format)
+            Reflect.callMethod(
                 mix,
                 "setRouteFlags",
                 2,
             ) // LOOP_BACK, without RENDER: redirect this media stream
-            val audioMix = XposedHelpers.callMethod(mix, "build")
+            val audioMix = Reflect.callMethod(mix, "build")
             val builder =
-                XposedHelpers.newInstance(
-                    XposedHelpers.findClass(
+                Reflect.newInstance(
+                    Reflect.findClass(
                         "android.media.audiopolicy.AudioPolicy\$Builder",
                         loader,
                     ),
@@ -373,17 +400,17 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
             policyCallbacks.start()
             var registeredPolicy: Any? = null
             try {
-                XposedHelpers.callMethod(builder, "setLooper", policyCallbacks.getLooper())
-                XposedHelpers.callMethod(builder, "addMix", audioMix)
-                registeredPolicy = XposedHelpers.callMethod(builder, "build")
+                Reflect.callMethod(builder, "setLooper", policyCallbacks.getLooper())
+                Reflect.callMethod(builder, "addMix", audioMix)
+                registeredPolicy = requireNotNull(Reflect.callMethod(builder, "build"))
                 val result: Int =
-                    XposedHelpers.callMethod(manager, "registerAudioPolicy", registeredPolicy)
+                    Reflect.callMethod(manager, "registerAudioPolicy", registeredPolicy)
                         as Int
                 check(result == 0) { "Policy registration failed" }
             } catch (e: Throwable) {
                 if (registeredPolicy != null) {
                     try {
-                        XposedHelpers.callMethod(manager, "unregisterAudioPolicy", registeredPolicy)
+                        Reflect.callMethod(manager, "unregisterAudioPolicy", registeredPolicy)
                     } catch (ignored: Throwable) {}
                 }
                 policyCallbacks.quitSafely()
@@ -393,7 +420,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
             probeSource = if (silentProbe) SilentProbeSource() else null
             var registeredAddress: String? = null
             try {
-                registeredAddress = XposedHelpers.callMethod(audioMix, "getRegistration") as String?
+                registeredAddress = Reflect.callMethod(audioMix, "getRegistration") as String?
             } catch (ignored: Throwable) {
                 // Optional inspection must not prevent compatible capture on other framework
                 // versions.
@@ -407,28 +434,28 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                     // say.
                     try {
                         val address: String? =
-                            XposedHelpers.callStaticMethod(
+                            Reflect.callStaticMethod(
                                 policy.javaClass,
                                 "addressForTag",
                                 audioMix,
                             ) as String?
                         val attributes = android.media.AudioAttributes.Builder()
-                        XposedHelpers.callMethod(attributes, "setInternalCapturePreset", 8)
-                        XposedHelpers.callMethod(attributes, "addTag", address)
-                        XposedHelpers.callMethod(attributes, "addTag", "fixedVolume")
+                        Reflect.callMethod(attributes, "setInternalCapturePreset", 8)
+                        Reflect.callMethod(attributes, "addTag", address)
+                        Reflect.callMethod(attributes, "addTag", "fixedVolume")
                         val inputFormat =
                             android.media.AudioFormat.Builder(format)
                                 .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
                                 .build()
                         val flagsClass =
-                            XposedHelpers.findClass(
+                            Reflect.findClass(
                                 "android.media.audio.common.AudioInputFlags",
                                 loader,
                             )
                         val fastFlag: Int =
-                            1 shl XposedHelpers.getStaticIntField(flagsClass, "FAST")
+                            1 shl Reflect.getStaticIntField(flagsClass, "FAST")
                         created =
-                            XposedHelpers.newInstance(
+                            Reflect.newInstance(
                                 AudioRecord::class.java,
                                 attributes.build(),
                                 inputFormat,
@@ -454,7 +481,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                     // frameworks.
                     try {
                         created =
-                            XposedHelpers.callMethod(
+                            Reflect.callMethod(
                                 policy,
                                 "createAudioRecordSink",
                                 audioMix,
@@ -463,7 +490,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                             ) as AudioRecord?
                     } catch (ignored: Throwable) {
                         created =
-                            XposedHelpers.callMethod(policy, "createAudioRecordSink", audioMix)
+                            Reflect.callMethod(policy, "createAudioRecordSink", audioMix)
                                 as AudioRecord?
                     }
                 }
@@ -482,14 +509,26 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                     client.unlinkToDeath(this, 0)
                 } catch (ignored: RuntimeException) {}
                 try {
-                    XposedHelpers.callMethod(manager, "unregisterAudioPolicy", policy)
+                    Reflect.callMethod(manager, "unregisterAudioPolicy", policy)
                 } catch (ignored: Throwable) {}
                 policyCallbacks.quitSafely()
                 throw IllegalStateException("System audio initialization failed", e)
             }
-            val thread = Thread(Runnable { this.pump() }, "HomePod-system-audio")
+            val thread = Thread({
+                try {
+                    pump()
+                } finally {
+                    audioWorkers.decrementAndGet()
+                }
+            }, "HomePod-system-audio")
             thread.setDaemon(true)
-            thread.start()
+            audioWorkers.incrementAndGet()
+            try {
+                thread.start()
+            } catch (error: Throwable) {
+                audioWorkers.decrementAndGet()
+                throw error
+            }
             if (probeSource != null) probeSource.start()
         }
 
@@ -593,7 +632,7 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
                 close()
                 record.release()
                 try {
-                    XposedHelpers.callMethod(
+                    Reflect.callMethod(
                         context.getSystemService<AudioManager?>(AudioManager::class.java),
                         "unregisterAudioPolicy",
                         policy,
@@ -633,14 +672,14 @@ class SystemAudioBridge(context: Context, modulePath: String?) : Binder() {
             if (volumeEndpoint == null) {
                 try {
                     volumeEndpoint = SystemVolumeEndpoint(context, callback!!)
-                    XposedBridge.log("HomePod Bridge: system volume endpoint ready")
+                    Hooks.log("HomePod Bridge: system volume endpoint ready")
                 } catch (e: Throwable) {
-                    XposedBridge.log(
+                    Hooks.log(
                         ("HomePod Bridge: system volume endpoint unavailable (" +
                             e.javaClass.getSimpleName() +
                             ")")
                     )
-                    XposedBridge.log(e)
+                    Hooks.log(e)
                 }
             }
         }

@@ -42,7 +42,6 @@
     <string name="diagnostics_command_running">Audio timing diagnostics · no sound</string>
     <string name="app_name">HomePod Bridge</string>
     <string name="module_description">Add HomePod to the system media output picker.</string>
-    <string-array name="module_scope"><item>com.android.systemui</item></string-array>
     <string name="intro">HomePod Bridge</string>
     <string name="capture_mode">Audio to share: %1$s</string>
     <string name="mode_active">Selected</string>

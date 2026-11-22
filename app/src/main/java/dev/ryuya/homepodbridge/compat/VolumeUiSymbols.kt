@@ -1,8 +1,8 @@
 package dev.ryuya.homepodbridge.compat
 
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import dev.ryuya.homepodbridge.hook.HookCallback
+import dev.ryuya.homepodbridge.hook.Hooks
+import dev.ryuya.homepodbridge.hook.Reflect
 import java.lang.reflect.Field
 
 /** Aliases only the private volume UI. Android's audio/Binder implementation stays untouched. */
@@ -17,22 +17,22 @@ internal object VolumeUiSymbols {
             null
         }
 
-    fun findAndHookMethod(owner: Class<*>, name: String, vararg args: Any?): XC_MethodHook.Unhook {
-        val callback = args.last() as XC_MethodHook
+    fun findAndHookMethod(owner: Class<*>, name: String, vararg args: Any?): HookCallback.Unhook {
+        val callback = args.last() as HookCallback
         val params = args.dropLast(1).map { it as Class<*> }.toTypedArray()
         val method = owner.compatibleDeclaredMethod(name, *params).apply { isAccessible = true }
-        return XposedBridge.hookMethod(method, callback)
+        return Hooks.hook(method, callback)
     }
 
     fun hookAllMethods(
         owner: Class<*>,
         name: String,
-        callback: XC_MethodHook,
-    ): Set<XC_MethodHook.Unhook> =
+        callback: HookCallback,
+    ): Set<HookCallback.Unhook> =
         owner.declaredMethods
             .filter { it.compatibleName() == name }
             .mapTo(linkedSetOf()) {
-                XposedBridge.hookMethod(it, callback)
+                Hooks.hook(it, callback)
             }
 
     private fun field(owner: Class<*>, name: String): Field {
@@ -54,17 +54,17 @@ internal object VolumeUiSymbols {
     fun getStaticIntField(owner: Class<*>, name: String): Int = field(owner, name).getInt(null)
 
     fun callMethod(owner: Any?, name: String, vararg args: Any?): Any? =
-        XposedHelpers.callMethod(
+        Reflect.callMethod(
             owner,
             DexSymbols.invocationName(owner!!.javaClass, name, args.size),
             *args,
         )
 
     fun newInstance(owner: Class<*>, vararg args: Any?): Any =
-        XposedHelpers.newInstance(owner, *args)
+        Reflect.newInstance(owner, *args)
 
     fun callStaticMethod(owner: Class<*>, name: String, vararg args: Any?): Any? =
-        XposedHelpers.callStaticMethod(
+        Reflect.callStaticMethod(
             owner,
             DexSymbols.invocationName(owner, name, args.size),
             *args,

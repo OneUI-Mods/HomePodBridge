@@ -13,7 +13,7 @@ import android.os.Parcel
 import android.os.RemoteException
 import android.os.SystemClock
 import android.util.Log
-import de.robv.android.xposed.XposedBridge
+import dev.ryuya.homepodbridge.hook.Hooks
 import dev.ryuya.homepodbridge.compat.VolumeUiSymbols
 import dev.ryuya.homepodbridge.compat.compatibleName
 import java.lang.reflect.InvocationHandler
@@ -419,8 +419,8 @@ class SystemVolumeEndpoint(context: Context, callback: IBinder) : AutoCloseable 
         } catch (error: Throwable) {
             if (!panelErrorLogged) {
                 panelErrorLogged = true
-                XposedBridge.log("HomePod Bridge: remote volume panel failed")
-                XposedBridge.log(error)
+                Hooks.log("HomePod Bridge: remote volume panel failed")
+                Hooks.log(error)
             }
             return false // Preserve the ROM's panel when its internals differ.
         }
