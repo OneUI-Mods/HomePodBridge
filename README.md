@@ -1,5 +1,7 @@
 # HomePod Bridge
 
+インストールにはAndroid 17（API 37）以降が必要です。
+
 [日本語](README.md) · [English](README.en.md)
 
 Galaxyのシステムの「メディア出力」からHomePodへ音声を送る、開発中のAndroidアプリとVectorモジュールです。
@@ -12,7 +14,7 @@ Apple Musicは変更・フックしません。HomePodをAndroidのメディア�
 
 ## 対応環境
 
-- Android 16/17、arm64またはx86_64
+- Android 17、arm64またはx86_64
 - rootとVector。モジュールの対象はSystem UIだけです。
 - 同じローカルネットワーク上のHomePod／HomePod mini
 - HomePod側で同じネットワークからのAirPlay接続を許可していること

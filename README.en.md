@@ -1,5 +1,7 @@
 # HomePod Bridge
 
+Installation requires Android 17 (API 37) or later.
+
 [日本語](README.md) · English
 
 An Android app and Vector module, under development, for sending audio from Galaxy's system **Media output** picker to a HomePod.
@@ -12,7 +14,7 @@ Hook initialization that needs settings or cached discovery results waits for th
 
 ## Requirements
 
-- Android 16/17, arm64 or x86_64.
+- Android 17, arm64 or x86_64.
 - Root and Vector; the module scope is System UI only.
 - A HomePod / HomePod mini on the same local network.
 - HomePod configured to allow AirPlay connections from that network.

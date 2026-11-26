@@ -1,6 +1,6 @@
 # Development
 
-- Follow the OneUI Mods development and release rules confirmed with the existing One UI mods task. Use SDK 37 and support Android 16/17.
+- Follow the OneUI Mods development and release rules confirmed with the existing One UI mods task. Use SDK 37 and support Android 17.
 - Do not hook, patch, repackage, or change Apple Music. The Vector scope is System UI only. Publish receivers through a system media route provider.
 - The user explicitly authorized extending latency work to the Bridge-owned dedicated HAL path. Keep Vector scoped to SystemUI, preserve other routes, and retain the silence restriction. This permission does not authorize global capture-policy or SELinux changes.
 - The user additionally authorized HAL modification, explicitly requiring prevention of unintended activation. Keep modifications restricted to authenticated Bridge-owned virtual routes, bounded values, verified builds and reversible changes; do not activate a global latency override.
